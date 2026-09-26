@@ -175,6 +175,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/engine/sell-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Impacto Venta */
+        post: operations["motor_impacto_venta"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -190,6 +207,17 @@ export interface components {
         BusquedaJuegosRespuesta: {
             /** Juegos */
             juegos: components["schemas"]["JuegoListado"][];
+        };
+        /** CambioNivel */
+        CambioNivel: {
+            /** Eje */
+            eje: string;
+            /** Nivel */
+            nivel: string;
+            /** Antes */
+            antes: number;
+            /** Despues */
+            despues: number;
         };
         /** Capabilities */
         Capabilities: {
@@ -219,13 +247,6 @@ export interface components {
                 [key: string]: number;
             };
         };
-        /** CoberturaRadar */
-        CoberturaRadar: {
-            /** Porcentajes */
-            porcentajes: {
-                [key: string]: number;
-            };
-        };
         /** CoberturaRespuesta */
         CoberturaRespuesta: {
             /** Ejes */
@@ -246,6 +267,15 @@ export interface components {
         ColeccionRespuesta: {
             /** Juegos */
             juegos: components["schemas"]["JuegoColeccion"][];
+        };
+        /** ConteoEstados */
+        ConteoEstados: {
+            /** Solidos */
+            solidos: number;
+            /** Debiles */
+            debiles: number;
+            /** Faltantes */
+            faltantes: number;
         };
         /** EstaNocheJuego */
         EstaNocheJuego: {
@@ -316,11 +346,19 @@ export interface components {
             niveles_que_cubre: components["schemas"]["NivelCubierto"][];
             /** Veredicto Razones */
             veredicto_razones: string[];
+            /** Similares */
+            similares: components["schemas"]["JuegoSimilar"][];
+            impacto: components["schemas"]["ImpactoCobertura"];
         };
         /** EvaluarSolicitud */
         EvaluarSolicitud: {
             /** Game Id */
             game_id: string;
+            /**
+             * Top K
+             * @default 3
+             */
+            top_k: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -344,6 +382,20 @@ export interface components {
             llm_active: boolean;
             /** Web Search Active */
             web_search_active: boolean;
+        };
+        /** ImpactoCobertura */
+        ImpactoCobertura: {
+            /** Ejes */
+            ejes: {
+                [key: string]: components["schemas"]["ImpactoEje"];
+            };
+            /** Cambios Nivel */
+            cambios_nivel: components["schemas"]["CambioNivel"][];
+        };
+        /** ImpactoEje */
+        ImpactoEje: {
+            antes: components["schemas"]["ConteoEstados"];
+            despues: components["schemas"]["ConteoEstados"];
         };
         /** JuegoColeccion */
         JuegoColeccion: {
@@ -529,8 +581,12 @@ export interface components {
             jugadores_estimados: boolean;
             /** Niveles Que Cubre */
             niveles_que_cubre?: components["schemas"]["NivelCubierto"][];
-            cobertura_antes: components["schemas"]["CoberturaRadar"];
-            cobertura_despues: components["schemas"]["CoberturaRadar"];
+            impacto: components["schemas"]["ImpactoCobertura"];
+        };
+        /** JuegoSimilar */
+        JuegoSimilar: {
+            juego: components["schemas"]["JuegoMotor"];
+            similitud: components["schemas"]["SimilitudRespuesta"];
         };
         /** NivelCubierto */
         NivelCubierto: {
@@ -624,6 +680,16 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VentaImpactoRespuesta */
+        VentaImpactoRespuesta: {
+            juego: components["schemas"]["JuegoMotor"];
+            impacto: components["schemas"]["ImpactoCobertura"];
+        };
+        /** VentaImpactoSolicitud */
+        VentaImpactoSolicitud: {
+            /** Game Id */
+            game_id: string;
         };
     };
     responses: never;
@@ -927,6 +993,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EstaNocheRespuesta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    motor_impacto_venta: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VentaImpactoSolicitud"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VentaImpactoRespuesta"];
                 };
             };
             /** @description Validation Error */

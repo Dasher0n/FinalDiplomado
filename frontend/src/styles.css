@@ -143,12 +143,42 @@ body {
   gap: 0.35rem;
   margin-top: 0.75rem;
 }
-.plan-radar {
-  width: 130px;
-  min-width: 130px;
-  height: 180px;
+.impacto-lista {
+  display: grid;
+  min-width: 185px;
+  gap: 0.32rem;
   align-self: center;
+  font-size: 0.7rem;
 }
+.impacto-fila {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  align-items: center;
+  gap: 0.35rem;
+}
+.impacto-fila i {
+  position: relative;
+  height: 2px;
+  background: #b27023;
+}
+.impacto-fila i::before,
+.impacto-fila i::after {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border: 2px solid #8d5221;
+  border-radius: 999px;
+  background: #fffaf2;
+  content: "";
+  transform: translateY(-50%);
+}
+.impacto-fila i::before { left: 0; }
+.impacto-fila i::after { right: 0; background: #b27023; }
+.impacto-fila.sin-cambio { opacity: 0.38; }
+.transiciones { color: #6b4b25; font-size: 0.68rem; }
+.coverage-summary { display: grid; grid-template-columns: minmax(0, 1fr) 145px; gap: 0.75rem; }
+.coverage-stacks { position: relative; min-height: 300px; }
 .coverage-radar {
   position: relative;
   height: 300px;
@@ -163,6 +193,7 @@ body {
   height: 220px;
 }
 .coverage-radar canvas,
+.coverage-stacks canvas,
 .experience-chart canvas,
 .plan-radar canvas {
   height: 100% !important;
@@ -324,11 +355,10 @@ body {
   outline-offset: 4px;
 }
 
-.game-card-info {
-  position: absolute;
-  z-index: 4;
-  bottom: calc(100% + 0.6rem);
-  left: 50%;
+.game-card-info { display: none; }
+.game-tooltip {
+  position: fixed;
+  z-index: 100;
   display: grid;
   width: 200px;
   gap: 0.2rem;
@@ -336,26 +366,12 @@ body {
   color: #2b1a11;
   font-size: 0.76rem;
   line-height: 1.2;
-  text-align: left;
   pointer-events: none;
-  visibility: hidden;
   border: 1px solid #d1ad65;
   border-radius: 6px;
-  opacity: 0;
   background: #fff6df;
   box-shadow: 0 8px 20px rgb(0 0 0 / 42%);
-  transform: translate(-50%, 0.5rem);
-  transition:
-    opacity 150ms ease,
-    transform 150ms ease,
-    visibility 150ms;
-}
-
-.game-card:hover .game-card-info,
-.game-card:focus-visible .game-card-info {
-  visibility: visible;
-  opacity: 1;
-  transform: translate(-50%, 0);
+  transform: translate(-50%, -100%);
 }
 
 .game-card.dimmed {
@@ -411,13 +427,14 @@ body {
   .coverage-radar {
     height: 260px;
   }
+  .coverage-summary { grid-template-columns: 1fr; }
+  .coverage-stacks { min-height: 260px; }
+  .coverage-radar-small { height: 180px; max-width: 260px; margin: auto; }
   .experience-chart {
     height: 200px;
   }
-  .plan-radar {
-    width: 105px;
-    min-width: 105px;
-  }
+  .recommendation > div { flex-wrap: wrap; }
+  .impacto-lista { width: 100%; }
 }
 
 dt {

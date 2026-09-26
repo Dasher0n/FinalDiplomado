@@ -49,7 +49,11 @@ def test_collection_returns_demo_games(api_client: TestClient) -> None:
     response = api_client.get("/api/v1/collection")
 
     assert response.status_code == 200
-    assert [game["nombre"] for game in response.json()["juegos"]] == ["Catan", "Wingspan"]
+    assert [game["nombre"] for game in response.json()["juegos"]] == [
+        "Catan",
+        "Codenames",
+        "Wingspan",
+    ]
 
 
 def test_games_searches_catalog_without_simulated_data(api_client: TestClient) -> None:
@@ -124,6 +128,7 @@ def test_collection_mutations_and_engine_endpoints(api_client: TestClient) -> No
     assert evaluate.json()["juego"]["nombre"] == "Wingspan"
     assert "veredicto_razones" in evaluate.json()
     assert "peso_estimado" in evaluate.json()["juego"]
+    assert all(item["juego"]["id"] != "1" for item in evaluate.json()["similares"])
     assert coverage.status_code == 200
     assert "ejes" in coverage.json()
     assert tonight.status_code == 200
@@ -161,11 +166,35 @@ def test_plan_only_lists_missing_or_weak_levels(api_client: TestClient) -> None:
     assert "juegos_sin_precio" in plan.json()
     assert "costo" not in plan.json()
     for game in plan.json()["juegos"]:
-        assert set(game["cobertura_antes"]["porcentajes"]) == set(coverage)
-        assert set(game["cobertura_despues"]["porcentajes"]) == set(coverage)
+        assert set(game["impacto"]["ejes"]) == set(coverage)
         for level in game["niveles_que_cubre"]:
             assert coverage[level["eje"]]["conteo_por_nivel"][level["nivel"]] < 2
             assert level["estado"] in {"faltante", "debil"}
+
+
+def test_impacto_venta_de_codenames_deja_jugadores_sin_cobertura(api_client: TestClient) -> None:
+    response = api_client.post("/api/v1/engine/sell-impact", json={"game_id": "3"})
+
+    assert response.status_code == 200
+    jugadores = response.json()["impacto"]["ejes"]["Jugadores"]
+    assert jugadores["despues"]["faltantes"] == jugadores["antes"]["faltantes"] + 2
+    perdidos = {
+        cambio["nivel"]
+        for cambio in response.json()["impacto"]["cambios_nivel"]
+        if cambio["eje"] == "Jugadores" and cambio["despues"] == 0
+    }
+    assert {"5 a 6", "7 o más"} <= perdidos
+
+
+def test_conteos_de_estados_suman_los_niveles_del_eje(api_client: TestClient) -> None:
+    response = api_client.post("/api/v1/engine/evaluate", json={"game_id": "1"})
+
+    assert response.status_code == 200
+    cobertura = api_client.get("/api/v1/engine/coverage").json()["ejes"]
+    for eje, impacto in response.json()["impacto"]["ejes"].items():
+        total = len(cobertura[eje]["conteo_por_nivel"])
+        assert sum(impacto["antes"].values()) == total
+        assert sum(impacto["despues"].values()) == total
 
 
 def test_plan_admite_orden_mejor_valorados(api_client: TestClient) -> None:

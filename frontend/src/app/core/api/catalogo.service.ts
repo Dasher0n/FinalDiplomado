@@ -10,6 +10,7 @@ export type CoberturaRespuesta = components["schemas"]["CoberturaRespuesta"];
 export type EvaluarRespuesta = components["schemas"]["EvaluarRespuesta"];
 export type PlanCompraRespuesta = components["schemas"]["PlanCompraRespuesta"];
 export type EstaNocheRespuesta = components["schemas"]["EstaNocheRespuesta"];
+export type VentaImpactoRespuesta = components["schemas"]["VentaImpactoRespuesta"];
 
 @Injectable({ providedIn: "root" })
 export class CatalogoService {
@@ -43,6 +44,12 @@ export class CatalogoService {
 
   evaluar(gameId: string) {
     return this.http.post<EvaluarRespuesta>("/api/v1/engine/evaluate", {
+      game_id: gameId,
+    });
+  }
+
+  impactoVenta(gameId: string) {
+    return this.http.post<VentaImpactoRespuesta>("/api/v1/engine/sell-impact", {
       game_id: gameId,
     });
   }

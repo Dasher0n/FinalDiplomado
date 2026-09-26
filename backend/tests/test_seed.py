@@ -25,11 +25,11 @@ async def test_seed_imports_catalog_and_is_idempotent() -> None:
         second = await seed_database(session, artefactos_dir)
         await session.commit()
 
-        assert first == {"games": 2, "users": 1, "collection": 2}
+        assert first == {"games": 3, "users": 1, "collection": 3}
         assert second == {"games": 0, "users": 0, "collection": 0}
-        assert await session.scalar(select(func.count()).select_from(Game)) == 2
+        assert await session.scalar(select(func.count()).select_from(Game)) == 3
         assert await session.scalar(select(func.count()).select_from(User)) == 1
-        assert await session.scalar(select(func.count()).select_from(UserCollection)) == 2
+        assert await session.scalar(select(func.count()).select_from(UserCollection)) == 3
         game = await session.get(Game, "1")
         assert game is not None
         assert game.precio_usd is not None

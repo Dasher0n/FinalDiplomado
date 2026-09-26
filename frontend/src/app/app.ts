@@ -30,6 +30,7 @@ import {
   JuegoDetalle,
   JuegoListado,
   PlanCompraRespuesta,
+  VentaImpactoRespuesta,
 } from "./core/api/catalogo.service";
 
 Chart.register(
@@ -150,7 +151,7 @@ Chart.register(
               @for (fila of filasEstante(grupo.juegos); track $index) {
                 <section class="case-shelf">
                   <h3 class="shelf-plaque">
-                    {{ grupo.nombre }} · {{ grupo.juegos.length }}
+                    {{ placa(grupo.nombre) }} · {{ grupo.juegos.length }}
                   </h3>
                   <div class="shelf-rail">
                     <div class="shelf-games">
@@ -158,6 +159,8 @@ Chart.register(
                         <button
                           class="game-card"
                           (click)="verDetalle(juego.id)"
+                          (mouseenter)="mostrarTooltip($event, juego)"
+                          (mouseleave)="tooltip.set(null)"
                         >
                           <span class="game-cover">
                             @if (juego.imagen_url) {
@@ -219,7 +222,7 @@ Chart.register(
           <div class="bookcase mt-7">
             @for (fila of filasEstante(juegos()); track $index) {
               <section class="case-shelf">
-                <h3 class="shelf-plaque">Tu colección</h3>
+                <h3 class="shelf-plaque">Tu Colección</h3>
                 <div class="shelf-rail">
                   <div class="shelf-games">
                     @for (juego of fila; track juego.id) {
@@ -230,6 +233,8 @@ Chart.register(
                         "
                         [class.highlighted]="recomendadoEstaNoche(juego.id)"
                         (click)="verDetalle(juego.id)"
+                        (mouseenter)="mostrarTooltip($event, juego)"
+                        (mouseleave)="tooltip.set(null)"
                       >
                         <span class="game-cover">
                           @if (juego.imagen_url) {
@@ -260,8 +265,14 @@ Chart.register(
         <p class="eyebrow">Mapa de variedad</p>
         <h2 class="font-serif text-4xl">Cobertura de la colección</h2>
         <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-          <section class="panel min-h-[330px]">
-            <div class="coverage-radar">
+          <section class="panel coverage-summary">
+            <div class="coverage-stacks">
+              <canvas
+                id="barras-resumen"
+                aria-label="Estados de cobertura por eje"
+              ></canvas>
+            </div>
+            <div class="coverage-radar coverage-radar-small">
               <canvas
                 id="radar-cobertura"
                 aria-label="Radar de cobertura"
@@ -441,13 +452,13 @@ Chart.register(
                             }
                           </div>
                         </div>
-                        <div class="plan-radar">
-                          <canvas
-                            [id]="'plan-radar-' + juego.id"
-                            [attr.aria-label]="
-                              'Cobertura antes y después de ' + juego.nombre
-                            "
-                          ></canvas>
+                        <div class="impacto-lista">
+                          @for (eje of impactoEjes(juego.impacto); track eje.nombre) {
+                            <div class="impacto-fila" [class.sin-cambio]="!eje.cambio">
+                              <span>{{ eje.nombre }}</span><i></i><b>{{ eje.antes }} → {{ eje.despues }}</b>
+                            </div>
+                          }
+                          <p class="transiciones">{{ transiciones(juego.impacto) }}</p>
                         </div>
                       </div>
                     </article>
@@ -584,8 +595,11 @@ Chart.register(
                 }
               </div>
               <button class="primary mt-3" (click)="evaluarDetalle()">
-                Evaluar contra mi colección
+                {{ enColeccion(seleccionado()!.id) ? "Ver aporte en mi colección" : "Evaluar compra" }}
               </button>
+              @if (enColeccion(seleccionado()!.id)) {
+                <button class="chip ml-2" (click)="simularVenta()">Simular venta</button>
+              }
               @if (evaluacionDetalle()) {
                 <div class="resultado-evaluacion mt-4">
                   <b>{{ etiqueta(evaluacionDetalle()!.veredicto) }}</b>
@@ -605,18 +619,35 @@ Chart.register(
                       }}
                     </p>
                   }
-                  @for (
-                    bloque of barras(evaluacionDetalle()!);
-                    track bloque.nombre
-                  ) {
-                    <div class="bar-label">
-                      {{ bloque.nombre }}
-                      <span>{{ bloque.valor | number: "1.0-0" }}%</span>
-                    </div>
-                    <div class="bar">
-                      <i [style.width.%]="bloque.valor"></i>
+                  <div class="mt-3 impacto-lista">
+                    @for (eje of impactoEjes(evaluacionDetalle()!.impacto); track eje.nombre) {
+                      <div class="impacto-fila" [class.sin-cambio]="!eje.cambio">
+                        <span>{{ eje.nombre }}</span><i></i><b>{{ eje.antes }} → {{ eje.despues }}</b>
+                      </div>
+                    }
+                    <p class="transiciones">{{ transiciones(evaluacionDetalle()!.impacto) }}</p>
+                  </div>
+                  @if (evaluacionDetalle()!.similares.length) {
+                    <p class="mt-3 text-sm font-semibold">Los 3 más parecidos</p>
+                    <div class="mt-1 flex flex-wrap gap-1">
+                      @for (similar of evaluacionDetalle()!.similares; track similar.juego.id) {
+                        <span class="level-chip">{{ similar.juego.nombre }} {{ similar.similitud.total | number: "1.2-2" }}</span>
+                      }
                     </div>
                   }
+                </div>
+              }
+              @if (ventaDetalle()) {
+                <div class="resultado-evaluacion mt-4">
+                  <b>Impacto de venderlo</b>
+                  <div class="mt-3 impacto-lista">
+                    @for (eje of impactoEjes(ventaDetalle()!.impacto); track eje.nombre) {
+                      <div class="impacto-fila" [class.sin-cambio]="!eje.cambio">
+                        <span>{{ eje.nombre }}</span><i></i><b>{{ eje.antes }} → {{ eje.despues }}</b>
+                      </div>
+                    }
+                    <p class="transiciones">{{ transiciones(ventaDetalle()!.impacto) }}</p>
+                  </div>
                 </div>
               }
               <p class="mt-4">
@@ -644,6 +675,12 @@ Chart.register(
                 >
               }
               <div class="mt-4">
+                <p class="mb-2 text-sm font-semibold">Perfil</p>
+                <div class="flex flex-wrap gap-1">
+                  @for (perfil of perfiles(seleccionado()!); track perfil) {
+                    <span class="level-chip">{{ perfil }}</span>
+                  }
+                </div>
                 @if (enColeccion(seleccionado()!.id)) {
                   <button class="chip" (click)="quitar(seleccionado()!.id)">
                     Quitar de colección
@@ -657,6 +694,11 @@ Chart.register(
             </div>
           </div>
         </article>
+      </div>
+    }
+    @if (tooltip(); as dato) {
+      <div class="game-tooltip" [style.left.px]="dato.x" [style.top.px]="dato.y">
+        <b>{{ dato.nombre }}</b><span>{{ dato.rango }} jugadores</span>
       </div>
     }
   </main>`,
@@ -678,6 +720,13 @@ export class App {
   protected readonly noche = signal<EstaNocheRespuesta | null>(null);
   protected readonly evaluacion = signal<EvaluarRespuesta | null>(null);
   protected readonly evaluacionDetalle = signal<EvaluarRespuesta | null>(null);
+  protected readonly ventaDetalle = signal<VentaImpactoRespuesta | null>(null);
+  protected readonly tooltip = signal<{
+    nombre: string;
+    rango: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   constructor() {
     void this.cargarColeccion();
@@ -699,6 +748,7 @@ export class App {
 
   protected async verDetalle(id: string): Promise<void> {
     this.evaluacionDetalle.set(null);
+    this.ventaDetalle.set(null);
     this.seleccionado.set(
       this.juegos().find((juego) => juego.id === id) ??
         (await firstValueFrom(this.api.detalle(id))),
@@ -746,13 +796,19 @@ export class App {
         }),
       ),
     );
-    setTimeout(() => this.dibujarRadaresPlan());
   }
 
   protected async evaluarDetalle(): Promise<void> {
     if (this.seleccionado())
       this.evaluacionDetalle.set(
         await firstValueFrom(this.api.evaluar(this.seleccionado()!.id)),
+      );
+  }
+
+  protected async simularVenta(): Promise<void> {
+    if (this.seleccionado())
+      this.ventaDetalle.set(
+        await firstValueFrom(this.api.impactoVenta(this.seleccionado()!.id)),
       );
   }
 
@@ -838,6 +894,42 @@ export class App {
       juego.duracion_estimada ? "Duración estimada" : "",
       juego.jugadores_estimados ? "Jugadores estimados" : "",
     ].filter(Boolean);
+  }
+  protected perfiles(juego: JuegoDetalle): string[] {
+    return [
+      ...((juego.familias_mecanicas ?? []) as string[]),
+      ...((juego.familias_tematicas ?? []) as string[]),
+      juego.nivel_interaccion,
+    ].filter((valor): valor is string => Boolean(valor));
+  }
+  protected placa(valor: string): string {
+    return valor.replace(/\b\p{L}/gu, (letra) => letra.toUpperCase());
+  }
+  protected mostrarTooltip(evento: MouseEvent, juego: JuegoDetalle): void {
+    this.tooltip.set({
+      nombre: juego.nombre,
+      rango: this.rango(juego),
+      x: Math.min(evento.clientX, window.innerWidth - 220),
+      y: Math.max(8, evento.clientY - 82),
+    });
+  }
+  protected impactoEjes(impacto: {
+    ejes: Record<string, { antes: Record<string, number>; despues: Record<string, number> }>;
+  }): { nombre: string; antes: number; despues: number; cambio: boolean }[] {
+    return Object.entries(impacto.ejes).map(([nombre, eje]) => ({
+      nombre,
+      antes: eje.antes["solidos"],
+      despues: eje.despues["solidos"],
+      cambio: eje.antes["solidos"] !== eje.despues["solidos"],
+    }));
+  }
+  protected transiciones(impacto: {
+    cambios_nivel: { eje: string; nivel: string; antes: number; despues: number }[];
+  }): string {
+    const cambios = impacto.cambios_nivel.slice(0, 3).map((cambio) =>
+      `${cambio.eje}: ${cambio.nivel} ${cambio.antes} → ${cambio.despues}`,
+    );
+    return cambios.length ? cambios.join(" · ") : "No cambia la cobertura.";
   }
   protected grupos(): { nombre: string; juegos: JuegoDetalle[] }[] {
     const salida = new Map<string, JuegoDetalle[]>();
@@ -949,6 +1041,45 @@ export class App {
       "Interacción",
       ejes["Interacción"],
     );
+    const resumen = document.getElementById(
+      "barras-resumen",
+    ) as HTMLCanvasElement | null;
+    if (resumen) {
+      this.graficas.set(
+        "barras-resumen",
+        new Chart(resumen, {
+          type: "bar",
+          data: {
+            labels: Object.keys(ejes),
+            datasets: [
+              {
+                label: "Sólidos",
+                data: Object.values(ejes).map((eje) =>
+                  Object.values(eje.conteo_por_nivel).filter((conteo) => conteo >= 2).length,
+                ),
+                backgroundColor: "#8d5221",
+              },
+              {
+                label: "Débiles",
+                data: Object.values(ejes).map((eje) => Object.keys(eje.debiles).length),
+                backgroundColor: "#b27023",
+              },
+              {
+                label: "Faltantes",
+                data: Object.values(ejes).map((eje) => eje.faltantes.length),
+                backgroundColor: "#9b3429",
+              },
+            ],
+          },
+          options: {
+            indexAxis: "y",
+            maintainAspectRatio: false,
+            scales: { x: { stacked: true, ticks: { precision: 0 } }, y: { stacked: true } },
+            plugins: { legend: { position: "bottom" } },
+          },
+        }),
+      );
+    }
   }
 
   private dibujarConteosRadar(
@@ -1024,64 +1155,8 @@ export class App {
     );
   }
 
-  private dibujarRadaresPlan(): void {
-    for (const juego of this.plan()?.juegos ?? []) {
-      const canvas = document.getElementById(
-        `plan-radar-${juego.id}`,
-      ) as HTMLCanvasElement | null;
-      if (!canvas) continue;
-      const anterior = this.graficas.get(canvas.id);
-      anterior?.destroy();
-      const etiquetas = Object.keys(juego.cobertura_antes.porcentajes);
-      const etiquetasRadar = etiquetas.map((etiqueta) =>
-        this.abreviarEje(etiqueta),
-      );
-      this.graficas.set(
-        canvas.id,
-        new Chart(canvas, {
-          type: "radar",
-          data: {
-            labels: etiquetasRadar,
-            datasets: [
-              {
-                label: "Antes",
-                data: etiquetas.map(
-                  (eje) => juego.cobertura_antes.porcentajes[eje],
-                ),
-                borderColor: "#888078",
-                backgroundColor: "rgba(136,128,120,.12)",
-              },
-              {
-                label: "Después",
-                data: etiquetas.map(
-                  (eje) => juego.cobertura_despues.porcentajes[eje],
-                ),
-                borderColor: "#8d5221",
-                backgroundColor: "rgba(141,82,33,.15)",
-              },
-            ],
-          },
-          options: {
-            maintainAspectRatio: false,
-            scales: { r: { min: 0, max: 100, ticks: { display: false } } },
-            plugins: {
-              legend: { labels: { boxWidth: 10, font: { size: 9 } } },
-              tooltip: {
-                callbacks: {
-                  title: (items) => etiquetas[items[0].dataIndex] ?? "",
-                },
-              },
-            },
-          },
-        }),
-      );
-    }
-  }
 
   private colorConteo(conteo: number): string {
     return conteo === 0 ? "#9b3429" : conteo === 1 ? "#b27023" : "#8d5221";
-  }
-  private abreviarEje(etiqueta: string): string {
-    return etiqueta === "Interacción" ? "Interacc." : etiqueta;
   }
 }

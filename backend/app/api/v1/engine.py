@@ -18,19 +18,26 @@ from app.engine.motor import (
 )
 from app.repositories.catalogo import CatalogoRepository
 from app.schemas.engine import (
+    CambioNivel,
     CoberturaEjeRespuesta,
     CoberturaRespuesta,
+    ConteoEstados,
     EstaNocheJuego,
     EstaNocheRespuesta,
     EstaNocheSolicitud,
     EvaluarRespuesta,
     EvaluarSolicitud,
+    ImpactoCobertura,
+    ImpactoEje,
     JuegoMotor,
     JuegoPlanCompra,
+    JuegoSimilar,
     NivelCubierto,
     PlanCompraRespuesta,
     PlanCompraSolicitud,
     SimilitudRespuesta,
+    VentaImpactoRespuesta,
+    VentaImpactoSolicitud,
 )
 
 router = APIRouter(prefix="/engine", tags=["motor"])
@@ -103,12 +110,33 @@ def _conteos_niveles(juegos: list[Game], artefactos: ArtefactosMotor, eje: str) 
     return conteos
 
 
-def _radar_cobertura(artefactos: ArtefactosMotor, juegos: list[Game]) -> dict[str, float]:
-    resultado = cobertura(artefactos, juegos)
-    return {
-        eje: round(100 * len(valor.cubiertos) / len(artefactos.tipos[eje]), 1)
-        for eje, valor in resultado.ejes.items()
-    }
+def _impacto_cobertura(
+    artefactos: ArtefactosMotor, antes: list[Game], despues: list[Game]
+) -> ImpactoCobertura:
+    conteos_antes = {eje: _conteos_niveles(antes, artefactos, eje) for eje in artefactos.tipos}
+    conteos_despues = {eje: _conteos_niveles(despues, artefactos, eje) for eje in artefactos.tipos}
+
+    def estados(conteos: dict[str, int]) -> ConteoEstados:
+        return ConteoEstados(
+            solidos=sum(valor >= 2 for valor in conteos.values()),
+            debiles=sum(valor == 1 for valor in conteos.values()),
+            faltantes=sum(valor == 0 for valor in conteos.values()),
+        )
+
+    return ImpactoCobertura(
+        ejes={
+            eje: ImpactoEje(
+                antes=estados(conteos_antes[eje]), despues=estados(conteos_despues[eje])
+            )
+            for eje in artefactos.tipos
+        },
+        cambios_nivel=[
+            CambioNivel(eje=eje, nivel=nivel, antes=conteos_antes[eje][nivel], despues=valor)
+            for eje, conteos in conteos_despues.items()
+            for nivel, valor in conteos.items()
+            if valor != conteos_antes[eje][nivel]
+        ],
+    )
 
 
 async def _coleccion(session: DbSession, user: CurrentUser) -> list[Game]:
@@ -125,8 +153,11 @@ async def evaluar(
         raise JuegoNoEncontrado("No existe un juego con ese identificador.")
     artefactos = _artefactos(request)
     coleccion = await _coleccion(session, user)
-    veredicto, cercano, resultado, exacta = evaluar_redundancia(artefactos, candidato, coleccion)
-    cobertura_actual = cobertura(artefactos, coleccion)
+    coleccion_sin_candidato = [juego for juego in coleccion if juego.id != candidato.id]
+    veredicto, cercano, resultado, exacta = evaluar_redundancia(
+        artefactos, candidato, coleccion_sin_candidato
+    )
+    cobertura_actual = cobertura(artefactos, coleccion_sin_candidato)
     estados_huecos = {
         (eje, nivel): "faltante"
         for eje, eje_cobertura in cobertura_actual.ejes.items()
@@ -150,6 +181,16 @@ async def evaluar(
         "parecido": ["Se parece a un juego que ya tienes, sin alcanzar redundancia."],
         "aporta": ["Aporta una experiencia distinta a tu colección."],
     }
+    similares = sorted(
+        (
+            (resultado_similitud, juego)
+            for juego in coleccion_sin_candidato
+            for resultado_similitud in [evaluar_redundancia(artefactos, candidato, [juego])[2]]
+            if resultado_similitud is not None
+        ),
+        key=lambda par: par[0].total,
+        reverse=True,
+    )[: solicitud.top_k]
     return EvaluarRespuesta(
         veredicto=veredicto,
         juego=_juego(candidato, artefactos, estados_huecos),
@@ -158,6 +199,16 @@ async def evaluar(
         regla_exacta=exacta,
         niveles_que_cubre=_niveles(candidato, artefactos, estados_huecos),
         veredicto_razones=razones[veredicto],
+        similares=[
+            JuegoSimilar(
+                juego=_juego(juego, artefactos),
+                similitud=SimilitudRespuesta(**similitud_juego.__dict__),
+            )
+            for similitud_juego, juego in similares
+        ],
+        impacto=_impacto_cobertura(
+            artefactos, coleccion_sin_candidato, [*coleccion_sin_candidato, candidato]
+        ),
     )
 
 
@@ -218,14 +269,12 @@ async def comprar_plan(
     juegos_plan = []
     acumulados = list(coleccion)
     for juego in resultado.juegos:
-        antes = _radar_cobertura(artefactos, acumulados)
+        antes = list(acumulados)
         acumulados.append(juego)
-        despues = _radar_cobertura(artefactos, acumulados)
         juegos_plan.append(
             JuegoPlanCompra(
                 **_juego(juego, artefactos, estados_huecos).model_dump(),
-                cobertura_antes={"porcentajes": antes},
-                cobertura_despues={"porcentajes": despues},
+                impacto=_impacto_cobertura(artefactos, antes, acumulados),
             )
         )
     return PlanCompraRespuesta(
@@ -265,4 +314,21 @@ async def esta_noche(
             )
             for juego, mejor in juegos
         ]
+    )
+
+
+@router.post("/sell-impact", response_model=VentaImpactoRespuesta)
+async def impacto_venta(
+    solicitud: VentaImpactoSolicitud, request: Request, session: DbSession, user: CurrentUser
+) -> VentaImpactoRespuesta:
+    coleccion = await _coleccion(session, user)
+    juego = next((item for item in coleccion if item.id == solicitud.game_id), None)
+    if juego is None:
+        raise JuegoNoEncontrado("Ese juego no está en tu colección.")
+    artefactos = _artefactos(request)
+    return VentaImpactoRespuesta(
+        juego=_juego(juego, artefactos),
+        impacto=_impacto_cobertura(
+            artefactos, coleccion, [item for item in coleccion if item.id != juego.id]
+        ),
     )

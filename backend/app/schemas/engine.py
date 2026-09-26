@@ -49,8 +49,45 @@ class JuegoMotor(BaseModel):
         return f"{valor:.2f}"
 
 
+class CoberturaEjeRespuesta(BaseModel):
+    porcentaje: float
+    cubiertos: list[str]
+    faltantes: list[str]
+    debiles: dict[str, str]
+    conteo_por_nivel: dict[str, int]
+
+
+class ConteoEstados(BaseModel):
+    solidos: int
+    debiles: int
+    faltantes: int
+
+
+class CambioNivel(BaseModel):
+    eje: str
+    nivel: str
+    antes: int
+    despues: int
+
+
+class ImpactoEje(BaseModel):
+    antes: ConteoEstados
+    despues: ConteoEstados
+
+
+class ImpactoCobertura(BaseModel):
+    ejes: dict[str, ImpactoEje]
+    cambios_nivel: list[CambioNivel]
+
+
+class JuegoSimilar(BaseModel):
+    juego: JuegoMotor
+    similitud: SimilitudRespuesta
+
+
 class EvaluarSolicitud(BaseModel):
     game_id: str
+    top_k: int = Field(default=3, ge=1, le=10)
 
 
 class EvaluarRespuesta(BaseModel):
@@ -61,14 +98,8 @@ class EvaluarRespuesta(BaseModel):
     regla_exacta: bool
     niveles_que_cubre: list[NivelCubierto]
     veredicto_razones: list[str]
-
-
-class CoberturaEjeRespuesta(BaseModel):
-    porcentaje: float
-    cubiertos: list[str]
-    faltantes: list[str]
-    debiles: dict[str, str]
-    conteo_por_nivel: dict[str, int]
+    similares: list[JuegoSimilar]
+    impacto: ImpactoCobertura
 
 
 class CoberturaRespuesta(BaseModel):
@@ -90,8 +121,7 @@ class CoberturaRadar(BaseModel):
 
 
 class JuegoPlanCompra(JuegoMotor):
-    cobertura_antes: CoberturaRadar
-    cobertura_despues: CoberturaRadar
+    impacto: ImpactoCobertura
 
 
 class PlanCompraRespuesta(BaseModel):
@@ -116,3 +146,12 @@ class EstaNocheJuego(JuegoMotor):
 
 class EstaNocheRespuesta(BaseModel):
     juegos: list[EstaNocheJuego]
+
+
+class VentaImpactoSolicitud(BaseModel):
+    game_id: str
+
+
+class VentaImpactoRespuesta(BaseModel):
+    juego: JuegoMotor
+    impacto: ImpactoCobertura
