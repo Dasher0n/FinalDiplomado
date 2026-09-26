@@ -1,0 +1,49 @@
+eje,nivel,definicion,proporcion_catalogo
+Jugadores,1,,0.253
+Jugadores,2,,0.71
+Jugadores,3 a 4,,0.737
+Jugadores,5 a 6,,0.361
+Jugadores,7 o más,,0.09
+Duración,hasta 30,,0.414
+Duración,31 a 60,,0.293
+Duración,61 a 120,,0.178
+Duración,más de 120,,0.115
+Peso,ligero,,0.514
+Peso,medio,,0.358
+Peso,pesado,,0.128
+Interacción,ninguna,,0.345
+Interacción,indirecta,,0.093
+Interacción,directa,,0.467
+Interacción,cooperativo,,0.095
+Mecánicas,Draft,"Open Drafting | Closed Drafting | I Cut, You Choose | Increase Value of Unchosen Resources",0.105
+Mecánicas,Colección y contratos,Set Collection | Contracts,0.152
+Mecánicas,Selección de acciones,"Worker Placement | Worker Placement, Different Worker Types | Worker Placement with Dice Workers | Action Drafting",0.13
+Mecánicas,Motor y progresión,Tech Trees / Tech Tracks | Income | Tags | Chaining,0.028
+Mecánicas,Construcción de mazo,"Deck, Bag, and Pool Building | Deck Construction | Delayed Purchase",0.047
+Mecánicas,Gestión de mano,Hand Management | Multi-Use Cards,0.214
+Mecánicas,Cartas clásicas y bazas,Trick-taking | Predictive Bid | Ladder Climbing | Melding and Splaying,0.037
+Mecánicas,Aventura y narrativa,Storytelling | Narrative Choice / Paragraph | Role Playing | Scenario / Mission / Campaign Game,0.083
+Mecánicas,Táctica y guerra,Grid Movement | Line of Sight | Movement Points | Zone of Control,0.218
+Mecánicas,Control de área,Area Majority / Influence | Area Movement | King of the Hill | Tug of War,0.114
+Mecánicas,Económico y mercado,Market | Stock Holding | Investment | Commodity Speculation,0.076
+Mecánicas,Subastas,Auction / Bidding | Auction: Dutch | Auction: Sealed Bid | Auction: Turn Order Until Pass,0.049
+Mecánicas,Negociación y diplomacia,Negotiation | Trading | Alliances | Bribery,0.035
+Mecánicas,Deducción y engaño,Deduction | Hidden Roles | Traitor Game | Semi-Cooperative Game,0.099
+Mecánicas,Party y comunicación,Acting | Memory | Drawing | Spelling,0.129
+Mecánicas,Losetas y patrones,Tile Placement | Pattern Building | Grid Coverage | Enclosure,0.136
+Mecánicas,Dados y riesgo,Dice Rolling | Re-rolling and Locking | Die Icon Resolution | Push Your Luck,0.307
+Mecánicas,Lápiz y papel,Paper-and-Pencil | Bingo | Line Drawing | Connections,0.044
+Mecánicas,Movimiento y carreras,Track Movement | Roll / Spin and Move | Resource to Move | Programmed Movement,0.106
+Mecánicas,Destreza y velocidad,Flicking | Stacking and Balancing | Physical Removal | Real-Time,0.052
+Temática,Fantasía y mitología,Fantasy | Mythology | Arabian,0.149
+Temática,Ciencia ficción y espacio,Science Fiction | Space Exploration,0.081
+Temática,Horror,Horror | Zombies,0.038
+Temática,Historia antigua y medieval,Ancient | Medieval | Prehistoric | Renaissance,0.093
+Temática,Historia moderna y guerra,Age of Reason | Post-Napoleonic | Napoleonic | Pike and Shot,0.13
+Temática,Naturaleza y animales,Animals | Environmental | Farming,0.098
+Temática,"Economía, industria y ciudades",Economic | Industry / Manufacturing | City Building | Trains,0.102
+Temática,Exploración y aventura,Adventure | Exploration | Nautical | Pirates,0.134
+Temática,Intriga y misterio,Murder / Mystery | Spies / Secret Agents | Mafia | Political,0.056
+Temática,Cultura pop y humor,Movies / TV / Radio theme | Video Game Theme | Comic Book / Strip | Novel-based,0.149
+Temática,Deportes y carreras,Sports | Racing,0.043
+Temática,Abstracto o sin tema,Sin categoría temática,0.263
