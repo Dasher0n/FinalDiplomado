@@ -40,7 +40,7 @@ Lee `docs/requerimiento_sommelier_juegos.md` completo antes de empezar y trabaja
 - Las pruebas **nunca** tocan la red: usan fixtures grabados.
 - Llamadas reales a la API de OpenAI desde el código de la app: **solo** en la Fase 0 (una llamada de búsqueda web) y al grabar fixtures o al correr el guion de demo. **Antes de cada tanda pides aprobación** y dices cuántas llamadas harás. Máximo 20 llamadas reales por fase.
 - Nunca escribas bucles, reintentos sin límite ni procesos en segundo plano que llamen a APIs pagadas.
-- **Prohibido** volver a descargar datos de BoardGameGeek o BoardGamePrices de forma masiva. Peticiones de verificación a BGG: máximo 3, solo en la Fase 0. Prohibido evadir Cloudflare u otras protecciones.
+- **Prohibido** volver a descargar datos de BoardGameGeek o BoardGamePrices de forma masiva. **Prohibida cualquier petición a BoardGameGeek** (ni verificación ni búsqueda). Prohibido evadir Cloudflare u otras protecciones.
 
 ## Forma de trabajar
 

@@ -53,7 +53,7 @@ Copia del repo del profesor la infraestructura y las piezas transversales; reesc
 
 Dependencias adicionales de este proyecto:
 
-- `scikit-learn`, `scipy`, `numpy`, `pandas`: **fijadas exactamente a las versiones del entorno del cuaderno**, porque `preproceso.pkl` se generó con ellas. Versiones: `scikit-learn==<LLENAR>`, `scipy==<LLENAR>`, `numpy==<LLENAR>`, `pandas==3.0.5`. Si alguna no instala en Python 3.14, **detente y reporta**; no cambies la versión por tu cuenta.
+- `scikit-learn`, `scipy`, `numpy`, `pandas`: **fijadas exactamente a las versiones del entorno del cuaderno**, porque `preproceso.pkl` se generó con ellas. Versiones: `scikit-learn==1.9.0`, `scipy==1.18.0`, `numpy==2.5.2`, `pandas==3.0.5`. Si alguna no instala en Python 3.14, **detente y reporta**; no cambies la versión por tu cuenta.
 - `rapidfuzz` para búsqueda aproximada por nombre.
 
 **Frontend**: Angular 22 standalone, signals, Tailwind v4, servido por nginx, tipos de API generados con `openapi-typescript` (`make contracts`). Gráficas con **Chart.js usado directamente** (sin wrapper de Angular, para no heredar conflictos de peers con TypeScript 6). Drag and drop (sprint 2) con `@angular/cdk`.
@@ -140,7 +140,7 @@ Resolución de ambigüedad: si la búsqueda por nombre devuelve varios candidato
 Vive **dentro del servicio**, no en el plan: el planner solo escribe `evaluar_compra("Metropoli")` y el servicio resuelve. Así el plan fijo no necesita saber de antemano si el juego existe.
 
 1. **Local**: nombre normalizado (minúsculas, sin acentos, sin puntuación) contra `games.nombre` y `game_aliases` con `rapidfuzz`. Por encima del umbral alto, match directo; entre umbrales, `ambiguo`; por debajo, siguiente nivel. Umbrales configurables y documentados.
-2. **BGG fuera del ranking** (condicional): el catálogo solo tiene juegos rankeados. `geekitems` y `api.geekdo.com/api/dynamicinfo` funcionan por ID para cualquier juego, pero **no está verificado** cómo obtener el ID a partir del nombre sin la API oficial. Ver Fase 0. Si no hay una vía que funcione con una petición HTTP normal, **este nivel se omite**. Prohibido evadir Cloudflare o cualquier protección.
+2. **BGG fuera del ranking: omitido por decisión.** No hay forma limpia de pasar de nombre a ID: la API XML oficial exige token (rechazado) y los IDs del dataset salen del CSV de ranking de beefsack, que no incluye juegos sin ranking. `geekitems` y `dynamicinfo` solo respondieron con navegador automatizado y user agent de navegador, lo cual no se usa en la app. **La app no hace ninguna petición a BGG.**
 3. **Web** (`WEB_SEARCH_ENABLED=true` y clave presente):
    - **Paso A, búsqueda**: API de Responses con la herramienta hospedada `web_search` (no `web_search_preview`) y `tool_choice: "required"`. Modelo `LLM_MODEL_WEB`. No usar razonamiento `minimal` ni `none`. Se pide identificar el juego y describir sus datos de juego. Se guardan el texto y las citas `url_citation` en `web_search_cache`.
    - **Paso A2, re-resolución**: si la respuesta identifica el juego como uno que ya está en el catálogo con otro nombre (traducción, edición), se vuelve al nivel 1 con ese nombre, se registra el alias y se usan los datos del catálogo (`confianza: alta`).
@@ -296,7 +296,7 @@ Los modelos por defecto son los del repo del profesor; verifica en Fase 0 que ex
 
 Al cerrar cada fase: pruebas en verde, `make lint` limpio, `AGENTS.md` actualizado (estado, decisiones, trampas verificadas) y **te detienes a reportar** antes de seguir.
 
-- **Fase 0: verificaciones.** Todo en un script desechable fuera del código de la app. Versiones del cuaderno instalan en Python 3.14; carga de `preproceso.pkl` y matrices; columnas reales del catálogo (confirma que existen las cinco columnas de precio sin sufijo); una única llamada real a `web_search` con `tool_choice: "required"` que devuelva citas (pide aprobación antes de ejecutarla); si existe una vía por nombre hacia un ID de BGG sin token ni evasión de protecciones (como máximo 3 peticiones). Reporta resultados antes de construir.
+- **Fase 0: verificaciones.** Todo en un script desechable fuera del código de la app. Versiones del cuaderno instalan en Python 3.14; carga de `preproceso.pkl` y matrices; columnas reales del catálogo (confirma que existen las cinco columnas de precio sin sufijo); una única llamada real a `web_search` con `tool_choice: "required"` que devuelva citas (pide aprobación antes de ejecutarla). Reporta resultados antes de construir.
 - **Fase 1: andamiaje.** Primero el `.gitignore` completo (sección 15). Luego monorepo, Makefile, Docker, settings, logging, errores, sesión SQLite, esquema, seed del catálogo, del usuario demo y de su colección.
 - **Fase 2: motor.** Carga de matrices en memoria, similitud, redundancia, cobertura, plan de compra, filtros de hoy, resolución local con ambigüedad. Pruebas doradas.
 - **Fase 3: API REST** del catálogo, colección y motor.
