@@ -31,6 +31,14 @@ class CatalogoRepository:
         )
         return list((await self._session.execute(statement)).tuples().all())
 
+    async def juegos_por_ids(self, game_ids: list[str]) -> list[Game]:
+        if not game_ids:
+            return []
+        return list((await self._session.scalars(select(Game).where(Game.id.in_(game_ids)))).all())
+
+    async def todos_los_juegos(self) -> list[Game]:
+        return list((await self._session.scalars(select(Game))).all())
+
 
 def _escapar_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

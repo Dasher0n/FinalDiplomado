@@ -48,8 +48,26 @@ export interface paths {
         /** Coleccion demo */
         get: operations["catalogo_obtener_coleccion"];
         put?: never;
-        post?: never;
+        /** Agregar Coleccion */
+        post: operations["catalogo_agregar_coleccion"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collection/{game_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Quitar Coleccion */
+        delete: operations["catalogo_quitar_coleccion"];
         options?: never;
         head?: never;
         patch?: never;
@@ -89,10 +107,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/engine/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evaluar */
+        post: operations["motor_evaluar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/engine/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ver Cobertura */
+        get: operations["motor_ver_cobertura"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/engine/buy-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Comprar Plan */
+        post: operations["motor_comprar_plan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/engine/tonight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Esta Noche */
+        post: operations["motor_esta_noche"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AgregarColeccionSolicitud */
+        AgregarColeccionSolicitud: {
+            /** Game Id */
+            game_id: string;
+            /** Precio Pagado */
+            precio_pagado?: number | string | null;
+        };
         /** BusquedaJuegosRespuesta */
         BusquedaJuegosRespuesta: {
             /** Juegos */
@@ -109,10 +202,91 @@ export interface components {
             /** Endpoints Habilitados */
             endpoints_habilitados: string[];
         };
+        /** CoberturaEjeRespuesta */
+        CoberturaEjeRespuesta: {
+            /** Porcentaje */
+            porcentaje: number;
+            /** Cubiertos */
+            cubiertos: string[];
+            /** Faltantes */
+            faltantes: string[];
+            /** Debiles */
+            debiles: {
+                [key: string]: string;
+            };
+        };
+        /** CoberturaRespuesta */
+        CoberturaRespuesta: {
+            /** Ejes */
+            ejes: {
+                [key: string]: components["schemas"]["CoberturaEjeRespuesta"];
+            };
+        };
+        /** ColeccionMutacionRespuesta */
+        ColeccionMutacionRespuesta: {
+            /** Game Id */
+            game_id: string;
+            /** Agregado */
+            agregado: boolean;
+            /** Precio Pagado */
+            precio_pagado?: string;
+        };
         /** ColeccionRespuesta */
         ColeccionRespuesta: {
             /** Juegos */
             juegos: components["schemas"]["JuegoColeccion"][];
+        };
+        /** EstaNocheJuego */
+        EstaNocheJuego: {
+            /** Id */
+            id: string;
+            /** Nombre */
+            nombre: string;
+            /** Imagen Url */
+            imagen_url: string | null;
+            /** Promedio */
+            promedio: number | null;
+            /** Precio Usd */
+            precio_usd: null | string;
+            /** Precio Confiable */
+            precio_confiable: boolean;
+            /** Niveles Que Cubre */
+            niveles_que_cubre?: string[];
+            /** Es Mejor Numero Jugadores */
+            es_mejor_numero_jugadores: boolean;
+            /** Duracion Imputada */
+            duracion_imputada: boolean;
+        };
+        /** EstaNocheRespuesta */
+        EstaNocheRespuesta: {
+            /** Juegos */
+            juegos: components["schemas"]["EstaNocheJuego"][];
+        };
+        /** EstaNocheSolicitud */
+        EstaNocheSolicitud: {
+            /** Jugadores */
+            jugadores: number;
+            /** Minutos */
+            minutos: number;
+            /** Edad Minima */
+            edad_minima?: number | null;
+        };
+        /** EvaluarRespuesta */
+        EvaluarRespuesta: {
+            /** Veredicto */
+            veredicto: string;
+            juego: components["schemas"]["JuegoMotor"];
+            juego_mas_parecido: components["schemas"]["JuegoMotor"] | null;
+            similitud: components["schemas"]["SimilitudRespuesta"] | null;
+            /** Regla Exacta */
+            regla_exacta: boolean;
+            /** Niveles Que Cubre */
+            niveles_que_cubre: string[];
+        };
+        /** EvaluarSolicitud */
+        EvaluarSolicitud: {
+            /** Game Id */
+            game_id: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -223,6 +397,14 @@ export interface components {
             fuentes: unknown[];
             /** Evidencia */
             evidencia: unknown[];
+            /** Peso Estimado */
+            peso_estimado: boolean;
+            /** Peso Pocos Votos */
+            peso_pocos_votos: boolean;
+            /** Duracion Estimada */
+            duracion_estimada: boolean;
+            /** Jugadores Estimados */
+            jugadores_estimados: boolean;
         };
         /** JuegoListado */
         JuegoListado: {
@@ -248,6 +430,61 @@ export interface components {
             promedio: number | null;
             precio: components["schemas"]["PrecioJuego"];
         };
+        /** JuegoMotor */
+        JuegoMotor: {
+            /** Id */
+            id: string;
+            /** Nombre */
+            nombre: string;
+            /** Imagen Url */
+            imagen_url: string | null;
+            /** Promedio */
+            promedio: number | null;
+            /** Precio Usd */
+            precio_usd: null | string;
+            /** Precio Confiable */
+            precio_confiable: boolean;
+            /** Niveles Que Cubre */
+            niveles_que_cubre?: string[];
+        };
+        /** PlanCompraRespuesta */
+        PlanCompraRespuesta: {
+            /** Juegos */
+            juegos: components["schemas"]["JuegoMotor"][];
+            /** Valor Cubierto */
+            valor_cubierto: number;
+            /** Valor Pendiente */
+            valor_pendiente: number;
+            /** Costo */
+            costo: number;
+        };
+        /** PlanCompraSolicitud */
+        PlanCompraSolicitud: {
+            /**
+             * N
+             * @default 5
+             */
+            n: number;
+            /**
+             * Modo
+             * @default juego
+             */
+            modo: string;
+            /** Presupuesto */
+            presupuesto?: number | null;
+            /**
+             * Average Min
+             * @default 0
+             */
+            average_min: number;
+            /**
+             * Users Rated Min
+             * @default 1000
+             */
+            users_rated_min: number;
+            /** Ejes Ignorados */
+            ejes_ignorados?: string[];
+        };
         /** PrecioJuego */
         PrecioJuego: {
             /** Precio Usd */
@@ -260,6 +497,19 @@ export interface components {
             ofertas_us_con_stock: number | null;
             /** Url Bgp */
             url_bgp: string | null;
+        };
+        /** SimilitudRespuesta */
+        SimilitudRespuesta: {
+            /** Mecanicas */
+            mecanicas: number | null;
+            /** Ocasion */
+            ocasion: number;
+            /** Interaccion */
+            interaccion: number;
+            /** Tematica */
+            tematica: number | null;
+            /** Total */
+            total: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -343,6 +593,70 @@ export interface operations {
             };
         };
     };
+    catalogo_agregar_coleccion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgregarColeccionSolicitud"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColeccionMutacionRespuesta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    catalogo_quitar_coleccion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColeccionMutacionRespuesta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     catalogo_buscar_juegos: {
         parameters: {
             query?: {
@@ -393,6 +707,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JuegoDetalle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    motor_evaluar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluarSolicitud"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluarRespuesta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    motor_ver_cobertura: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoberturaRespuesta"];
+                };
+            };
+        };
+    };
+    motor_comprar_plan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanCompraSolicitud"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanCompraRespuesta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    motor_esta_noche: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EstaNocheSolicitud"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EstaNocheRespuesta"];
                 };
             };
             /** @description Validation Error */

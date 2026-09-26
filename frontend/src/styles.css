@@ -27,6 +27,24 @@ body {
   color: #fff6df;
 }
 
+.wise-nav { display: flex; gap: .2rem; }
+.wise-nav button { border-radius: 999px; padding: .45rem .7rem; font-size: .85rem; }
+.wise-nav button.active, .chip.active { background: #e6b85c; color: #38200d; }
+.eyebrow { color: #8d5221; font-size: .72rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+.input { border: 1px solid #d6c3a5; border-radius: .55rem; background: #fffdf8; padding: .55rem .7rem; min-width: 8rem; }
+.panel, .chat-card { border: 1px solid #dcc49a; border-radius: 1rem; background: #fffaf2; padding: 1.25rem; box-shadow: 0 7px 18px rgb(76 43 23 / 10%); }
+.chip, .primary { border-radius: 999px; padding: .5rem .8rem; font-size: .85rem; font-weight: 700; }
+.chip { border: 1px solid #b98a4a; color: #70441e; }
+.primary { background: #6f442d; color: #fff7e6; }
+.result { display: flex; align-items: center; gap: .65rem; border-radius: .6rem; background: white; padding: .45rem; text-align: left; }
+.result img { height: 2.8rem; width: 2.2rem; object-fit: cover; }
+.coverage { border-left: 3px solid #b27023; padding-left: .65rem; font-size: .87rem; }
+.coverage p { margin: .4rem 0 0; }
+.missing { color: #9b3429; font-weight: 700; }.weak { color: #8d6a1c; font-weight: 700; }
+.recommendation { border: 1px solid #e2c692; border-radius: .65rem; padding: .8rem; background: #fffaf2; }.recommendation p { margin: .4rem 0 0; font-size: .85rem; }
+.bubble { border-radius: .8rem; padding: .85rem; }.bubble.user { margin: 1rem 0; background: #eee1cc; }.bubble.answer { margin-top: 1rem; background: #fff4da; }.bubble p { margin: .4rem 0 0; }
+.bar-label { display: flex; justify-content: space-between; margin-top: .55rem; font-size: .8rem; }.bar { height: .45rem; overflow: hidden; border-radius: 999px; background: #eadcc5; }.bar i { display: block; height: 100%; background: #9b5d29; }
+
 .bookcase {
   padding: 1.5rem 1.1rem 2rem;
   border: 18px solid #4a2b1e;
@@ -138,6 +156,8 @@ body {
 }
 
 @media (max-width: 640px) {
+  .wise-nav { position: fixed; z-index: 20; right: 0; bottom: 0; left: 0; justify-content: space-around; border-top: 1px solid #825438; background: #251b16; padding: .45rem; }
+  main { padding-bottom: 3.6rem; }
   .bookcase {
     margin-right: -1.5rem;
     margin-left: -1.5rem;

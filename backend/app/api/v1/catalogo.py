@@ -5,6 +5,8 @@ from __future__ import annotations
 from urllib.parse import quote_plus, unquote_plus, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Query, status
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.config import settings
@@ -19,6 +21,7 @@ from app.schemas.catalogo import (
     JuegoListado,
     PrecioJuego,
 )
+from app.schemas.coleccion import AgregarColeccionSolicitud, ColeccionMutacionRespuesta
 
 router = APIRouter(tags=["catalogo"])
 
@@ -34,6 +37,54 @@ async def obtener_coleccion(session: DbSession, user: CurrentUser) -> ColeccionR
     return ColeccionRespuesta(
         juegos=[_juego_coleccion(game, collection) for game, collection in juegos]
     )
+
+
+@router.post(
+    "/collection", response_model=ColeccionMutacionRespuesta, status_code=status.HTTP_201_CREATED
+)
+async def agregar_coleccion(
+    solicitud: AgregarColeccionSolicitud, session: DbSession, user: CurrentUser
+) -> ColeccionMutacionRespuesta:
+    if await CatalogoRepository(session).obtener_juego(solicitud.game_id) is None:
+        raise JuegoNoEncontrado("No existe un juego con ese identificador.")
+    existente = await session.scalar(
+        select(UserCollection).where(
+            UserCollection.user_id == user.id, UserCollection.game_id == solicitud.game_id
+        )
+    )
+    if existente is not None:
+        return ColeccionMutacionRespuesta(
+            game_id=solicitud.game_id, agregado=False, precio_pagado=existente.precio_pagado
+        )
+    session.add(
+        UserCollection(
+            user_id=user.id, game_id=solicitud.game_id, precio_pagado=solicitud.precio_pagado
+        )
+    )
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        return ColeccionMutacionRespuesta(game_id=solicitud.game_id, agregado=False)
+    return ColeccionMutacionRespuesta(
+        game_id=solicitud.game_id, agregado=True, precio_pagado=solicitud.precio_pagado
+    )
+
+
+@router.delete("/collection/{game_id}", response_model=ColeccionMutacionRespuesta)
+async def quitar_coleccion(
+    game_id: str, session: DbSession, user: CurrentUser
+) -> ColeccionMutacionRespuesta:
+    existente = await session.scalar(
+        select(UserCollection).where(
+            UserCollection.user_id == user.id, UserCollection.game_id == game_id
+        )
+    )
+    if existente is None:
+        raise JuegoNoEncontrado("El juego no esta en tu coleccion.")
+    await session.delete(existente)
+    await session.commit()
+    return ColeccionMutacionRespuesta(game_id=game_id, agregado=False)
 
 
 @router.get("/games", response_model=BusquedaJuegosRespuesta, summary="Buscar juegos")
@@ -107,6 +158,10 @@ def _juego_detalle(game: Game) -> JuegoDetalle:
         confianza=game.confianza,
         fuentes=game.fuentes,
         evidencia=game.evidencia,
+        peso_estimado=game.weight_imputado,
+        peso_pocos_votos=game.weight_pocos_votos,
+        duracion_estimada=game.duracion_imputada,
+        jugadores_estimados=game.jugadores_imputados,
     )
 
 

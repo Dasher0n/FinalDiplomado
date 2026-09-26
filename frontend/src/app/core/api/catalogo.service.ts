@@ -6,6 +6,12 @@ import type { components } from './schema';
 export type ColeccionRespuesta = components['schemas']['ColeccionRespuesta'];
 export type JuegoListado = components['schemas']['JuegoListado'];
 export type JuegoDetalle = components['schemas']['JuegoDetalle'];
+export type CoberturaRespuesta = components['schemas']['CoberturaRespuesta'];
+export type EvaluarRespuesta = components['schemas']['EvaluarRespuesta'];
+export type PlanCompraRespuesta = components['schemas']['PlanCompraRespuesta'] & {
+  juegos: Array<components['schemas']['JuegoMotor'] & { niveles_que_cubre: string[] }>;
+};
+export type EstaNocheRespuesta = components['schemas']['EstaNocheRespuesta'];
 
 @Injectable({ providedIn: 'root' })
 export class CatalogoService {
@@ -23,5 +29,29 @@ export class CatalogoService {
 
   detalle(gameId: string) {
     return this.http.get<JuegoDetalle>(`/api/v1/games/${gameId}`);
+  }
+
+  agregar(gameId: string) {
+    return this.http.post('/api/v1/collection', { game_id: gameId });
+  }
+
+  quitar(gameId: string) {
+    return this.http.delete(`/api/v1/collection/${gameId}`);
+  }
+
+  cobertura() {
+    return this.http.get<CoberturaRespuesta>('/api/v1/engine/coverage');
+  }
+
+  evaluar(gameId: string) {
+    return this.http.post<EvaluarRespuesta>('/api/v1/engine/evaluate', { game_id: gameId });
+  }
+
+  plan(datos: { n: number; modo: string; presupuesto?: number }) {
+    return this.http.post<PlanCompraRespuesta>('/api/v1/engine/buy-plan', datos);
+  }
+
+  estaNoche(datos: { jugadores: number; minutos: number }) {
+    return this.http.post<EstaNocheRespuesta>('/api/v1/engine/tonight', datos);
   }
 }

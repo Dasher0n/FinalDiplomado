@@ -1,178 +1,49 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { DatePipe, DecimalPipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { Chart, Filler, Legend, LineElement, PointElement, RadarController, RadialLinearScale, Tooltip } from 'chart.js';
 import { firstValueFrom } from 'rxjs';
 
-import { CatalogoService, JuegoDetalle, JuegoListado } from './core/api/catalogo.service';
+import { CatalogoService, CoberturaRespuesta, EstaNocheRespuesta, EvaluarRespuesta, JuegoDetalle, JuegoListado, PlanCompraRespuesta } from './core/api/catalogo.service';
+
+Chart.register(RadarController, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend);
 
 @Component({
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DatePipe, DecimalPipe],
   template: `
     <main class="min-h-screen text-stone-900">
-      <header class="wise-header px-6 py-4 text-[#f8f1e5]">
-        <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
-          <div class="flex items-center gap-3">
-            <img class="h-12 w-12" src="/wise-dice.svg" alt="Dado sabio de Wise Dice">
-            <div><h1 class="font-serif text-3xl">Wise Dice</h1><p class="text-sm text-amber-200">Tu asesor de ludoteca</p></div>
-          </div>
-          <nav class="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-sm">
-            <a class="border-b-2 border-amber-300 pb-1" href="#ludoteca">Ludoteca</a>
-            <span class="text-stone-400">Cobertura, próximamente</span>
-            <span class="text-stone-400">Chat, próximamente</span>
-            <button class="add-game" (click)="panelBusqueda.set(!panelBusqueda())">Agregar juego</button>
-          </nav>
-        </div>
-      </header>
-
-      <section id="ludoteca" class="mx-auto max-w-7xl px-6 py-9">
-        <div class="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-          <div>
-            <p class="text-sm font-semibold uppercase tracking-[0.2em] text-amber-800">12 juegos, una colección</p>
-            <h2 class="mt-1 font-serif text-4xl">Tu librero de experiencias</h2>
-          </div>
-          <label class="text-sm font-semibold">Agrupar estantes por
-            <select #selector class="mt-2 block w-full rounded-lg border border-stone-300 bg-white px-3 py-2" (change)="cambiarAgrupacion(selector.value)">
-              <option value="familia">Familia de mecánica</option>
-              <option value="jugadores">Jugadores</option>
-              <option value="duracion">Duración</option>
-              <option value="peso">Peso</option>
-              <option value="interaccion">Interacción</option>
-            </select>
-          </label>
-        </div>
-
-        @if (panelBusqueda()) {
-        <section class="mb-10 rounded-2xl border border-amber-200 bg-amber-100/60 p-5">
-          <label class="block text-sm font-semibold" for="buscar">Busca en el catálogo para agregar juegos</label>
-          <input #query id="buscar" class="mt-2 w-full rounded-lg border border-amber-300 bg-white px-4 py-3" placeholder="Ejemplo: Ark Nova" (input)="buscar(query.value)">
-          @if (resultados().length) {
-            <div class="mt-3 grid gap-2 md:grid-cols-2">
-              @for (juego of resultados(); track juego.id) {
-                <button class="flex items-center gap-3 rounded-lg bg-white p-2 text-left hover:bg-amber-50" (click)="verDetalle(juego.id)">
-                  @if (juego.miniatura_url) { <img class="h-12 w-10 object-cover" [src]="juego.miniatura_url" [alt]="juego.nombre"> }
-                  <span><b>{{ juego.nombre }}</b><br><small>{{ juego.anio ?? 'Año no disponible' }}</small></span>
-                </button>
-              }
-            </div>
-          }
-          @if (consultaActiva() && !resultados().length) { <p class="mt-3 text-sm text-stone-600">Sin coincidencias en el catálogo.</p> }
-        </section>
-        }
-
-        @if (cargando()) { <p class="py-12 text-center text-stone-600">Cargando tu colección...</p> }
-        @if (error()) { <p class="rounded-xl bg-red-100 p-4 text-red-900">{{ error() }}</p> }
-
-        <div class="bookcase">
-        @for (grupo of grupos(); track grupo.nombre) {
-          <section class="case-shelf">
-            <h3 class="shelf-plaque">{{ grupo.etiqueta }} · {{ grupo.juegos.length }}</h3>
-            <div class="shelf-rail"><div class="shelf-games">
-              @for (juego of grupo.juegos; track juego.id) {
-                <button class="game-card" (click)="verDetalle(juego.id)">
-                  <span class="game-cover">
-                    @if (juego.imagen_url) { <img [src]="juego.imagen_url" [alt]="juego.nombre"> }
-                    @else { <span class="flex h-full items-end bg-stone-700 p-3 text-white">{{ juego.nombre }}</span> }
-                  </span>
-                  <span class="game-card-info"><b>{{ juego.nombre }}</b><span>{{ juego.anio ?? 'Año no disponible' }}</span><span>{{ rangoJugadores(juego) }} jugadores</span><span>{{ juego.duracion_maxima ?? 'n/d' }} min · peso {{ juego.peso ?? 'n/d' }}</span><span>{{ juego.precio.precio_usd ? 'USD ' + juego.precio.precio_usd : 'Precio no disponible' }}</span></span>
-                </button>
-              }
-            </div></div>
-          </section>
-        }
-        </div>
-      </section>
-
-      @if (seleccionado()) {
-        <div class="fixed inset-0 z-10 grid place-items-center bg-stone-950/60 p-5" (click)="cerrarDetalle()">
-          <article class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-[#fffaf2] p-6 shadow-2xl" (click)="$event.stopPropagation()">
-            <button class="float-right text-2xl" (click)="cerrarDetalle()" aria-label="Cerrar">×</button>
-            <div class="grid gap-6 sm:grid-cols-[180px_1fr]">
-              @if (seleccionado()!.imagen_url) { <img class="w-full rounded-lg shadow-md" [src]="seleccionado()!.imagen_url" [alt]="seleccionado()!.nombre"> }
-              <div>
-                <p class="text-sm font-bold uppercase tracking-wider text-amber-800">{{ seleccionado()!.anio ?? 'Año no disponible' }}</p>
-                <h2 class="font-serif text-3xl">{{ seleccionado()!.nombre }}</h2>
-                <dl class="mt-5 grid grid-cols-2 gap-3 text-sm"><dt>Jugadores</dt><dd>{{ rangoJugadores(seleccionado()!) }}</dd><dt>Duración</dt><dd>{{ seleccionado()!.duracion_maxima ?? 'n/d' }} min</dd><dt>Peso</dt><dd>{{ seleccionado()!.peso ?? 'n/d' }}</dd><dt>Promedio</dt><dd>{{ seleccionado()!.promedio ?? 'n/d' }}</dd></dl>
-                @if (seleccionado()!.precio.precio_usd) {
-                  <p class="mt-5 text-lg font-semibold">USD {{ seleccionado()!.precio.precio_usd }} <span class="text-sm font-normal">EE. UU.</span></p>
-                  @if (seleccionado()!.precio.url_bgp) { <a class="text-sm font-semibold text-amber-800 underline" [href]="seleccionado()!.precio.url_bgp" target="_blank" rel="noopener">Ver en BoardGamePrices</a> }
-                }
-              </div>
-            </div>
-          </article>
-        </div>
-      }
-    </main>
-  `,
+      <header class="wise-header px-4 py-3 text-[#f8f1e5]"><div class="mx-auto flex max-w-7xl items-center justify-between"><div class="flex items-center gap-2"><img class="h-10 w-10" src="/wise-dice.svg" alt="Dado sabio"><div><h1 class="font-serif text-2xl">Wise Dice</h1><p class="text-xs text-amber-200">Tu asesor de ludoteca</p></div></div><nav class="wise-nav"><button [class.active]="vista()==='ludoteca'" (click)="abrir('ludoteca')">Ludoteca</button><button [class.active]="vista()==='cobertura'" (click)="abrir('cobertura')">Cobertura</button><button [class.active]="vista()==='chat'" (click)="abrir('chat')">Chat</button></nav></div></header>
+      @if (error()) { <p class="mx-auto mt-4 max-w-7xl rounded bg-red-100 p-3 text-red-900">{{ error() }}</p> }
+      @if (vista() === 'ludoteca') {<section class="mx-auto max-w-7xl px-4 py-7"><div class="mb-6 flex flex-wrap items-end justify-between gap-3"><div><p class="eyebrow">{{ juegos().length }} juegos, una colección</p><h2 class="font-serif text-4xl">Tu librero de experiencias</h2></div><div class="flex gap-2"><button class="chip" [class.active]="modo()==='estantes'" (click)="modo.set('estantes')">Estantes</button><button class="chip" [class.active]="modo()==='hoy'" (click)="modo.set('hoy')">¿Qué jugamos?</button></div></div>
+        @if (modo() === 'estantes') {<section class="panel"><div class="flex flex-wrap gap-3"><label class="grow">Busca en el catálogo<input #busqueda class="input mt-1" placeholder="Ejemplo: Wyrmspan" (input)="buscar(busqueda.value)"></label><label>Agrupar por<select #selector class="input mt-1" (change)="agrupacion.set(selector.value)"><option value="familia">Familia</option><option value="jugadores">Jugadores</option><option value="duracion">Duración</option><option value="peso">Peso</option><option value="interaccion">Interacción</option></select></label></div>@if (resultados().length) {<div class="mt-3 grid gap-2 sm:grid-cols-2">@for (juego of resultados(); track juego.id) {<button class="result" (click)="verDetalle(juego.id)"><img [src]="juego.miniatura_url" alt=""><span><b>{{ juego.nombre }}</b><br><small>{{ juego.anio ?? 'Año no disponible' }}</small></span></button>}</div>}</section><div class="bookcase mt-7">@for (grupo of grupos(); track grupo.nombre) {<section class="case-shelf"><h3 class="shelf-plaque">{{ grupo.nombre }} · {{ grupo.juegos.length }}</h3><div class="shelf-rail"><div class="shelf-games">@for (juego of grupo.juegos; track juego.id) {<button class="game-card" (click)="verDetalle(juego.id)"><span class="game-cover">@if (juego.imagen_url) {<img [src]="juego.imagen_url" [alt]="juego.nombre">}</span><span class="game-card-info"><b>{{ juego.nombre }}</b><span>{{ rango(juego) }} jugadores</span></span></button>}</div></div></section>}</div>} @else {<section class="panel"><h3 class="font-serif text-2xl">Una partida para esta noche</h3><div class="mt-3 flex gap-3"><label>Jugadores<input #jugadores class="input" type="number" value="6"></label><label>Minutos<input #minutos class="input" type="number" value="45"></label><button class="primary self-end" (click)="cargarNoche(+jugadores.value, +minutos.value)">Buscar</button></div>@if (noche()) {<div class="mt-5 grid gap-3 sm:grid-cols-2">@for (juego of noche()!.juegos; track juego.id) {<article class="recommendation"><b>{{ juego.nombre }}</b><p>@if (juego.es_mejor_numero_jugadores) {Mejor número de jugadores. } @if (juego.duracion_imputada) {Duración estimada.}</p></article>}</div>}</section>}</section>}
+      @if (vista() === 'cobertura') {<section class="mx-auto max-w-6xl px-4 py-7"><p class="eyebrow">Mapa de variedad</p><h2 class="font-serif text-4xl">Cobertura de la colección</h2><div class="mt-6 grid gap-6 lg:grid-cols-[1fr_1.2fr]"><section class="panel min-h-[330px]"><canvas id="radar-cobertura" aria-label="Radar de cobertura"></canvas></section><section class="panel"><div class="flex flex-wrap gap-2"><button class="primary" (click)="cargarPlan('juego')">Plan por juegos</button><button class="chip" (click)="cargarPlan('precio')">Plan USD 60</button></div>@if (cobertura()) {<div class="mt-4 grid gap-3 sm:grid-cols-2">@for (eje of ejes(); track eje.nombre) {<article class="coverage"><b>{{ eje.nombre }} · {{ eje.valor.porcentaje }}%</b><p><span class="missing">Faltan:</span> {{ eje.valor.faltantes.join(', ') || 'Nada' }}</p><p><span class="weak">Débiles:</span> {{ claves(eje.valor.debiles).join(', ') || 'Nada' }}</p></article>}</div>}@if (plan()) {<div class="mt-5 border-t pt-4"><b>Plan de compra</b>@for (juego of plan()!.juegos; track juego.id) {<p>{{ juego.nombre }} · {{ juego.niveles_que_cubre.join(', ') }}</p>}</div>}</section></div></section>}
+      @if (vista() === 'chat') {<section class="mx-auto max-w-3xl px-4 py-7"><p class="eyebrow">Vista previa del asistente</p><h2 class="font-serif text-4xl">Pregunta a Wise Dice</h2><article class="chat-card mt-6"><p class="text-sm font-bold text-amber-800">Plan exacto: evaluar_compra(Wyrmspan)</p><p class="bubble user">Tengo ganas de comprar Wyrmspan, ¿vale la pena?</p><button class="primary" (click)="evaluarWyrmspan()">Ejecutar evaluación real</button>@if (evaluacion()) {<div class="bubble answer"><b>{{ etiqueta(evaluacion()!.veredicto) }}</b><p>{{ narracion(evaluacion()!) }}</p><p>Similitud total: {{ evaluacion()!.similitud?.total | number:'1.2-2' }}</p></div>}<input class="input mt-4 w-full" disabled value="El chat completo llega en la siguiente fase"></article></section>}
+      @if (seleccionado()) {<div class="fixed inset-0 z-10 grid place-items-center bg-stone-950/60 p-4" (click)="seleccionado.set(null)"><article class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-[#fffaf2] p-5" (click)="$event.stopPropagation()"><button class="float-right text-2xl" (click)="seleccionado.set(null)">×</button><div class="grid gap-5 sm:grid-cols-[160px_1fr]">@if (seleccionado()!.imagen_url) {<img class="w-full rounded-lg" [src]="seleccionado()!.imagen_url" [alt]="seleccionado()!.nombre">}<div><p class="eyebrow">{{ seleccionado()!.anio }}</p><h2 class="font-serif text-3xl">{{ seleccionado()!.nombre }}</h2><p>{{ rango(seleccionado()!) }} jugadores · {{ seleccionado()!.duracion_maxima ?? 'n/d' }} min · peso {{ seleccionado()!.peso ?? 'n/d' }}</p><button class="primary mt-3" (click)="evaluarDetalle()">Evaluar contra mi colección</button>@if (evaluacionDetalle()) {<div class="mt-4 rounded bg-amber-50 p-3"><b>{{ etiqueta(evaluacionDetalle()!.veredicto) }}</b><p>Más parecido: {{ evaluacionDetalle()!.juego_mas_parecido?.nombre ?? 'sin comparación' }}</p>@for (bloque of barras(evaluacionDetalle()!); track bloque.nombre) {<div class="bar-label">{{ bloque.nombre }} <span>{{ bloque.valor | number:'1.0-0' }}%</span></div><div class="bar"><i [style.width.%]="bloque.valor"></i></div>}</div>}<p class="mt-4">@if (seleccionado()!.precio.precio_usd) {USD {{ seleccionado()!.precio.precio_usd }} EE. UU.} @if (seleccionado()!.precio.fecha_precio) {Actualizado {{ seleccionado()!.precio.fecha_precio | date }}}</p>@if (seleccionado()!.precio.url_bgp) {<a class="text-amber-800 underline" [href]="seleccionado()!.precio.url_bgp" target="_blank" rel="noopener">BoardGamePrices</a>}<div class="mt-4">@if (enColeccion(seleccionado()!.id)) {<button class="chip" (click)="quitar(seleccionado()!.id)">Quitar de colección</button>} @else {<button class="primary" (click)="agregar(seleccionado()!.id)">Agregar a colección</button>}</div></div></div></article></div>}
+    </main>`,
 })
 export class App {
-  private readonly catalogo = inject(CatalogoService);
-
-  protected readonly cargando = signal(true);
-  protected readonly error = signal('');
-  protected readonly juegos = signal<JuegoDetalle[]>([]);
-  protected readonly resultados = signal<JuegoListado[]>([]);
-  protected readonly consultaActiva = signal(false);
-  protected readonly panelBusqueda = signal(false);
-  protected readonly agrupacion = signal('familia');
-  protected readonly seleccionado = signal<JuegoDetalle | null>(null);
-  protected readonly grupos = computed(() => this.agrupar(this.juegos(), this.agrupacion()));
-
-  constructor() {
-    void this.cargarColeccion();
-  }
-
-  protected cambiarAgrupacion(valor: string): void { this.agrupacion.set(valor); }
-
-  protected async buscar(query: string): Promise<void> {
-    const texto = query.trim();
-    this.consultaActiva.set(texto.length > 1);
-    this.resultados.set(texto.length > 1 ? (await firstValueFrom(this.catalogo.buscar(texto))).juegos : []);
-  }
-
-  protected async verDetalle(gameId: string): Promise<void> {
-    const existente = this.juegos().find((juego) => juego.id === gameId);
-    this.seleccionado.set(existente ?? await firstValueFrom(this.catalogo.detalle(gameId)));
-  }
-
-  protected cerrarDetalle(): void { this.seleccionado.set(null); }
-  protected rangoJugadores(juego: JuegoDetalle): string { return `${juego.jugadores_minimos ?? 'n/d'} a ${juego.jugadores_maximos ?? 'n/d'}`; }
-
-  private async cargarColeccion(): Promise<void> {
-    try {
-      const coleccion = await firstValueFrom(this.catalogo.coleccion());
-      this.juegos.set(await Promise.all(coleccion.juegos.map((juego) => firstValueFrom(this.catalogo.detalle(juego.id)))));
-    } catch {
-      this.error.set('No fue posible cargar la colección demo.');
-    } finally {
-      this.cargando.set(false);
-    }
-  }
-
-  private agrupar(juegos: JuegoDetalle[], criterio: string): { nombre: string; etiqueta: string; juegos: JuegoDetalle[] }[] {
-    const estantes = new Map<string, JuegoDetalle[]>();
-    for (const juego of juegos) {
-      const nombre = criterio === 'jugadores' ? this.rangoJugadores(juego)
-        : criterio === 'duracion' ? juego.nivel_duracion ?? 'Duración sin clasificar'
-        : criterio === 'peso' ? juego.nivel_peso ?? 'Peso sin clasificar'
-        : criterio === 'interaccion' ? juego.nivel_interaccion ?? 'Interacción sin clasificar'
-        : this.texto(juego.familias_mecanicas?.[0]) ?? 'Sin familia de mecánica';
-      estantes.set(nombre, [...(estantes.get(nombre) ?? []), juego]);
-    }
-    return [...estantes].map(([nombre, juegosDelEstante]) => ({
-      nombre,
-      etiqueta: this.etiquetaEstante(nombre, criterio),
-      juegos: juegosDelEstante,
-    }));
-  }
-
-  private etiquetaEstante(valor: string, criterio: string): string {
-    if (criterio === 'interaccion') {
-      return { directa: 'Interacción directa', indirecta: 'Interacción indirecta', cooperativo: 'Cooperativo', ninguna: 'Sin interacción' }[valor] ?? 'Interacción sin clasificar';
-    }
-    if (criterio === 'jugadores') { return `${valor} jugadores`; }
-    if (criterio === 'duracion') { return `Duración: ${valor} minutos`; }
-    if (criterio === 'peso') { return `Peso: ${valor}`; }
-    return `Mecánica: ${valor}`;
-  }
-
-  private texto(valor: unknown): string | null { return typeof valor === 'string' ? valor : null; }
+  private readonly api = inject(CatalogoService); private grafica: Chart | null = null;
+  protected readonly vista = signal('ludoteca'); protected readonly modo = signal('estantes'); protected readonly juegos = signal<JuegoDetalle[]>([]); protected readonly resultados = signal<JuegoListado[]>([]); protected readonly agrupacion = signal('familia'); protected readonly seleccionado = signal<JuegoDetalle | null>(null); protected readonly error = signal(''); protected readonly cobertura = signal<CoberturaRespuesta | null>(null); protected readonly plan = signal<PlanCompraRespuesta | null>(null); protected readonly noche = signal<EstaNocheRespuesta | null>(null); protected readonly evaluacion = signal<EvaluarRespuesta | null>(null); protected readonly evaluacionDetalle = signal<EvaluarRespuesta | null>(null);
+  constructor() { void this.cargarColeccion(); }
+  protected async abrir(vista: string): Promise<void> { this.vista.set(vista); if (vista === 'cobertura') await this.cargarCobertura(); }
+  protected async buscar(texto: string): Promise<void> { this.resultados.set(texto.trim().length > 1 ? (await firstValueFrom(this.api.buscar(texto))).juegos : []); }
+  protected async verDetalle(id: string): Promise<void> { this.evaluacionDetalle.set(null); this.seleccionado.set(this.juegos().find((juego) => juego.id === id) ?? await firstValueFrom(this.api.detalle(id))); }
+  protected async agregar(id: string): Promise<void> { await firstValueFrom(this.api.agregar(id)); await this.cargarColeccion(); }
+  protected async quitar(id: string): Promise<void> { await firstValueFrom(this.api.quitar(id)); this.seleccionado.set(null); await this.cargarColeccion(); }
+  protected async cargarNoche(jugadores: number, minutos: number): Promise<void> { this.noche.set(await firstValueFrom(this.api.estaNoche({ jugadores, minutos }))); }
+  protected async cargarPlan(modo: string): Promise<void> { this.plan.set(await firstValueFrom(this.api.plan({ n: 5, modo, ...(modo === 'precio' ? { presupuesto: 60 } : {}) }))); }
+  protected async evaluarWyrmspan(): Promise<void> { const juegos = (await firstValueFrom(this.api.buscar('Wyrmspan'))).juegos; if (juegos[0]) this.evaluacion.set(await firstValueFrom(this.api.evaluar(juegos[0].id))); }
+  protected async evaluarDetalle(): Promise<void> { if (this.seleccionado()) this.evaluacionDetalle.set(await firstValueFrom(this.api.evaluar(this.seleccionado()!.id))); }
+  protected rango(juego: JuegoDetalle): string { return `${juego.jugadores_minimos ?? 'n/d'} a ${juego.jugadores_maximos ?? 'n/d'}`; }
+  protected enColeccion(id: string): boolean { return this.juegos().some((juego) => juego.id === id); }
+  protected claves(valor: object): string[] { return Object.keys(valor); }
+  protected ejes(): { nombre: string; valor: { porcentaje: number; faltantes: string[]; debiles: object } }[] { return Object.entries(this.cobertura()?.ejes ?? {}).map(([nombre, valor]) => ({ nombre, valor })); }
+  protected etiqueta(veredicto: string): string { return ({ redundante: 'Redundante', parecido_pero_cubre_hueco: 'Se parece, pero cubre un hueco', parecido: 'Parecido', aporta: 'Aporta variedad' }[veredicto] ?? veredicto); }
+  protected narracion(resultado: EvaluarRespuesta): string { return resultado.juego_mas_parecido ? `Se compara sobre todo con ${resultado.juego_mas_parecido.nombre}. ${resultado.niveles_que_cubre.length ? 'También aporta niveles poco cubiertos.' : 'No abre niveles débiles o faltantes.'}` : 'Es una incorporación nueva a tu colección.'; }
+  protected barras(resultado: EvaluarRespuesta): { nombre: string; valor: number }[] { const similitud = resultado.similitud; return similitud ? [{ nombre: 'Mecánicas', valor: 100 * (similitud.mecanicas ?? 0) }, { nombre: 'Ocasión', valor: 100 * similitud.ocasion }, { nombre: 'Interacción', valor: 100 * similitud.interaccion }, { nombre: 'Temática', valor: 100 * (similitud.tematica ?? 0) }] : []; }
+  protected grupos(): { nombre: string; juegos: JuegoDetalle[] }[] { const salida = new Map<string, JuegoDetalle[]>(); for (const juego of this.juegos()) { const valores = this.agrupacion() === 'familia' ? juego.familias_mecanicas : this.agrupacion() === 'jugadores' ? [this.rango(juego)] : this.agrupacion() === 'duracion' ? [juego.nivel_duracion] : this.agrupacion() === 'peso' ? [juego.nivel_peso] : [juego.nivel_interaccion]; for (const valor of valores ?? ['Sin clasificar']) { const clave = String(valor ?? 'Sin clasificar'); salida.set(clave, [...(salida.get(clave) ?? []), juego]); } } return [...salida].map(([nombre, juegos]) => ({ nombre, juegos })); }
+  private async cargarColeccion(): Promise<void> { try { const coleccion = await firstValueFrom(this.api.coleccion()); this.juegos.set(await Promise.all(coleccion.juegos.map((juego) => firstValueFrom(this.api.detalle(juego.id))))); } catch { this.error.set('No fue posible cargar la colección demo.'); } }
+  private async cargarCobertura(): Promise<void> { this.cobertura.set(await firstValueFrom(this.api.cobertura())); setTimeout(() => this.dibujarRadar()); }
+  private dibujarRadar(): void { const canvas = document.getElementById('radar-cobertura') as HTMLCanvasElement | null; if (!canvas || !this.cobertura()) return; this.grafica?.destroy(); const ejes = this.ejes(); this.grafica = new Chart(canvas, { type: 'radar', data: { labels: ejes.map((eje) => eje.nombre), datasets: [{ data: ejes.map((eje) => eje.valor.porcentaje), backgroundColor: 'rgba(178,112,35,.25)', borderColor: '#8d5221' }] }, options: { scales: { r: { min: 0, max: 100, ticks: { display: false } } }, plugins: { legend: { display: false } } } }); }
 }

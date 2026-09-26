@@ -76,6 +76,13 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - El plan por precio con presupuesto USD 60, `n=5`, `users_rated_min=1000`, `average_min=0` y sin ejes ignorados reproduce el anexo: Cosmic Wimpout, The Werewolves of Miller's Hollow, Kingdom Legacy, Flip 7 y Trek 12. Costo USD `51.765`; valor pendiente `0.183333...`.
 - `Wingspan` y `Wyrmspan` comparten `product_line` y reimplementacion en el catalogo. La regla exacta los considera relacionados; frente a una coleccion con Wingspan, Wyrmspan cubre huecos y el veredicto es `parecido_pero_cubre_hueco`.
 
+## Fase 3 y 3b
+
+- La API expone coleccion editable y los cuatro endpoints del motor bajo `/api/v1`.
+- Los contratos TypeScript se regeneran desde OpenAPI con `make contracts`.
+- Cobertura, plan de compra, detalle evaluable, disponibilidad y la vista previa de Chat consumen datos reales del motor.
+- Chart.js se usa directamente para el radar de cobertura.
+
 ## Estado por fases
 
 | Fase | Estado | Contenido |
@@ -84,3 +91,5 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 | 1 | Completada | Monorepo, Makefile, Docker, backend FastAPI, frontend Angular, SQLite, esquema y seed. |
 | 1b | Completada | Vitrina de Ludoteca, catalogo y coleccion de solo lectura. |
 | 2 | Completada | Motor determinista, matrices, cobertura, compra, disponibilidad y pruebas doradas. |
+| 3 | Completada | API REST de coleccion y motor, con pruebas de API. |
+| 3b | Completada | Pantallas de Cobertura, detalle, disponibilidad y vista previa de Chat. |

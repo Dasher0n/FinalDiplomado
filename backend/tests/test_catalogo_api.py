@@ -108,3 +108,27 @@ def test_bgp_url_replaces_encoded_utm_source(monkeypatch: pytest.MonkeyPatch) ->
     assert transformar_bgp_url(url) == (
         "https://boardgameprices.com/price?game=42&utm_source=mi-sitio.local&currency=USD"
     )
+
+
+def test_collection_mutations_and_engine_endpoints(api_client: TestClient) -> None:
+    duplicate = api_client.post("/api/v1/collection", json={"game_id": "1"})
+    removed = api_client.delete("/api/v1/collection/2")
+    evaluate = api_client.post("/api/v1/engine/evaluate", json={"game_id": "1"})
+    coverage = api_client.get("/api/v1/engine/coverage")
+    tonight = api_client.post("/api/v1/engine/tonight", json={"jugadores": 2, "minutos": 90})
+
+    assert duplicate.status_code == 201
+    assert duplicate.json()["agregado"] is False
+    assert removed.status_code == 200
+    assert evaluate.status_code == 200
+    assert evaluate.json()["juego"]["nombre"] == "Wingspan"
+    assert coverage.status_code == 200
+    assert "ejes" in coverage.json()
+    assert tonight.status_code == 200
+
+
+def test_plan_precio_requires_budget(api_client: TestClient) -> None:
+    response = api_client.post("/api/v1/engine/buy-plan", json={"modo": "precio", "n": 2})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "solicitud_motor_invalida"

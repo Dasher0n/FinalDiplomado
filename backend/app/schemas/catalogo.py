@@ -67,3 +67,7 @@ class JuegoDetalle(JuegoListado):
     confianza: str
     fuentes: list[Any]
     evidencia: list[Any]
+    peso_estimado: bool
+    peso_pocos_votos: bool
+    duracion_estimada: bool
+    jugadores_estimados: bool
