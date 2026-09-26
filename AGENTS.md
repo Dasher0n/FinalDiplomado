@@ -59,10 +59,18 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - `make contracts` genera `frontend/src/app/core/api/schema.d.ts` desde OpenAPI.
 - La Fase 1b aprobada se implementara despues de aprobar el cierre de esta fase. Incluira la vitrina y los endpoints de solo lectura del catalogo y la coleccion.
 
+## Fase 1b
+
+- Los endpoints de solo lectura son `GET /collection`, `GET /games?q=` y `GET /games/{id}` bajo `/api/v1`.
+- La Ludoteca consume solo estos endpoints y muestra la coleccion sembrada en estantes agrupables, buscador de catalogo y detalle basico con precio y enlace a BoardGamePrices.
+- `bgp_url` sustituye `utm_source` de forma estructurada y usa `BGP_SITENAME` sin reemplazos de texto sobre la URL codificada.
+- `docker compose down && docker compose up --build -d` inicia backend saludable en `http://localhost:8000` y frontend en `http://localhost:8080`. El volumen recreado se siembra con 30,146 juegos y la coleccion demo.
+- La imagen backend no incluye `curl`. El healthcheck se define solo en `docker-compose.yml` y usa `python` con `urllib.request` contra `127.0.0.1`, con timeout de 3 segundos.
+
 ## Estado por fases
 
 | Fase | Estado | Contenido |
 | --- | --- | --- |
 | 0 | Completada | Dependencias, artefactos, web_search y decisiones de BGG verificados. |
 | 1 | Completada | Monorepo, Makefile, Docker, backend FastAPI, frontend Angular, SQLite, esquema y seed. |
-| 1b | Pendiente de aprobacion | Vitrina de Ludoteca y endpoints de solo lectura. |
+| 1b | Completada | Vitrina de Ludoteca, catalogo y coleccion de solo lectura. |

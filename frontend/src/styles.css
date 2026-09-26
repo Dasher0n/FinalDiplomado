@@ -13,3 +13,16 @@ body {
 body {
   font-family: Arial, sans-serif;
 }
+
+.shelf {
+  background: linear-gradient(180deg, #6f4a34 0%, #6f4a34 72%, #3e261a 73%, #3e261a 100%);
+}
+
+dt {
+  color: #78716c;
+}
+
+dd {
+  margin: 0;
+  font-weight: 600;
+}

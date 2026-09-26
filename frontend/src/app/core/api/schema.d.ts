@@ -38,10 +38,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/collection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Coleccion demo */
+        get: operations["catalogo_obtener_coleccion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/games": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Buscar juegos */
+        get: operations["catalogo_buscar_juegos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/games/{game_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detalle de un juego */
+        get: operations["catalogo_obtener_juego"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BusquedaJuegosRespuesta */
+        BusquedaJuegosRespuesta: {
+            /** Juegos */
+            juegos: components["schemas"]["JuegoListado"][];
+        };
         /** Capabilities */
         Capabilities: {
             /** Llm Active */
@@ -52,6 +108,16 @@ export interface components {
             api_fase: number;
             /** Endpoints Habilitados */
             endpoints_habilitados: string[];
+        };
+        /** ColeccionRespuesta */
+        ColeccionRespuesta: {
+            /** Juegos */
+            juegos: components["schemas"]["JuegoColeccion"][];
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
         };
         /** HealthStatus */
         HealthStatus: {
@@ -70,6 +136,143 @@ export interface components {
             llm_active: boolean;
             /** Web Search Active */
             web_search_active: boolean;
+        };
+        /** JuegoColeccion */
+        JuegoColeccion: {
+            /** Id */
+            id: string;
+            /** Nombre */
+            nombre: string;
+            /** Anio */
+            anio: number | null;
+            /** Imagen Url */
+            imagen_url: string | null;
+            /** Miniatura Url */
+            miniatura_url: string | null;
+            /** Jugadores Minimos */
+            jugadores_minimos: number | null;
+            /** Jugadores Maximos */
+            jugadores_maximos: number | null;
+            /** Duracion Minima */
+            duracion_minima: number | null;
+            /** Duracion Maxima */
+            duracion_maxima: number | null;
+            /** Promedio */
+            promedio: number | null;
+            precio: components["schemas"]["PrecioJuego"];
+            /** Precio Pagado */
+            precio_pagado: string | null;
+            /**
+             * Agregado En
+             * Format: date-time
+             */
+            agregado_en: string;
+        };
+        /** JuegoDetalle */
+        JuegoDetalle: {
+            /** Id */
+            id: string;
+            /** Nombre */
+            nombre: string;
+            /** Anio */
+            anio: number | null;
+            /** Imagen Url */
+            imagen_url: string | null;
+            /** Miniatura Url */
+            miniatura_url: string | null;
+            /** Jugadores Minimos */
+            jugadores_minimos: number | null;
+            /** Jugadores Maximos */
+            jugadores_maximos: number | null;
+            /** Duracion Minima */
+            duracion_minima: number | null;
+            /** Duracion Maxima */
+            duracion_maxima: number | null;
+            /** Promedio */
+            promedio: number | null;
+            precio: components["schemas"]["PrecioJuego"];
+            /** Edad Minima */
+            edad_minima: number | null;
+            /** Edad Comunitaria */
+            edad_comunitaria: number | null;
+            /** Peso */
+            peso: number | null;
+            /** Mecanicas */
+            mecanicas: unknown[] | null;
+            /** Categorias */
+            categorias: unknown[] | null;
+            /** Disenadores */
+            disenadores: unknown[] | null;
+            /** Familias Mecanicas */
+            familias_mecanicas: unknown[] | null;
+            /** Familias Tematicas */
+            familias_tematicas: unknown[] | null;
+            /** Nivel Jugadores */
+            nivel_jugadores: unknown[] | null;
+            /** Nivel Duracion */
+            nivel_duracion: string | null;
+            /** Nivel Peso */
+            nivel_peso: string | null;
+            /** Nivel Interaccion */
+            nivel_interaccion: string | null;
+            /** Origen */
+            origen: string;
+            /** Confianza */
+            confianza: string;
+            /** Fuentes */
+            fuentes: unknown[];
+            /** Evidencia */
+            evidencia: unknown[];
+        };
+        /** JuegoListado */
+        JuegoListado: {
+            /** Id */
+            id: string;
+            /** Nombre */
+            nombre: string;
+            /** Anio */
+            anio: number | null;
+            /** Imagen Url */
+            imagen_url: string | null;
+            /** Miniatura Url */
+            miniatura_url: string | null;
+            /** Jugadores Minimos */
+            jugadores_minimos: number | null;
+            /** Jugadores Maximos */
+            jugadores_maximos: number | null;
+            /** Duracion Minima */
+            duracion_minima: number | null;
+            /** Duracion Maxima */
+            duracion_maxima: number | null;
+            /** Promedio */
+            promedio: number | null;
+            precio: components["schemas"]["PrecioJuego"];
+        };
+        /** PrecioJuego */
+        PrecioJuego: {
+            /** Precio Usd */
+            precio_usd: null | string;
+            /** Precio Confiable */
+            precio_confiable: boolean;
+            /** Fecha Precio */
+            fecha_precio: string | null;
+            /** Ofertas Us Con Stock */
+            ofertas_us_con_stock: number | null;
+            /** Url Bgp */
+            url_bgp: string | null;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -116,6 +319,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Capabilities"];
+                };
+            };
+        };
+    };
+    catalogo_obtener_coleccion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColeccionRespuesta"];
+                };
+            };
+        };
+    };
+    catalogo_buscar_juegos: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusquedaJuegosRespuesta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    catalogo_obtener_juego: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JuegoDetalle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
