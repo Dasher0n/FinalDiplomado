@@ -40,6 +40,7 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - `umbral_redundante` y `umbral_parecido`: `float`; `umbral_ofertas_precio`: `int`; `sin_tema`: `str`.
 - `mec_directa`, `mec_indirecta`, `mec_combate`, `cat_combate`, `cat_directa` y `mec_traicion`: `set`.
 - No contiene un `sklearn.impute.KNNImputer`, otro imputador de peso ni los datos ajustados necesarios para un KNN. No es posible imputar el peso de un juego nuevo sin entrenar o recibir un artefacto adicional. La vectorizacion web de Fase 5 queda bloqueada en ese caso, como exige el requerimiento.
+- Miguel agregara `artefactos/imputador_ocasion.pkl` como artefacto aparte. La vectorizacion web de Fase 5 depende de ese archivo y no se debe inventar ni reentrenar un imputador en la aplicacion.
 
 ## Decisiones verificadas
 
