@@ -53,7 +53,7 @@ Copia del repo del profesor la infraestructura y las piezas transversales; reesc
 
 Dependencias adicionales de este proyecto:
 
-- `scikit-learn`, `scipy`, `numpy`, `pandas`: **fijadas exactamente a las versiones del entorno del cuaderno**, porque `preproceso.pkl` se generó con ellas. Versiones: `scikit-learn==<LLENAR>`, `scipy==<LLENAR>`, `numpy==<LLENAR>`, `pandas==3.0.5`. Si alguna no instala en Python 3.14, **detente y reporta**; no cambies la versión por tu cuenta.
+- `scikit-learn`, `scipy`, `numpy`, `pandas`: **fijadas exactamente a las versiones del entorno del cuaderno**, porque `preproceso.pkl` se generó con ellas. Versiones: `scikit-learn==1.9.0`, `scipy==1.18.0`, `numpy==2.5.2`, `pandas==3.0.5`. Si alguna no instala en Python 3.14, **detente y reporta**; no cambies la versión por tu cuenta.
 - `rapidfuzz` para búsqueda aproximada por nombre.
 
 **Frontend**: Angular 22 standalone, signals, Tailwind v4, servido por nginx, tipos de API generados con `openapi-typescript` (`make contracts`). Gráficas con **Chart.js usado directamente** (sin wrapper de Angular, para no heredar conflictos de peers con TypeScript 6). Drag and drop (sprint 2) con `@angular/cdk`.
