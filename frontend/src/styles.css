@@ -12,31 +12,74 @@ body {
 
 body {
   font-family: Arial, sans-serif;
+  background: #d9c7ad;
 }
 
-.shelf {
+.wise-header {
+  border-bottom: 3px solid #6f442d;
+  background: linear-gradient(100deg, #251b16, #3d281d 60%, #251b16);
+}
+
+.add-game {
+  border: 1px solid #e6b85c;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  color: #fff6df;
+}
+
+.bookcase {
+  padding: 1.5rem 1.1rem 2rem;
+  border: 18px solid #4a2b1e;
+  border-bottom-width: 26px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #321c14 0 3%, #57301f 3% 6%, #2a1711 6% 94%, #57301f 94% 97%, #321c14 97%);
+  box-shadow: inset 0 0 32px rgb(0 0 0 / 60%), 0 18px 28px rgb(62 39 25 / 28%);
+}
+
+.case-shelf {
   position: relative;
-  isolation: isolate;
+  min-height: 285px;
+  padding: 1.8rem 1.1rem 0;
 }
 
-.shelf::before {
+.shelf-plaque {
   position: absolute;
-  z-index: -1;
-  top: 232px;
-  right: 0;
-  left: 0;
-  height: 32px;
-  content: "";
-  border-top: 3px solid #9f7654;
-  border-bottom: 7px solid #2e1a11;
-  background: linear-gradient(90deg, #5c3825, #825438 45%, #4d2c1e);
-  box-shadow: 0 8px 12px rgb(54 34 22 / 28%);
+  z-index: 3;
+  top: 0.55rem;
+  left: 1.4rem;
+  margin: 0;
+  border: 1px solid #8d6229;
+  border-radius: 3px;
+  padding: 0.22rem 0.55rem;
+  color: #38200d;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #f0ca73, #b6822e);
+  box-shadow: 0 2px 2px rgb(0 0 0 / 35%);
+}
+
+.shelf-rail {
+  position: relative;
+  min-height: 240px;
+  border-bottom: 16px solid #3b2116;
+  background: linear-gradient(180deg, rgb(0 0 0 / 25%), transparent 50%), linear-gradient(90deg, #5c3825, #825438 45%, #4d2c1e);
+  box-shadow: inset 0 -4px #b67c4e, 0 7px 10px rgb(0 0 0 / 42%);
+}
+
+.shelf-games {
+  display: flex;
+  align-items: end;
+  gap: 0.8rem;
+  min-height: 224px;
+  padding: 0.5rem 0.75rem 0;
 }
 
 .game-card {
   position: relative;
   z-index: 1;
-  min-width: 0;
+  flex: 0 1 160px;
+  min-width: 88px;
+  align-self: end;
   cursor: pointer;
 }
 
@@ -44,7 +87,7 @@ body {
   display: flex;
   align-items: end;
   justify-content: center;
-  height: 232px;
+  height: 216px;
 }
 
 .game-cover img {
@@ -53,35 +96,71 @@ body {
   max-width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: drop-shadow(2px 5px 4px rgb(36 24 18 / 35%));
-  transition: transform 160ms ease, filter 160ms ease;
+  filter: drop-shadow(5px 8px 6px rgb(10 6 4 / 55%));
+  transition: transform 180ms ease, filter 180ms ease;
 }
 
-.game-card:hover .game-cover img {
-  filter: drop-shadow(3px 9px 7px rgb(36 24 18 / 42%));
-  transform: translateY(-5px);
+.game-card:hover .game-cover img,
+.game-card:focus-visible .game-cover img {
+  filter: drop-shadow(7px 14px 9px rgb(10 6 4 / 66%));
+  transform: translateY(-12px) scale(1.04);
 }
 
-.game-meta {
+.game-card-info {
+  position: absolute;
+  z-index: 4;
+  bottom: calc(100% + 0.6rem);
+  left: 50%;
   display: grid;
-  gap: 0.15rem;
-  min-height: 3.5rem;
-  padding: 0.6rem 0.35rem 0.1rem;
-  color: #292524;
-  line-height: 1.15;
+  width: 200px;
+  gap: 0.2rem;
+  padding: 0.7rem;
+  color: #2b1a11;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  text-align: left;
+  pointer-events: none;
+  visibility: hidden;
+  border: 1px solid #d1ad65;
+  border-radius: 6px;
+  opacity: 0;
+  background: #fff6df;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 42%);
+  transform: translate(-50%, 0.5rem);
+  transition: opacity 150ms ease, transform 150ms ease, visibility 150ms;
 }
 
-.game-meta small {
-  color: #57534e;
+.game-card:hover .game-card-info,
+.game-card:focus-visible .game-card-info {
+  visibility: visible;
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 @media (max-width: 640px) {
-  .shelf::before {
-    top: 192px;
+  .bookcase {
+    margin-right: -1.5rem;
+    margin-left: -1.5rem;
+    border-right-width: 10px;
+    border-left-width: 10px;
+  }
+
+  .case-shelf {
+    min-height: 260px;
+  }
+
+  .shelf-games {
+    overflow-x: auto;
+    min-height: 204px;
+    padding-right: 1.5rem;
+  }
+
+  .game-card {
+    flex: 0 0 122px;
   }
 
   .game-cover {
-    height: 192px;
+    height: 196px;
   }
 }
 

@@ -7,17 +7,18 @@ import { CatalogoService, JuegoDetalle, JuegoListado } from './core/api/catalogo
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <main class="min-h-screen bg-[#f6f0e6] text-stone-900">
-      <header class="border-b border-stone-800 bg-[#251b16] px-6 py-5 text-[#f8f1e5]">
+    <main class="min-h-screen text-stone-900">
+      <header class="wise-header px-6 py-4 text-[#f8f1e5]">
         <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
-          <div>
-            <p class="text-xs font-bold uppercase tracking-[0.3em] text-amber-300">Sommelier</p>
-            <h1 class="font-serif text-3xl">Ludoteca</h1>
+          <div class="flex items-center gap-3">
+            <img class="h-12 w-12" src="/wise-dice.svg" alt="Dado sabio de Wise Dice">
+            <div><h1 class="font-serif text-3xl">Wise Dice</h1><p class="text-sm text-amber-200">Tu asesor de ludoteca</p></div>
           </div>
           <nav class="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-sm">
             <a class="border-b-2 border-amber-300 pb-1" href="#ludoteca">Ludoteca</a>
             <span class="text-stone-400">Cobertura, próximamente</span>
             <span class="text-stone-400">Chat, próximamente</span>
+            <button class="add-game" (click)="panelBusqueda.set(!panelBusqueda())">Agregar juego</button>
           </nav>
         </div>
       </header>
@@ -26,7 +27,7 @@ import { CatalogoService, JuegoDetalle, JuegoListado } from './core/api/catalogo
         <div class="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
           <div>
             <p class="text-sm font-semibold uppercase tracking-[0.2em] text-amber-800">12 juegos, una colección</p>
-            <h2 class="mt-1 font-serif text-4xl">Tu ludoteca, con intención</h2>
+            <h2 class="mt-1 font-serif text-4xl">Tu librero de experiencias</h2>
           </div>
           <label class="text-sm font-semibold">Agrupar estantes por
             <select #selector class="mt-2 block w-full rounded-lg border border-stone-300 bg-white px-3 py-2" (change)="cambiarAgrupacion(selector.value)">
@@ -39,6 +40,7 @@ import { CatalogoService, JuegoDetalle, JuegoListado } from './core/api/catalogo
           </label>
         </div>
 
+        @if (panelBusqueda()) {
         <section class="mb-10 rounded-2xl border border-amber-200 bg-amber-100/60 p-5">
           <label class="block text-sm font-semibold" for="buscar">Busca en el catálogo para agregar juegos</label>
           <input #query id="buscar" class="mt-2 w-full rounded-lg border border-amber-300 bg-white px-4 py-3" placeholder="Ejemplo: Ark Nova" (input)="buscar(query.value)">
@@ -54,26 +56,29 @@ import { CatalogoService, JuegoDetalle, JuegoListado } from './core/api/catalogo
           }
           @if (consultaActiva() && !resultados().length) { <p class="mt-3 text-sm text-stone-600">Sin coincidencias en el catálogo.</p> }
         </section>
+        }
 
         @if (cargando()) { <p class="py-12 text-center text-stone-600">Cargando tu colección...</p> }
         @if (error()) { <p class="rounded-xl bg-red-100 p-4 text-red-900">{{ error() }}</p> }
 
+        <div class="bookcase">
         @for (grupo of grupos(); track grupo.nombre) {
-          <section class="mb-10">
-            <div class="mb-3 flex items-center gap-3"><h3 class="font-serif text-2xl">{{ grupo.etiqueta }} <span class="font-sans text-base font-medium text-stone-600">({{ grupo.juegos.length }})</span></h3><span class="h-px flex-1 bg-stone-400"></span></div>
-            <div class="shelf grid grid-cols-2 gap-x-5 gap-y-7 rounded-xl px-4 pt-4 sm:grid-cols-3 lg:grid-cols-5">
+          <section class="case-shelf">
+            <h3 class="shelf-plaque">{{ grupo.etiqueta }} · {{ grupo.juegos.length }}</h3>
+            <div class="shelf-rail"><div class="shelf-games">
               @for (juego of grupo.juegos; track juego.id) {
-                <button class="game-card group text-left" (click)="verDetalle(juego.id)">
+                <button class="game-card" (click)="verDetalle(juego.id)">
                   <span class="game-cover">
                     @if (juego.imagen_url) { <img [src]="juego.imagen_url" [alt]="juego.nombre"> }
                     @else { <span class="flex h-full items-end bg-stone-700 p-3 text-white">{{ juego.nombre }}</span> }
                   </span>
-                  <span class="game-meta"><b>{{ juego.nombre }}</b><small>{{ juego.anio ?? 'Año no disponible' }}</small></span>
+                  <span class="game-card-info"><b>{{ juego.nombre }}</b><span>{{ juego.anio ?? 'Año no disponible' }}</span><span>{{ rangoJugadores(juego) }} jugadores</span><span>{{ juego.duracion_maxima ?? 'n/d' }} min · peso {{ juego.peso ?? 'n/d' }}</span><span>{{ juego.precio.precio_usd ? 'USD ' + juego.precio.precio_usd : 'Precio no disponible' }}</span></span>
                 </button>
               }
-            </div>
+            </div></div>
           </section>
         }
+        </div>
       </section>
 
       @if (seleccionado()) {
@@ -106,6 +111,7 @@ export class App {
   protected readonly juegos = signal<JuegoDetalle[]>([]);
   protected readonly resultados = signal<JuegoListado[]>([]);
   protected readonly consultaActiva = signal(false);
+  protected readonly panelBusqueda = signal(false);
   protected readonly agrupacion = signal('familia');
   protected readonly seleccionado = signal<JuegoDetalle | null>(null);
   protected readonly grupos = computed(() => this.agrupar(this.juegos(), this.agrupacion()));

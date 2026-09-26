@@ -14,7 +14,7 @@ describe('App', () => {
     fixture.detectChanges();
   });
 
-  it('muestra el titulo de la aplicacion', () => {
-    expect(fixture.nativeElement.textContent).toContain('Tu ludoteca, con intención');
+  it('muestra la marca de la aplicacion', () => {
+    expect(fixture.nativeElement.textContent).toContain('Wise Dice');
   });
 });
