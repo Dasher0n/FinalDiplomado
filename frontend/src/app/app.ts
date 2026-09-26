@@ -9,12 +9,12 @@ import { CatalogoService, JuegoDetalle, JuegoListado } from './core/api/catalogo
   template: `
     <main class="min-h-screen bg-[#f6f0e6] text-stone-900">
       <header class="border-b border-stone-800 bg-[#251b16] px-6 py-5 text-[#f8f1e5]">
-        <div class="mx-auto flex max-w-7xl items-center justify-between gap-6">
+        <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
           <div>
             <p class="text-xs font-bold uppercase tracking-[0.3em] text-amber-300">Sommelier</p>
             <h1 class="font-serif text-3xl">Ludoteca</h1>
           </div>
-          <nav class="flex gap-5 text-sm">
+          <nav class="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-sm">
             <a class="border-b-2 border-amber-300 pb-1" href="#ludoteca">Ludoteca</a>
             <span class="text-stone-400">Cobertura, próximamente</span>
             <span class="text-stone-400">Chat, próximamente</span>
@@ -25,7 +25,7 @@ import { CatalogoService, JuegoDetalle, JuegoListado } from './core/api/catalogo
       <section id="ludoteca" class="mx-auto max-w-7xl px-6 py-9">
         <div class="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
           <div>
-            <p class="text-sm font-semibold uppercase tracking-[0.2em] text-amber-800">12 juegos, una coleccion</p>
+            <p class="text-sm font-semibold uppercase tracking-[0.2em] text-amber-800">12 juegos, una colección</p>
             <h2 class="mt-1 font-serif text-4xl">Tu ludoteca, con intención</h2>
           </div>
           <label class="text-sm font-semibold">Agrupar estantes por
@@ -60,14 +60,15 @@ import { CatalogoService, JuegoDetalle, JuegoListado } from './core/api/catalogo
 
         @for (grupo of grupos(); track grupo.nombre) {
           <section class="mb-10">
-            <div class="mb-3 flex items-center gap-3"><h3 class="font-serif text-2xl">{{ grupo.nombre }}</h3><span class="h-px flex-1 bg-stone-400"></span></div>
-            <div class="shelf grid grid-cols-2 gap-5 rounded-xl p-5 sm:grid-cols-3 lg:grid-cols-5">
+            <div class="mb-3 flex items-center gap-3"><h3 class="font-serif text-2xl">{{ grupo.etiqueta }} <span class="font-sans text-base font-medium text-stone-600">({{ grupo.juegos.length }})</span></h3><span class="h-px flex-1 bg-stone-400"></span></div>
+            <div class="shelf grid grid-cols-2 gap-x-5 gap-y-7 rounded-xl px-4 pt-4 sm:grid-cols-3 lg:grid-cols-5">
               @for (juego of grupo.juegos; track juego.id) {
-                <button class="group text-left" (click)="verDetalle(juego.id)">
-                  @if (juego.imagen_url) { <img class="aspect-[.78] w-full rounded-md object-cover shadow-lg transition group-hover:-translate-y-1" [src]="juego.imagen_url" [alt]="juego.nombre"> }
-                  @else { <div class="flex aspect-[.78] items-end rounded-md bg-stone-700 p-3 text-white shadow-lg">{{ juego.nombre }}</div> }
-                  <p class="mt-2 font-semibold leading-tight">{{ juego.nombre }}</p>
-                  <p class="text-sm text-stone-600">{{ juego.anio ?? 'Año no disponible' }}</p>
+                <button class="game-card group text-left" (click)="verDetalle(juego.id)">
+                  <span class="game-cover">
+                    @if (juego.imagen_url) { <img [src]="juego.imagen_url" [alt]="juego.nombre"> }
+                    @else { <span class="flex h-full items-end bg-stone-700 p-3 text-white">{{ juego.nombre }}</span> }
+                  </span>
+                  <span class="game-meta"><b>{{ juego.nombre }}</b><small>{{ juego.anio ?? 'Año no disponible' }}</small></span>
                 </button>
               }
             </div>
@@ -140,7 +141,7 @@ export class App {
     }
   }
 
-  private agrupar(juegos: JuegoDetalle[], criterio: string): { nombre: string; juegos: JuegoDetalle[] }[] {
+  private agrupar(juegos: JuegoDetalle[], criterio: string): { nombre: string; etiqueta: string; juegos: JuegoDetalle[] }[] {
     const estantes = new Map<string, JuegoDetalle[]>();
     for (const juego of juegos) {
       const nombre = criterio === 'jugadores' ? this.rangoJugadores(juego)
@@ -150,7 +151,21 @@ export class App {
         : this.texto(juego.familias_mecanicas?.[0]) ?? 'Sin familia de mecánica';
       estantes.set(nombre, [...(estantes.get(nombre) ?? []), juego]);
     }
-    return [...estantes].map(([nombre, juegosDelEstante]) => ({ nombre, juegos: juegosDelEstante }));
+    return [...estantes].map(([nombre, juegosDelEstante]) => ({
+      nombre,
+      etiqueta: this.etiquetaEstante(nombre, criterio),
+      juegos: juegosDelEstante,
+    }));
+  }
+
+  private etiquetaEstante(valor: string, criterio: string): string {
+    if (criterio === 'interaccion') {
+      return { directa: 'Interacción directa', indirecta: 'Interacción indirecta', cooperativo: 'Cooperativo', ninguna: 'Sin interacción' }[valor] ?? 'Interacción sin clasificar';
+    }
+    if (criterio === 'jugadores') { return `${valor} jugadores`; }
+    if (criterio === 'duracion') { return `Duración: ${valor} minutos`; }
+    if (criterio === 'peso') { return `Peso: ${valor}`; }
+    return `Mecánica: ${valor}`;
   }
 
   private texto(valor: unknown): string | null { return typeof valor === 'string' ? valor : null; }
