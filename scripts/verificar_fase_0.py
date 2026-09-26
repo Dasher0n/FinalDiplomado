@@ -20,6 +20,7 @@ PRECIOS_VALIDOS = {
     "fecha_precio",
     "bgp_url",
 }
+MARCADOR_BGP_CODIFICADO = "site_https%3A%2F%2Fgithub.com%2FTU_USUARIO%2FFinalDiplomado"
 
 
 def buscar_citas(valor: object) -> list[str]:
@@ -90,10 +91,10 @@ def main() -> int:
         columnas = set(lector.fieldnames or [])
         muestra = next(lector)
         filas_catalogo = 1
-        bgp_tiene_marcador = "TU_USUARIO/FinalDiplomado" in muestra["bgp_url"]
+        filas_marcador_bgp = int(MARCADOR_BGP_CODIFICADO in muestra["bgp_url"])
         for fila in lector:
             filas_catalogo += 1
-            bgp_tiene_marcador |= "TU_USUARIO/FinalDiplomado" in fila["bgp_url"]
+            filas_marcador_bgp += int(MARCADOR_BGP_CODIFICADO in fila["bgp_url"])
     faltantes = sorted(PRECIOS_VALIDOS - columnas)
     print(f"filas_catalogo={filas_catalogo}")
     print(f"columnas_catalogo={len(columnas)}")
@@ -101,7 +102,7 @@ def main() -> int:
     print(f"columnas_precio_faltantes={faltantes}")
     print(f"image_url_es_itemrep={'__itemrep' in muestra['image_url']}")
     print(f"thumbnail_es_micro={'__micro' in muestra['Thumbnail']}")
-    print(f"bgp_url_tiene_marcador={bgp_tiene_marcador}")
+    print(f"bgp_url_marcador_codificado_filas={filas_marcador_bgp}")
 
     try:
         with (ARTEFACTOS / "preproceso.pkl").open("rb") as archivo:
@@ -112,6 +113,11 @@ def main() -> int:
 
     print(f"preproceso_tipo={type(preproceso).__name__}")
     print(f"preproceso_claves={sorted(preproceso)}")
+    tipos_preproceso = {
+        clave: f"{type(valor).__module__}.{type(valor).__qualname__}"
+        for clave, valor in preproceso.items()
+    }
+    print(f"preproceso_tipos={tipos_preproceso}")
     for clave in (
         "cols_ocasion",
         "limites_ocasion",
@@ -128,6 +134,14 @@ def main() -> int:
     print(f"preproceso_niveles_jugadores_rangos={niveles_jugadores}")
     print(f"mlb_mecanicas_clases={len(preproceso['mlb_mecanicas'].classes_)}")
     print(f"mlb_tematica_clases={len(preproceso['mlb_tematica'].classes_)}")
+    from sklearn.impute import KNNImputer
+
+    imputadores_knn = [
+        clave for clave, valor in preproceso.items() if isinstance(valor, KNNImputer)
+    ]
+    escalador = preproceso["escalador_ocasion"]
+    print(f"preproceso_imputadores_knn={imputadores_knn}")
+    print(f"escalador_ocasion_ajustado={hasattr(escalador, 'n_features_in_')}")
 
     try:
         from scipy import sparse
