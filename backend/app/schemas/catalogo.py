@@ -71,3 +71,7 @@ class JuegoDetalle(JuegoListado):
     peso_pocos_votos: bool
     duracion_estimada: bool
     jugadores_estimados: bool
+
+    @field_serializer("peso", when_used="unless-none")
+    def serializar_peso(self, peso: float) -> float:
+        return round(peso, 1)

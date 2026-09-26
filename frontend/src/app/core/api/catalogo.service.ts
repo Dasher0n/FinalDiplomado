@@ -8,9 +8,7 @@ export type JuegoListado = components['schemas']['JuegoListado'];
 export type JuegoDetalle = components['schemas']['JuegoDetalle'];
 export type CoberturaRespuesta = components['schemas']['CoberturaRespuesta'];
 export type EvaluarRespuesta = components['schemas']['EvaluarRespuesta'];
-export type PlanCompraRespuesta = components['schemas']['PlanCompraRespuesta'] & {
-  juegos: Array<components['schemas']['JuegoMotor'] & { niveles_que_cubre: string[] }>;
-};
+export type PlanCompraRespuesta = components['schemas']['PlanCompraRespuesta'];
 export type EstaNocheRespuesta = components['schemas']['EstaNocheRespuesta'];
 
 @Injectable({ providedIn: 'root' })

@@ -122,6 +122,8 @@ def test_collection_mutations_and_engine_endpoints(api_client: TestClient) -> No
     assert removed.status_code == 200
     assert evaluate.status_code == 200
     assert evaluate.json()["juego"]["nombre"] == "Wingspan"
+    assert "veredicto_razones" in evaluate.json()
+    assert "peso_estimado" in evaluate.json()["juego"]
     assert coverage.status_code == 200
     assert "ejes" in coverage.json()
     assert tonight.status_code == 200
@@ -132,3 +134,17 @@ def test_plan_precio_requires_budget(api_client: TestClient) -> None:
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "solicitud_motor_invalida"
+
+
+def test_plan_only_lists_missing_or_weak_levels(api_client: TestClient) -> None:
+    coverage = api_client.get("/api/v1/engine/coverage").json()["ejes"]
+    plan = api_client.post(
+        "/api/v1/engine/buy-plan",
+        json={"modo": "juego", "n": 2, "users_rated_min": 0},
+    )
+
+    assert plan.status_code == 200
+    for game in plan.json()["juegos"]:
+        for level in game["niveles_que_cubre"]:
+            assert coverage[level["eje"]]["conteo_por_nivel"][level["nivel"]] < 2
+            assert level["estado"] in {"faltante", "debil"}

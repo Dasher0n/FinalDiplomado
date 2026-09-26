@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field, field_serializer
@@ -15,6 +16,16 @@ class SimilitudRespuesta(BaseModel):
     total: float
 
 
+class NivelCubierto(BaseModel):
+    eje: str
+    nivel: str
+    estado: str
+
+    @property
+    def etiqueta(self) -> str:
+        return f"{self.eje}: {self.nivel}"
+
+
 class JuegoMotor(BaseModel):
     id: str
     nombre: str
@@ -22,7 +33,15 @@ class JuegoMotor(BaseModel):
     promedio: float | None
     precio_usd: Decimal | None
     precio_confiable: bool
-    niveles_que_cubre: list[str] = Field(default_factory=list)
+    fecha_precio: datetime | None
+    url_bgp: str | None
+    peso: float | None
+    nivel_peso: str | None
+    peso_estimado: bool
+    peso_pocos_votos: bool
+    duracion_estimada: bool
+    jugadores_estimados: bool
+    niveles_que_cubre: list[NivelCubierto] = Field(default_factory=list)
 
     @field_serializer("precio_usd", when_used="unless-none")
     def serializar_precio(self, valor: Decimal) -> str:
@@ -39,7 +58,8 @@ class EvaluarRespuesta(BaseModel):
     juego_mas_parecido: JuegoMotor | None
     similitud: SimilitudRespuesta | None
     regla_exacta: bool
-    niveles_que_cubre: list[str]
+    niveles_que_cubre: list[NivelCubierto]
+    veredicto_razones: list[str]
 
 
 class CoberturaEjeRespuesta(BaseModel):
@@ -47,6 +67,7 @@ class CoberturaEjeRespuesta(BaseModel):
     cubiertos: list[str]
     faltantes: list[str]
     debiles: dict[str, str]
+    conteo_por_nivel: dict[str, int]
 
 
 class CoberturaRespuesta(BaseModel):

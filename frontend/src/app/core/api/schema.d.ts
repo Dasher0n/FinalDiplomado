@@ -214,6 +214,10 @@ export interface components {
             debiles: {
                 [key: string]: string;
             };
+            /** Conteo Por Nivel */
+            conteo_por_nivel: {
+                [key: string]: number;
+            };
         };
         /** CoberturaRespuesta */
         CoberturaRespuesta: {
@@ -250,8 +254,24 @@ export interface components {
             precio_usd: null | string;
             /** Precio Confiable */
             precio_confiable: boolean;
+            /** Fecha Precio */
+            fecha_precio: string | null;
+            /** Url Bgp */
+            url_bgp: string | null;
+            /** Peso */
+            peso: number | null;
+            /** Nivel Peso */
+            nivel_peso: string | null;
+            /** Peso Estimado */
+            peso_estimado: boolean;
+            /** Peso Pocos Votos */
+            peso_pocos_votos: boolean;
+            /** Duracion Estimada */
+            duracion_estimada: boolean;
+            /** Jugadores Estimados */
+            jugadores_estimados: boolean;
             /** Niveles Que Cubre */
-            niveles_que_cubre?: string[];
+            niveles_que_cubre?: components["schemas"]["NivelCubierto"][];
             /** Es Mejor Numero Jugadores */
             es_mejor_numero_jugadores: boolean;
             /** Duracion Imputada */
@@ -281,7 +301,9 @@ export interface components {
             /** Regla Exacta */
             regla_exacta: boolean;
             /** Niveles Que Cubre */
-            niveles_que_cubre: string[];
+            niveles_que_cubre: components["schemas"]["NivelCubierto"][];
+            /** Veredicto Razones */
+            veredicto_razones: string[];
         };
         /** EvaluarSolicitud */
         EvaluarSolicitud: {
@@ -370,7 +392,7 @@ export interface components {
             /** Edad Comunitaria */
             edad_comunitaria: number | null;
             /** Peso */
-            peso: number | null;
+            peso: null | number;
             /** Mecanicas */
             mecanicas: unknown[] | null;
             /** Categorias */
@@ -444,8 +466,33 @@ export interface components {
             precio_usd: null | string;
             /** Precio Confiable */
             precio_confiable: boolean;
+            /** Fecha Precio */
+            fecha_precio: string | null;
+            /** Url Bgp */
+            url_bgp: string | null;
+            /** Peso */
+            peso: number | null;
+            /** Nivel Peso */
+            nivel_peso: string | null;
+            /** Peso Estimado */
+            peso_estimado: boolean;
+            /** Peso Pocos Votos */
+            peso_pocos_votos: boolean;
+            /** Duracion Estimada */
+            duracion_estimada: boolean;
+            /** Jugadores Estimados */
+            jugadores_estimados: boolean;
             /** Niveles Que Cubre */
-            niveles_que_cubre?: string[];
+            niveles_que_cubre?: components["schemas"]["NivelCubierto"][];
+        };
+        /** NivelCubierto */
+        NivelCubierto: {
+            /** Eje */
+            eje: string;
+            /** Nivel */
+            nivel: string;
+            /** Estado */
+            estado: string;
         };
         /** PlanCompraRespuesta */
         PlanCompraRespuesta: {
