@@ -16,18 +16,20 @@ from app.core.config import settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import get_logger, setup_logging
 from app.db.session import dispose_db, init_db
+from app.engine.artefactos import ArtefactosMotor
 
 log = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     setup_logging("DEBUG" if settings.debug else "INFO")
     log.info(
         "Arrancando backend",
         extra={"environment": settings.environment, "llm_active": settings.llm_active},
     )
     await init_db()
+    app.state.artefactos_motor = ArtefactosMotor.cargar(settings.artefactos_dir)
     try:
         yield
     finally:

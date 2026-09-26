@@ -44,6 +44,7 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 
 ## Decisiones verificadas
 
+- La marca visible de la aplicacion es `Wise Dice`, con el subtitulo "Tu asesor de ludoteca". Los nombres internos del repositorio y servicios no cambian.
 - La cascada de BGG fuera del ranking esta omitida por decision de producto. La aplicacion no hara peticiones a BoardGameGeek.
 - La unica llamada real de la Fase 0 fue ejecutada por Miguel con `web_search` y `tool_choice: "required"`. El modelo resuelto fue `gpt-5.1-2025-11-13` y devolvio cinco citas para Metropoli de Ideotas Juegos. Esto verifica que `gpt-5.1` admite la herramienta hospedada `web_search`.
 - La clave de OpenAI se carga en la aplicacion con `pydantic-settings` desde el entorno y `env_file=".env"`; se modela como `SecretStr`, nunca se imprime ni persiste.
@@ -67,6 +68,14 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - `docker compose down && docker compose up --build -d` inicia backend saludable en `http://localhost:8000` y frontend en `http://localhost:8080`. El volumen recreado se siembra con 30,146 juegos y la coleccion demo.
 - La imagen backend no incluye `curl`. El healthcheck se define solo en `docker-compose.yml` y usa `python` con `urllib.request` contra `127.0.0.1`, con timeout de 3 segundos.
 
+## Fase 2
+
+- FastAPI carga en memoria los cuatro bloques de vectores al arrancar; se indexan con `fila_vector`.
+- Las nueve pruebas doradas usan IDs de BGG fijos y pasan con tolerancia de 0.01. El par `7 Wonders` (`68448`) y `7 Wonders Duel` (`173346`) dio mecanicas `0.6479`, ocasion `0.9379`, interaccion `0.8750`, tematica `1.0000` y total `0.8342`.
+- El motor implementa similitud por bloques con renormalizacion, redundancia, cobertura de seis ejes, compra greedy en modos juego y precio, disponibilidad y resolucion local ambigua.
+- El plan por precio con presupuesto USD 60, `n=5`, `users_rated_min=1000`, `average_min=0` y sin ejes ignorados reproduce el anexo: Cosmic Wimpout, The Werewolves of Miller's Hollow, Kingdom Legacy, Flip 7 y Trek 12. Costo USD `51.765`; valor pendiente `0.183333...`.
+- `Wingspan` y `Wyrmspan` comparten `product_line` y reimplementacion en el catalogo. La regla exacta los considera relacionados; frente a una coleccion con Wingspan, Wyrmspan cubre huecos y el veredicto es `parecido_pero_cubre_hueco`.
+
 ## Estado por fases
 
 | Fase | Estado | Contenido |
@@ -74,3 +83,4 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 | 0 | Completada | Dependencias, artefactos, web_search y decisiones de BGG verificados. |
 | 1 | Completada | Monorepo, Makefile, Docker, backend FastAPI, frontend Angular, SQLite, esquema y seed. |
 | 1b | Completada | Vitrina de Ludoteca, catalogo y coleccion de solo lectura. |
+| 2 | Completada | Motor determinista, matrices, cobertura, compra, disponibilidad y pruebas doradas. |
