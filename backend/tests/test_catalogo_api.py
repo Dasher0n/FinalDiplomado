@@ -127,6 +127,19 @@ def test_collection_mutations_and_engine_endpoints(api_client: TestClient) -> No
     assert coverage.status_code == 200
     assert "ejes" in coverage.json()
     assert tonight.status_code == 200
+    assert tonight.json()["juegos"][0]["nivel_ajuste"] == "funciona"
+    assert tonight.json()["juegos"][0]["best_players"] == [3]
+
+
+def test_tonight_prioritizes_ideal_fit_and_exposes_best_players(api_client: TestClient) -> None:
+    response = api_client.post("/api/v1/engine/tonight", json={"jugadores": 3, "minutos": 90})
+
+    assert response.status_code == 200
+    assert [(juego["nombre"], juego["nivel_ajuste"]) for juego in response.json()["juegos"]] == [
+        ("Wingspan", "ideal"),
+        ("Catan", "funciona"),
+    ]
+    assert response.json()["juegos"][0]["best_players"] == [3]
 
 
 def test_plan_precio_requires_budget(api_client: TestClient) -> None:

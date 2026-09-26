@@ -212,8 +212,7 @@ Chart.register(
               </p>
             } @else {
               <p class="mt-4 text-sm font-semibold">
-                {{ noche()!.juegos.length }} opciones para tu mesa. Las portadas
-                iluminadas pasan los filtros.
+                {{ resumenNoche() }} Las portadas iluminadas pasan los filtros.
               </p>
             }
           </section>
@@ -241,8 +240,8 @@ Chart.register(
                           }</span
                         ><span class="game-card-info"
                           ><b>{{ juego.nombre }}</b>
-                          @if (mejorEstaNoche(juego.id)) {
-                            <span>Mejor número de jugadores</span>
+                          @if (ajusteEstaNoche(juego.id); as ajuste) {
+                            <span>{{ etiquetaAjuste(ajuste) }}</span>
                           }
                         </span>
                       </button>
@@ -262,32 +261,10 @@ Chart.register(
         <h2 class="font-serif text-4xl">Cobertura de la colección</h2>
         <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
           <section class="panel min-h-[330px]">
-            <canvas
-              id="radar-cobertura"
-              aria-label="Radar de cobertura"
-            ></canvas>
-            <h3 class="mt-5 font-serif text-xl">Detalle por experiencia</h3>
-            <div class="coverage-chart-grid mt-3">
+            <div class="coverage-radar">
               <canvas
-                id="radar-mecanicas"
-                aria-label="Familias mecánicas"
-              ></canvas>
-              <canvas
-                id="radar-tematica"
-                aria-label="Familias temáticas"
-              ></canvas>
-              <canvas
-                id="radar-jugadores"
-                aria-label="Cobertura de jugadores"
-              ></canvas>
-              <canvas id="barras-peso" aria-label="Cobertura de peso"></canvas>
-              <canvas
-                id="barras-duracion"
-                aria-label="Cobertura de duración"
-              ></canvas>
-              <canvas
-                id="barras-interaccion"
-                aria-label="Cobertura de interacción"
+                id="radar-cobertura"
+                aria-label="Radar de cobertura"
               ></canvas>
             </div>
           </section>
@@ -410,7 +387,7 @@ Chart.register(
                   total usa precios visibles, no el costo interno del algoritmo.
                 </p>
                 <div class="chip-legend">
-                  <span class="level-chip">Nivel faltante</span
+                  ><span class="level-chip missing-chip">Nivel faltante</span
                   ><span class="level-chip weak-chip">Nivel débil</span>
                 </div>
                 <div class="mt-3 grid gap-3">
@@ -455,6 +432,9 @@ Chart.register(
                             ) {
                               <span
                                 class="level-chip"
+                                [class.missing-chip]="
+                                  nivel.estado === 'faltante'
+                                "
                                 [class.weak-chip]="nivel.estado === 'debil'"
                                 >{{ nivel.eje }}: {{ nivel.nivel }}</span
                               >
@@ -477,6 +457,44 @@ Chart.register(
             }
           </section>
         </div>
+        <section class="panel mt-6">
+          <h3 class="font-serif text-xl">Detalle por experiencia</h3>
+          <div class="coverage-chart-grid mt-3">
+            <div class="experience-chart">
+              <canvas
+                id="radar-mecanicas"
+                aria-label="Familias mecánicas"
+              ></canvas>
+            </div>
+            <div class="experience-chart">
+              <canvas
+                id="radar-tematica"
+                aria-label="Familias temáticas"
+              ></canvas>
+            </div>
+            <div class="experience-chart">
+              <canvas
+                id="radar-jugadores"
+                aria-label="Cobertura de jugadores"
+              ></canvas>
+            </div>
+            <div class="experience-chart">
+              <canvas id="barras-peso" aria-label="Cobertura de peso"></canvas>
+            </div>
+            <div class="experience-chart">
+              <canvas
+                id="barras-duracion"
+                aria-label="Cobertura de duración"
+              ></canvas>
+            </div>
+            <div class="experience-chart">
+              <canvas
+                id="barras-interaccion"
+                aria-label="Cobertura de interacción"
+              ></canvas>
+            </div>
+          </div>
+        </section>
       </section>
     }
 
@@ -606,7 +624,7 @@ Chart.register(
                   USD {{ seleccionado()!.precio.precio_usd }} EE. UU.
                 }
                 @if (seleccionado()!.precio.precio_confiable) {
-                  <span class="text-emerald-800"
+                  <span class="text-amber-800"
                     >Precio con ofertas suficientes</span
                   >
                 } @else {
@@ -753,12 +771,24 @@ export class App {
   protected recomendadoEstaNoche(id: string): boolean {
     return this.noche()?.juegos.some((juego) => juego.id === id) ?? false;
   }
-  protected mejorEstaNoche(id: string): boolean {
+  protected ajusteEstaNoche(id: string): string | null {
     return (
-      this.noche()?.juegos.some(
-        (juego) => juego.id === id && juego.es_mejor_numero_jugadores,
-      ) ?? false
+      this.noche()?.juegos.find((juego) => juego.id === id)?.nivel_ajuste ??
+      null
     );
+  }
+  protected etiquetaAjuste(ajuste: string): string {
+    return ajuste === "ideal"
+      ? "Ideal para este grupo"
+      : "Funciona para este grupo";
+  }
+  protected resumenNoche(): string {
+    const juegos = this.noche()?.juegos ?? [];
+    const ideales = juegos.filter(
+      (juego) => juego.nivel_ajuste === "ideal",
+    ).length;
+    const funciona = juegos.length - ideales;
+    return `${juegos.length} opciones: ${ideales} ideales y ${funciona} que funcionan.`;
   }
   protected ejes(): {
     nombre: string;
@@ -897,6 +927,7 @@ export class App {
         ],
       },
       options: {
+        maintainAspectRatio: false,
         scales: { r: { min: 0, max: 100, ticks: { display: false } } },
         plugins: { legend: { display: false } },
       },
@@ -947,6 +978,7 @@ export class App {
           ],
         },
         options: {
+          maintainAspectRatio: false,
           plugins: { legend: { display: false } },
           scales: { r: { beginAtZero: true, ticks: { display: false } } },
         },
@@ -977,9 +1009,16 @@ export class App {
           ],
         },
         options: {
+          maintainAspectRatio: false,
           indexAxis: "y",
           plugins: { legend: { display: false } },
-          scales: { x: { beginAtZero: true } },
+          scales: {
+            x: {
+              beginAtZero: true,
+              max: Math.max(...Object.values(conteos)) + 1,
+              ticks: { stepSize: 1, precision: 0 },
+            },
+          },
         },
       }),
     );
@@ -994,35 +1033,44 @@ export class App {
       const anterior = this.graficas.get(canvas.id);
       anterior?.destroy();
       const etiquetas = Object.keys(juego.cobertura_antes.porcentajes);
+      const etiquetasRadar = etiquetas.map((etiqueta) =>
+        this.abreviarEje(etiqueta),
+      );
       this.graficas.set(
         canvas.id,
         new Chart(canvas, {
           type: "radar",
           data: {
-            labels: etiquetas,
+            labels: etiquetasRadar,
             datasets: [
               {
                 label: "Antes",
                 data: etiquetas.map(
                   (eje) => juego.cobertura_antes.porcentajes[eje],
                 ),
-                borderColor: "#8d6a1c",
-                backgroundColor: "rgba(141,106,28,.12)",
+                borderColor: "#888078",
+                backgroundColor: "rgba(136,128,120,.12)",
               },
               {
                 label: "Después",
                 data: etiquetas.map(
                   (eje) => juego.cobertura_despues.porcentajes[eje],
                 ),
-                borderColor: "#28704b",
-                backgroundColor: "rgba(40,112,75,.15)",
+                borderColor: "#8d5221",
+                backgroundColor: "rgba(141,82,33,.15)",
               },
             ],
           },
           options: {
+            maintainAspectRatio: false,
             scales: { r: { min: 0, max: 100, ticks: { display: false } } },
             plugins: {
               legend: { labels: { boxWidth: 10, font: { size: 9 } } },
+              tooltip: {
+                callbacks: {
+                  title: (items) => etiquetas[items[0].dataIndex] ?? "",
+                },
+              },
             },
           },
         }),
@@ -1031,6 +1079,9 @@ export class App {
   }
 
   private colorConteo(conteo: number): string {
-    return conteo === 0 ? "#b6493b" : conteo === 1 ? "#c58d23" : "#28704b";
+    return conteo === 0 ? "#9b3429" : conteo === 1 ? "#b27023" : "#8d5221";
+  }
+  private abreviarEje(etiqueta: string): string {
+    return etiqueta === "Interacción" ? "Interacc." : etiqueta;
   }
 }

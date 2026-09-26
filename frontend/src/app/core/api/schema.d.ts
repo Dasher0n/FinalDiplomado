@@ -279,8 +279,13 @@ export interface components {
             jugadores_estimados: boolean;
             /** Niveles Que Cubre */
             niveles_que_cubre?: components["schemas"]["NivelCubierto"][];
-            /** Es Mejor Numero Jugadores */
-            es_mejor_numero_jugadores: boolean;
+            /**
+             * Nivel Ajuste
+             * @enum {string}
+             */
+            nivel_ajuste: "ideal" | "funciona";
+            /** Best Players */
+            best_players: number[];
             /** Duracion Imputada */
             duracion_imputada: boolean;
         };

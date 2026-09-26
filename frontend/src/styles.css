@@ -146,27 +146,43 @@ body {
 .plan-radar {
   width: 130px;
   min-width: 130px;
+  height: 180px;
   align-self: center;
+}
+.coverage-radar {
+  position: relative;
+  height: 300px;
 }
 .coverage-chart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
-.coverage-chart-grid canvas {
-  min-width: 0;
-  max-height: 180px;
+.experience-chart {
+  position: relative;
+  height: 220px;
+}
+.coverage-radar canvas,
+.experience-chart canvas,
+.plan-radar canvas {
+  height: 100% !important;
+  width: 100% !important;
 }
 .level-chip {
   border-radius: 999px;
-  background: #f2dfb7;
+  background: #eadcc5;
   padding: 0.18rem 0.5rem;
   color: #70441e;
   font-size: 0.72rem;
   font-weight: 700;
 }
+.missing-chip {
+  background: #f4d6d0;
+  color: #9b3429;
+}
 .weak-chip {
   background: #eee1b5;
+  color: #8d6a1c;
 }
 .bubble {
   border-radius: 0.8rem;
@@ -266,7 +282,7 @@ body {
   gap: 0.8rem;
   min-height: 224px;
   padding: 0.5rem 0.75rem 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .game-card {
@@ -301,6 +317,11 @@ body {
 .game-card:focus-visible .game-cover img {
   filter: drop-shadow(7px 14px 9px rgb(10 6 4 / 66%));
   transform: translateY(-12px) scale(1.04);
+}
+
+.game-card:focus-visible {
+  outline: 3px solid #f0ca73;
+  outline-offset: 4px;
 }
 
 .game-card-info {
@@ -386,6 +407,12 @@ body {
   }
   .coverage-chart-grid {
     grid-template-columns: 1fr;
+  }
+  .coverage-radar {
+    height: 260px;
+  }
+  .experience-chart {
+    height: 200px;
   }
   .plan-radar {
     width: 105px;

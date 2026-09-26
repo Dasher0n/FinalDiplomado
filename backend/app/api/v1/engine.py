@@ -259,7 +259,8 @@ async def esta_noche(
         juegos=[
             EstaNocheJuego(
                 **_juego(juego, artefactos).model_dump(),
-                es_mejor_numero_jugadores=mejor,
+                nivel_ajuste="ideal" if mejor else "funciona",
+                best_players=list(juego.best_players or []),
                 duracion_imputada=juego.duracion_imputada,
             )
             for juego, mejor in juegos

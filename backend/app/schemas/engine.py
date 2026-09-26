@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer
 
@@ -108,7 +109,8 @@ class EstaNocheSolicitud(BaseModel):
 
 
 class EstaNocheJuego(JuegoMotor):
-    es_mejor_numero_jugadores: bool
+    nivel_ajuste: Literal["ideal", "funciona"]
+    best_players: list[int]
     duracion_imputada: bool
 
 
