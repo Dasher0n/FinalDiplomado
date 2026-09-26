@@ -1,0 +1,62 @@
+[project]
+name = "sommelier-juegos-backend"
+version = "0.1.0"
+description = "Backend del sommelier de juegos de mesa"
+readme = "README.md"
+requires-python = ">=3.14"
+
+dependencies = [
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.52.4",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    "sqlalchemy[asyncio]==2.0.52",
+    "greenlet==3.5.5",
+    "aiosqlite==0.22.1",
+    "alembic==1.19.2",
+    "httpx==0.28.1",
+    "openai==3.13.0",
+    "openai-agents==0.22.2",
+    "scikit-learn==1.9.0",
+    "scipy==1.18.0",
+    "numpy==2.5.2",
+    "pandas==3.0.5",
+    "rapidfuzz==3.14.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "ruff==0.16.7",
+    "mypy==2.3.1",
+    "respx==0.23.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.14"
+plugins = ["pydantic.mypy"]
+strict = false
+warn_unused_ignores = true

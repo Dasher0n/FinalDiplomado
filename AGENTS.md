@@ -48,10 +48,21 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - La unica llamada real de la Fase 0 fue ejecutada por Miguel con `web_search` y `tool_choice: "required"`. El modelo resuelto fue `gpt-5.1-2025-11-13` y devolvio cinco citas para Metropoli de Ideotas Juegos. Esto verifica que `gpt-5.1` admite la herramienta hospedada `web_search`.
 - La clave de OpenAI se carga en la aplicacion con `pydantic-settings` desde el entorno y `env_file=".env"`; se modela como `SecretStr`, nunca se imprime ni persiste.
 - Excepcion aprobada para Fase 0: no se ejecuta `make lint` porque el Makefile pertenece al andamiaje de Fase 1 y aun no existe.
+- La busqueda automatica de secretos debe excluir `artefactos/` y las URLs de imagen de `cf.geekdo-images.com`, o exigir el patron completo de una clave con `sk-` seguido de al menos 20 caracteres sin guiones intermedios de URL. Se confirmo un falso positivo dentro de una URL de imagen del catalogo.
+
+## Fase 1
+
+- El backend usa FastAPI, SQLAlchemy async y SQLite con `foreign_keys=ON`, WAL y fechas UTC.
+- El esquema incluye catalogo, colecciones, precios de usuario, vectores extra, alias, chat, trazas agenticas y cache de busqueda web.
+- `make seed` es idempotente: importa 30,146 juegos, crea el usuario demo y siembra sus 12 juegos. Una segunda ejecucion no inserta filas nuevas.
+- El frontend es Angular 22 standalone con Tailwind v4 y TypeScript 6.0.x. `npm install --force` es necesario por el peer de `openapi-typescript`.
+- `make contracts` genera `frontend/src/app/core/api/schema.d.ts` desde OpenAPI.
+- La Fase 1b aprobada se implementara despues de aprobar el cierre de esta fase. Incluira la vitrina y los endpoints de solo lectura del catalogo y la coleccion.
 
 ## Estado por fases
 
 | Fase | Estado | Contenido |
 | --- | --- | --- |
 | 0 | Completada | Dependencias, artefactos, web_search y decisiones de BGG verificados. |
-| 1 | Pendiente de aprobacion | No iniciar sin aprobacion de Miguel. |
+| 1 | Completada | Monorepo, Makefile, Docker, backend FastAPI, frontend Angular, SQLite, esquema y seed. |
+| 1b | Pendiente de aprobacion | Vitrina de Ludoteca y endpoints de solo lectura. |
