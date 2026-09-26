@@ -73,6 +73,34 @@ def test_redundancia_usa_regla_exacta_y_umbral_del_pickle() -> None:
     assert veredicto == "parecido_pero_cubre_hueco"
 
 
+def test_wyrmspan_es_redundante_por_regla_exacta_en_coleccion_demo() -> None:
+    ids = {
+        "224517",
+        "174430",
+        "178900",
+        "13",
+        "68448",
+        "230802",
+        "167791",
+        "30549",
+        "173346",
+        "295947",
+        "162886",
+        "237182",
+        "266192",
+        "410201",
+    }
+    juegos = cargar_juegos(ids)
+    coleccion = [juego for juego in juegos.values() if juego.nombre in DEMO_GAMES]
+
+    veredicto, _, parecido, exacta = evaluar_redundancia(ARTEFACTOS, juegos["410201"], coleccion)
+
+    assert parecido is not None
+    assert parecido.total == pytest.approx(0.70, abs=0.01)
+    assert exacta is True
+    assert veredicto == "redundante"
+
+
 def test_cobertura_de_coleccion_demo() -> None:
     ids = {
         "224517",
@@ -115,6 +143,20 @@ def test_plan_precio_compara_greedy_con_mejor_individual() -> None:
     assert resultado.costo <= 100
     assert resultado.valor_cubierto > 0
     assert resultado.valor_pendiente >= 0
+
+
+def test_plan_permite_priorizar_mejor_valorados() -> None:
+    juegos = cargar_juegos({"266192", "410201", "350184"})
+    resultado = plan_compra(
+        ARTEFACTOS,
+        [juegos["266192"]],
+        [juegos["410201"], juegos["350184"]],
+        n=1,
+        modo="juego",
+        users_rated_min=0,
+        orden="mejor_valorados",
+    )
+    assert len(resultado.juegos) == 1
 
 
 def test_que_saco_hoy_y_busqueda_ambigua() -> None:

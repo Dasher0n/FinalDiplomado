@@ -132,6 +132,31 @@ body {
   gap: 0.5rem;
   font-size: 0.87rem;
 }
+.guarantee {
+  margin: 0.8rem 0 0;
+  color: #6b4b25;
+  font-size: 0.78rem;
+}
+.chip-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+}
+.plan-radar {
+  width: 130px;
+  min-width: 130px;
+  align-self: center;
+}
+.coverage-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.coverage-chart-grid canvas {
+  min-width: 0;
+  max-height: 180px;
+}
 .level-chip {
   border-radius: 999px;
   background: #f2dfb7;
@@ -241,6 +266,7 @@ body {
   gap: 0.8rem;
   min-height: 224px;
   padding: 0.5rem 0.75rem 0;
+  overflow: hidden;
 }
 
 .game-card {
@@ -347,7 +373,6 @@ body {
   }
 
   .shelf-games {
-    overflow-x: auto;
     min-height: 204px;
     padding-right: 1.5rem;
   }
@@ -358,6 +383,13 @@ body {
 
   .game-cover {
     height: 196px;
+  }
+  .coverage-chart-grid {
+    grid-template-columns: 1fr;
+  }
+  .plan-radar {
+    width: 105px;
+    min-width: 105px;
   }
 }
 

@@ -219,6 +219,13 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** CoberturaRadar */
+        CoberturaRadar: {
+            /** Porcentajes */
+            porcentajes: {
+                [key: string]: number;
+            };
+        };
         /** CoberturaRespuesta */
         CoberturaRespuesta: {
             /** Ejes */
@@ -485,6 +492,41 @@ export interface components {
             /** Niveles Que Cubre */
             niveles_que_cubre?: components["schemas"]["NivelCubierto"][];
         };
+        /** JuegoPlanCompra */
+        JuegoPlanCompra: {
+            /** Id */
+            id: string;
+            /** Nombre */
+            nombre: string;
+            /** Imagen Url */
+            imagen_url: string | null;
+            /** Promedio */
+            promedio: number | null;
+            /** Precio Usd */
+            precio_usd: null | string;
+            /** Precio Confiable */
+            precio_confiable: boolean;
+            /** Fecha Precio */
+            fecha_precio: string | null;
+            /** Url Bgp */
+            url_bgp: string | null;
+            /** Peso */
+            peso: number | null;
+            /** Nivel Peso */
+            nivel_peso: string | null;
+            /** Peso Estimado */
+            peso_estimado: boolean;
+            /** Peso Pocos Votos */
+            peso_pocos_votos: boolean;
+            /** Duracion Estimada */
+            duracion_estimada: boolean;
+            /** Jugadores Estimados */
+            jugadores_estimados: boolean;
+            /** Niveles Que Cubre */
+            niveles_que_cubre?: components["schemas"]["NivelCubierto"][];
+            cobertura_antes: components["schemas"]["CoberturaRadar"];
+            cobertura_despues: components["schemas"]["CoberturaRadar"];
+        };
         /** NivelCubierto */
         NivelCubierto: {
             /** Eje */
@@ -497,13 +539,15 @@ export interface components {
         /** PlanCompraRespuesta */
         PlanCompraRespuesta: {
             /** Juegos */
-            juegos: components["schemas"]["JuegoMotor"][];
+            juegos: components["schemas"]["JuegoPlanCompra"][];
             /** Valor Cubierto */
             valor_cubierto: number;
             /** Valor Pendiente */
             valor_pendiente: number;
-            /** Costo */
-            costo: number;
+            /** Precio Total Usd */
+            precio_total_usd: number;
+            /** Juegos Sin Precio */
+            juegos_sin_precio: number;
         };
         /** PlanCompraSolicitud */
         PlanCompraSolicitud: {
@@ -531,6 +575,11 @@ export interface components {
             users_rated_min: number;
             /** Ejes Ignorados */
             ejes_ignorados?: string[];
+            /**
+             * Orden
+             * @default mejor_ajuste
+             */
+            orden: string;
         };
         /** PrecioJuego */
         PrecioJuego: {

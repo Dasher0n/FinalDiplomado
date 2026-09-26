@@ -26,6 +26,7 @@ from app.schemas.engine import (
     EvaluarRespuesta,
     EvaluarSolicitud,
     JuegoMotor,
+    JuegoPlanCompra,
     NivelCubierto,
     PlanCompraRespuesta,
     PlanCompraSolicitud,
@@ -100,6 +101,14 @@ def _conteos_niveles(juegos: list[Game], artefactos: ArtefactosMotor, eje: str) 
             if nivel in conteos:
                 conteos[nivel] += 1
     return conteos
+
+
+def _radar_cobertura(artefactos: ArtefactosMotor, juegos: list[Game]) -> dict[str, float]:
+    resultado = cobertura(artefactos, juegos)
+    return {
+        eje: round(100 * len(valor.cubiertos) / len(artefactos.tipos[eje]), 1)
+        for eje, valor in resultado.ejes.items()
+    }
 
 
 async def _coleccion(session: DbSession, user: CurrentUser) -> list[Game]:
@@ -191,8 +200,10 @@ async def comprar_plan(
         average_min=solicitud.average_min,
         users_rated_min=solicitud.users_rated_min,
         ejes_ignorados=solicitud.ejes_ignorados,
+        orden=solicitud.orden,
     )
-    cobertura_actual = cobertura(artefactos, await _coleccion(session, user))
+    coleccion = await _coleccion(session, user)
+    cobertura_actual = cobertura(artefactos, coleccion)
     estados_huecos = {
         (eje, nivel): "faltante"
         for eje, eje_cobertura in cobertura_actual.ejes.items()
@@ -204,11 +215,32 @@ async def comprar_plan(
         if eje not in solicitud.ejes_ignorados
         for nivel in eje_cobertura.debiles
     }
+    juegos_plan = []
+    acumulados = list(coleccion)
+    for juego in resultado.juegos:
+        antes = _radar_cobertura(artefactos, acumulados)
+        acumulados.append(juego)
+        despues = _radar_cobertura(artefactos, acumulados)
+        juegos_plan.append(
+            JuegoPlanCompra(
+                **_juego(juego, artefactos, estados_huecos).model_dump(),
+                cobertura_antes={"porcentajes": antes},
+                cobertura_despues={"porcentajes": despues},
+            )
+        )
     return PlanCompraRespuesta(
-        juegos=[_juego(juego, artefactos, estados_huecos) for juego in resultado.juegos],
+        juegos=juegos_plan,
         valor_cubierto=resultado.valor_cubierto,
         valor_pendiente=resultado.valor_pendiente,
-        costo=resultado.costo,
+        precio_total_usd=round(
+            sum(
+                float(juego.precio_usd)
+                for juego in resultado.juegos
+                if juego.precio_usd is not None
+            ),
+            2,
+        ),
+        juegos_sin_precio=sum(juego.precio_usd is None for juego in resultado.juegos),
     )
 
 

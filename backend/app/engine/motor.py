@@ -167,11 +167,14 @@ def plan_compra(
     users_rated_min: int = 1000,
     ejes_ignorados: Iterable[str] = (),
     precios_usuario: dict[str, Decimal | float] | None = None,
+    orden: str = "mejor_ajuste",
 ) -> ResultadoCompra:
     if modo not in {"juego", "precio"}:
         raise ValueError("El modo debe ser juego o precio")
     if modo == "precio" and presupuesto is None:
         raise ValueError("El modo precio requiere presupuesto")
+    if orden not in {"mejor_ajuste", "mejor_valorados"}:
+        raise ValueError("El orden debe ser mejor_ajuste o mejor_valorados")
     coleccion = tuple(coleccion)
     ignorados = set(ejes_ignorados)
     precios_usuario = precios_usuario or {}
@@ -214,7 +217,10 @@ def plan_compra(
             valor = sum(
                 pendiente.get(nivel, 0) for nivel in niveles_de_juego(juego, artefactos.tipos)
             )
-            return (valor / (costo(juego) or 1), juego.average or 0)
+            ajuste = valor / (costo(juego) or 1)
+            if orden == "mejor_valorados":
+                return (juego.average or 0, ajuste)
+            return (ajuste, juego.average or 0)
 
         elegido = max(opciones, key=clave)
         valor = sum(

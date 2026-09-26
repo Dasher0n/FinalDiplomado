@@ -75,6 +75,7 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - El motor implementa similitud por bloques con renormalizacion, redundancia, cobertura de seis ejes, compra greedy en modos juego y precio, disponibilidad y resolucion local ambigua.
 - El plan por precio con presupuesto USD 60, `n=5`, `users_rated_min=1000`, `average_min=0` y sin ejes ignorados reproduce el anexo: Cosmic Wimpout, The Werewolves of Miller's Hollow, Kingdom Legacy, Flip 7 y Trek 12. Costo USD `51.765`; valor pendiente `0.183333...`.
 - `Wingspan` y `Wyrmspan` comparten `product_line` y reimplementacion en el catalogo. La regla exacta los considera relacionados; frente a una coleccion con Wingspan, Wyrmspan cubre huecos y el veredicto es `parecido_pero_cubre_hueco`.
+- Decision de producto: frente a la coleccion demo, Wyrmspan es `redundante` por regla exacta, porque reimplementa Wingspan y comparte su linea de producto, aunque su similitud es 0.70. Esta decision prevalece sobre el punto 1 del guion de demo de la seccion 11.
 
 ## Fase 3 y 3b
 

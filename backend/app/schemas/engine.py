@@ -81,13 +81,24 @@ class PlanCompraSolicitud(BaseModel):
     average_min: float = Field(default=0, ge=0)
     users_rated_min: int = Field(default=1000, ge=0)
     ejes_ignorados: list[str] = Field(default_factory=list)
+    orden: str = Field(default="mejor_ajuste", pattern="^(mejor_ajuste|mejor_valorados)$")
+
+
+class CoberturaRadar(BaseModel):
+    porcentajes: dict[str, float]
+
+
+class JuegoPlanCompra(JuegoMotor):
+    cobertura_antes: CoberturaRadar
+    cobertura_despues: CoberturaRadar
 
 
 class PlanCompraRespuesta(BaseModel):
-    juegos: list[JuegoMotor]
+    juegos: list[JuegoPlanCompra]
     valor_cubierto: float
     valor_pendiente: float
-    costo: float
+    precio_total_usd: float
+    juegos_sin_precio: int
 
 
 class EstaNocheSolicitud(BaseModel):

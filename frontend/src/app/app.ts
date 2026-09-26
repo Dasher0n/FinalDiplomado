@@ -2,14 +2,19 @@ import { DatePipe, DecimalPipe } from "@angular/common";
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   inject,
   signal,
 } from "@angular/core";
 import {
   Chart,
+  BarController,
+  BarElement,
+  CategoryScale,
   Filler,
   Legend,
   LineElement,
+  LinearScale,
   PointElement,
   RadarController,
   RadialLinearScale,
@@ -28,10 +33,14 @@ import {
 } from "./core/api/catalogo.service";
 
 Chart.register(
+  BarController,
+  BarElement,
+  CategoryScale,
   RadarController,
   RadialLinearScale,
   PointElement,
   LineElement,
+  LinearScale,
   Filler,
   Tooltip,
   Legend,
@@ -138,30 +147,35 @@ Chart.register(
           </section>
           <div class="bookcase mt-7">
             @for (grupo of grupos(); track grupo.nombre) {
-              <section class="case-shelf">
-                <h3 class="shelf-plaque">
-                  {{ grupo.nombre }} · {{ grupo.juegos.length }}
-                </h3>
-                <div class="shelf-rail">
-                  <div class="shelf-games">
-                    @for (juego of grupo.juegos; track juego.id) {
-                      <button class="game-card" (click)="verDetalle(juego.id)">
-                        <span class="game-cover">
-                          @if (juego.imagen_url) {
-                            <img
-                              [src]="juego.imagen_url"
-                              [alt]="juego.nombre"
-                            />
-                          }</span
-                        ><span class="game-card-info"
-                          ><b>{{ juego.nombre }}</b
-                          ><span>{{ rango(juego) }} jugadores</span></span
+              @for (fila of filasEstante(grupo.juegos); track $index) {
+                <section class="case-shelf">
+                  <h3 class="shelf-plaque">
+                    {{ grupo.nombre }} · {{ grupo.juegos.length }}
+                  </h3>
+                  <div class="shelf-rail">
+                    <div class="shelf-games">
+                      @for (juego of fila; track juego.id) {
+                        <button
+                          class="game-card"
+                          (click)="verDetalle(juego.id)"
                         >
-                      </button>
-                    }
+                          <span class="game-cover">
+                            @if (juego.imagen_url) {
+                              <img
+                                [src]="juego.imagen_url"
+                                [alt]="juego.nombre"
+                              />
+                            }</span
+                          ><span class="game-card-info"
+                            ><b>{{ juego.nombre }}</b
+                            ><span>{{ rango(juego) }} jugadores</span></span
+                          >
+                        </button>
+                      }
+                    </div>
                   </div>
-                </div>
-              </section>
+                </section>
+              }
             }
           </div>
         } @else {
@@ -204,34 +218,39 @@ Chart.register(
             }
           </section>
           <div class="bookcase mt-7">
-            <section class="case-shelf">
-              <h3 class="shelf-plaque">Tu colección</h3>
-              <div class="shelf-rail">
-                <div class="shelf-games">
-                  @for (juego of juegos(); track juego.id) {
-                    <button
-                      class="game-card"
-                      [class.dimmed]="
-                        noche() && !recomendadoEstaNoche(juego.id)
-                      "
-                      [class.highlighted]="recomendadoEstaNoche(juego.id)"
-                      (click)="verDetalle(juego.id)"
-                    >
-                      <span class="game-cover">
-                        @if (juego.imagen_url) {
-                          <img [src]="juego.imagen_url" [alt]="juego.nombre" />
-                        }</span
-                      ><span class="game-card-info"
-                        ><b>{{ juego.nombre }}</b>
-                        @if (mejorEstaNoche(juego.id)) {
-                          <span>Mejor número de jugadores</span>
-                        }
-                      </span>
-                    </button>
-                  }
+            @for (fila of filasEstante(juegos()); track $index) {
+              <section class="case-shelf">
+                <h3 class="shelf-plaque">Tu colección</h3>
+                <div class="shelf-rail">
+                  <div class="shelf-games">
+                    @for (juego of fila; track juego.id) {
+                      <button
+                        class="game-card"
+                        [class.dimmed]="
+                          noche() && !recomendadoEstaNoche(juego.id)
+                        "
+                        [class.highlighted]="recomendadoEstaNoche(juego.id)"
+                        (click)="verDetalle(juego.id)"
+                      >
+                        <span class="game-cover">
+                          @if (juego.imagen_url) {
+                            <img
+                              [src]="juego.imagen_url"
+                              [alt]="juego.nombre"
+                            />
+                          }</span
+                        ><span class="game-card-info"
+                          ><b>{{ juego.nombre }}</b>
+                          @if (mejorEstaNoche(juego.id)) {
+                            <span>Mejor número de jugadores</span>
+                          }
+                        </span>
+                      </button>
+                    }
+                  </div>
                 </div>
-              </div>
-            </section>
+              </section>
+            }
           </div>
         }
       </section>
@@ -247,15 +266,117 @@ Chart.register(
               id="radar-cobertura"
               aria-label="Radar de cobertura"
             ></canvas>
+            <h3 class="mt-5 font-serif text-xl">Detalle por experiencia</h3>
+            <div class="coverage-chart-grid mt-3">
+              <canvas
+                id="radar-mecanicas"
+                aria-label="Familias mecánicas"
+              ></canvas>
+              <canvas
+                id="radar-tematica"
+                aria-label="Familias temáticas"
+              ></canvas>
+              <canvas
+                id="radar-jugadores"
+                aria-label="Cobertura de jugadores"
+              ></canvas>
+              <canvas id="barras-peso" aria-label="Cobertura de peso"></canvas>
+              <canvas
+                id="barras-duracion"
+                aria-label="Cobertura de duración"
+              ></canvas>
+              <canvas
+                id="barras-interaccion"
+                aria-label="Cobertura de interacción"
+              ></canvas>
+            </div>
           </section>
           <section class="panel">
             <div class="flex flex-wrap gap-2">
-              <button class="primary" (click)="cargarPlan('juego')">
-                Plan por juegos</button
-              ><button class="chip" (click)="cargarPlan('precio')">
-                Plan USD 60
+              <button
+                class="chip"
+                [class.active]="modoPlan() === 'juego'"
+                (click)="modoPlan.set('juego')"
+              >
+                Plan por juegos
+              </button>
+              <button
+                class="chip"
+                [class.active]="modoPlan() === 'precio'"
+                (click)="modoPlan.set('precio')"
+              >
+                Plan por precio
               </button>
             </div>
+            <div class="mt-3 flex flex-wrap items-end gap-3">
+              <label
+                >Número de juegos<input
+                  #planN
+                  class="input mt-1"
+                  type="number"
+                  min="1"
+                  max="20"
+                  value="5"
+              /></label>
+              <label [class.hidden]="modoPlan() !== 'precio'"
+                >Presupuesto USD<input
+                  #presupuesto
+                  class="input mt-1"
+                  type="number"
+                  min="1"
+                  value="60"
+              /></label>
+              <label
+                >Promedio mínimo<input
+                  #promedio
+                  class="input mt-1"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  value="0"
+              /></label>
+              <label
+                >Votos mínimos<input
+                  #votos
+                  class="input mt-1"
+                  type="number"
+                  min="0"
+                  value="1000"
+              /></label>
+              <label
+                >Ordenar por<select #orden class="input mt-1">
+                  <option value="mejor_ajuste">Mejor ajuste</option>
+                  <option value="mejor_valorados">Mejor valorados</option>
+                </select></label
+              >
+              <button
+                class="primary"
+                (click)="
+                  cargarPlan(
+                    modoPlan(),
+                    +planN.value,
+                    modoPlan() === 'precio' ? +presupuesto.value : undefined,
+                    +promedio.value,
+                    +votos.value,
+                    orden.value
+                  )
+                "
+              >
+                Crear plan
+              </button>
+            </div>
+            @if (modoPlan() === "juego") {
+              <p class="guarantee">
+                Mejor ajuste usa cobertura pendiente por juego: garantiza al
+                menos el 63% del óptimo para este modelo.
+              </p>
+            } @else {
+              <p class="guarantee">
+                Por precio compara el greedy con el mejor juego individual que
+                cabe en tu presupuesto.
+              </p>
+            }
             @if (cobertura()) {
               <div class="mt-4 grid gap-3 sm:grid-cols-2">
                 @for (eje of ejes(); track eje.nombre) {
@@ -279,9 +400,18 @@ Chart.register(
                   <b>Plan de compra</b
                   ><span
                     >{{ plan()!.juegos.length }} juegos · USD
-                    {{ plan()!.costo | number: "1.2-2" }} · valor pendiente
+                    {{ plan()!.precio_total_usd | number: "1.2-2" }} visibles ·
+                    valor pendiente
                     {{ plan()!.valor_pendiente | number: "1.2-2" }}</span
                   >
+                </div>
+                <p class="mt-1 text-xs text-stone-600">
+                  {{ plan()!.juegos_sin_precio }} sin precio disponible. El
+                  total usa precios visibles, no el costo interno del algoritmo.
+                </p>
+                <div class="chip-legend">
+                  <span class="level-chip">Nivel faltante</span
+                  ><span class="level-chip weak-chip">Nivel débil</span>
                 </div>
                 <div class="mt-3 grid gap-3">
                   @for (juego of plan()!.juegos; track juego.id) {
@@ -330,6 +460,14 @@ Chart.register(
                               >
                             }
                           </div>
+                        </div>
+                        <div class="plan-radar">
+                          <canvas
+                            [id]="'plan-radar-' + juego.id"
+                            [attr.aria-label]="
+                              'Cobertura antes y después de ' + juego.nombre
+                            "
+                          ></canvas>
                         </div>
                       </div>
                     </article>
@@ -508,6 +646,7 @@ Chart.register(
 export class App {
   private readonly api = inject(CatalogoService);
   private grafica: Chart | null = null;
+  private readonly graficas = new Map<string, Chart>();
   protected readonly vista = signal("ludoteca");
   protected readonly modo = signal("estantes");
   protected readonly juegos = signal<JuegoDetalle[]>([]);
@@ -517,6 +656,7 @@ export class App {
   protected readonly error = signal("");
   protected readonly cobertura = signal<CoberturaRespuesta | null>(null);
   protected readonly plan = signal<PlanCompraRespuesta | null>(null);
+  protected readonly modoPlan = signal("juego");
   protected readonly noche = signal<EstaNocheRespuesta | null>(null);
   protected readonly evaluacion = signal<EvaluarRespuesta | null>(null);
   protected readonly evaluacionDetalle = signal<EvaluarRespuesta | null>(null);
@@ -568,16 +708,27 @@ export class App {
       );
   }
 
-  protected async cargarPlan(modo: string): Promise<void> {
+  protected async cargarPlan(
+    modo: string,
+    n: number,
+    presupuesto: number | undefined,
+    average_min: number,
+    users_rated_min: number,
+    orden: string,
+  ): Promise<void> {
     this.plan.set(
       await firstValueFrom(
         this.api.plan({
-          n: 5,
+          n,
           modo,
-          ...(modo === "precio" ? { presupuesto: 60 } : {}),
+          presupuesto,
+          average_min,
+          users_rated_min,
+          orden,
         }),
       ),
     );
+    setTimeout(() => this.dibujarRadaresPlan());
   }
 
   protected async evaluarDetalle(): Promise<void> {
@@ -611,7 +762,12 @@ export class App {
   }
   protected ejes(): {
     nombre: string;
-    valor: { porcentaje: number; faltantes: string[]; debiles: object };
+    valor: {
+      porcentaje: number;
+      faltantes: string[];
+      debiles: object;
+      conteo_por_nivel: Record<string, number>;
+    };
   }[] {
     return Object.entries(this.cobertura()?.ejes ?? {}).map(
       ([nombre, valor]) => ({ nombre, valor }),
@@ -674,6 +830,21 @@ export class App {
     return [...salida].map(([nombre, juegos]) => ({ nombre, juegos }));
   }
 
+  protected filasEstante(juegos: JuegoDetalle[]): JuegoDetalle[][] {
+    const ancho = window.innerWidth;
+    const maximo = ancho < 640 ? 3 : ancho < 1024 ? 5 : 7;
+    return Array.from(
+      { length: Math.ceil(juegos.length / maximo) },
+      (_, indice) => juegos.slice(indice * maximo, (indice + 1) * maximo),
+    );
+  }
+
+  @HostListener("window:resize")
+  protected actualizarEstantes(): void {
+    // Fuerza una detección para recalcular filas al cambiar el ancho disponible.
+    this.juegos.update((juegos) => [...juegos]);
+  }
+
   private async cargarColeccion(): Promise<void> {
     try {
       const coleccion = await firstValueFrom(this.api.coleccion());
@@ -701,7 +872,10 @@ export class App {
   }
   private async cargarCobertura(): Promise<void> {
     this.cobertura.set(await firstValueFrom(this.api.cobertura()));
-    setTimeout(() => this.dibujarRadar());
+    setTimeout(() => {
+      this.dibujarRadar();
+      this.dibujarGraficasCobertura();
+    });
   }
   private dibujarRadar(): void {
     const canvas = document.getElementById(
@@ -727,5 +901,136 @@ export class App {
         plugins: { legend: { display: false } },
       },
     });
+  }
+
+  private dibujarGraficasCobertura(): void {
+    this.graficas.forEach((grafica) => grafica.destroy());
+    this.graficas.clear();
+    const ejes = this.cobertura()?.ejes;
+    if (!ejes) return;
+    this.dibujarConteosRadar("radar-mecanicas", "Mecánicas", ejes["Mecánicas"]);
+    this.dibujarConteosRadar("radar-tematica", "Temática", ejes["Temática"]);
+    this.dibujarConteosRadar("radar-jugadores", "Jugadores", ejes["Jugadores"]);
+    this.dibujarConteosBarras("barras-peso", "Peso", ejes["Peso"]);
+    this.dibujarConteosBarras("barras-duracion", "Duración", ejes["Duración"]);
+    this.dibujarConteosBarras(
+      "barras-interaccion",
+      "Interacción",
+      ejes["Interacción"],
+    );
+  }
+
+  private dibujarConteosRadar(
+    id: string,
+    titulo: string,
+    eje: CoberturaRespuesta["ejes"][string] | undefined,
+  ): void {
+    const canvas = document.getElementById(id) as HTMLCanvasElement | null;
+    if (!canvas || !eje) return;
+    const conteos = eje.conteo_por_nivel;
+    this.graficas.set(
+      id,
+      new Chart(canvas, {
+        type: "radar",
+        data: {
+          labels: Object.keys(conteos),
+          datasets: [
+            {
+              label: titulo,
+              data: Object.values(conteos),
+              borderColor: "#8d5221",
+              backgroundColor: "rgba(178,112,35,.18)",
+              pointBackgroundColor: Object.values(conteos).map(
+                this.colorConteo,
+              ),
+            },
+          ],
+        },
+        options: {
+          plugins: { legend: { display: false } },
+          scales: { r: { beginAtZero: true, ticks: { display: false } } },
+        },
+      }),
+    );
+  }
+
+  private dibujarConteosBarras(
+    id: string,
+    titulo: string,
+    eje: CoberturaRespuesta["ejes"][string] | undefined,
+  ): void {
+    const canvas = document.getElementById(id) as HTMLCanvasElement | null;
+    if (!canvas || !eje) return;
+    const conteos = eje.conteo_por_nivel;
+    this.graficas.set(
+      id,
+      new Chart(canvas, {
+        type: "bar",
+        data: {
+          labels: Object.keys(conteos),
+          datasets: [
+            {
+              label: titulo,
+              data: Object.values(conteos),
+              backgroundColor: Object.values(conteos).map(this.colorConteo),
+            },
+          ],
+        },
+        options: {
+          indexAxis: "y",
+          plugins: { legend: { display: false } },
+          scales: { x: { beginAtZero: true } },
+        },
+      }),
+    );
+  }
+
+  private dibujarRadaresPlan(): void {
+    for (const juego of this.plan()?.juegos ?? []) {
+      const canvas = document.getElementById(
+        `plan-radar-${juego.id}`,
+      ) as HTMLCanvasElement | null;
+      if (!canvas) continue;
+      const anterior = this.graficas.get(canvas.id);
+      anterior?.destroy();
+      const etiquetas = Object.keys(juego.cobertura_antes.porcentajes);
+      this.graficas.set(
+        canvas.id,
+        new Chart(canvas, {
+          type: "radar",
+          data: {
+            labels: etiquetas,
+            datasets: [
+              {
+                label: "Antes",
+                data: etiquetas.map(
+                  (eje) => juego.cobertura_antes.porcentajes[eje],
+                ),
+                borderColor: "#8d6a1c",
+                backgroundColor: "rgba(141,106,28,.12)",
+              },
+              {
+                label: "Después",
+                data: etiquetas.map(
+                  (eje) => juego.cobertura_despues.porcentajes[eje],
+                ),
+                borderColor: "#28704b",
+                backgroundColor: "rgba(40,112,75,.15)",
+              },
+            ],
+          },
+          options: {
+            scales: { r: { min: 0, max: 100, ticks: { display: false } } },
+            plugins: {
+              legend: { labels: { boxWidth: 10, font: { size: 9 } } },
+            },
+          },
+        }),
+      );
+    }
+  }
+
+  private colorConteo(conteo: number): string {
+    return conteo === 0 ? "#b6493b" : conteo === 1 ? "#c58d23" : "#28704b";
   }
 }

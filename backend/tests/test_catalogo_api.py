@@ -144,7 +144,21 @@ def test_plan_only_lists_missing_or_weak_levels(api_client: TestClient) -> None:
     )
 
     assert plan.status_code == 200
+    assert "precio_total_usd" in plan.json()
+    assert "juegos_sin_precio" in plan.json()
+    assert "costo" not in plan.json()
     for game in plan.json()["juegos"]:
+        assert set(game["cobertura_antes"]["porcentajes"]) == set(coverage)
+        assert set(game["cobertura_despues"]["porcentajes"]) == set(coverage)
         for level in game["niveles_que_cubre"]:
             assert coverage[level["eje"]]["conteo_por_nivel"][level["nivel"]] < 2
             assert level["estado"] in {"faltante", "debil"}
+
+
+def test_plan_admite_orden_mejor_valorados(api_client: TestClient) -> None:
+    response = api_client.post(
+        "/api/v1/engine/buy-plan",
+        json={"modo": "juego", "n": 1, "users_rated_min": 0, "orden": "mejor_valorados"},
+    )
+
+    assert response.status_code == 200
