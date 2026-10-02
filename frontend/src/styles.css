@@ -176,8 +176,9 @@ body {
 .impacto-fila i::before { left: 0; }
 .impacto-fila i::after { right: 0; background: #b27023; }
 .impacto-fila.sin-cambio { opacity: 0.38; }
+.impacto-texto { margin: 0; font-weight: 700; }
 .transiciones { color: #6b4b25; font-size: 0.68rem; }
-.coverage-summary { display: grid; grid-template-columns: minmax(0, 1fr) 145px; gap: 0.75rem; }
+.coverage-summary { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
 .coverage-stacks { position: relative; min-height: 300px; }
 .coverage-radar {
   position: relative;

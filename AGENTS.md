@@ -50,6 +50,7 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - La clave de OpenAI se carga en la aplicacion con `pydantic-settings` desde el entorno y `env_file=".env"`; se modela como `SecretStr`, nunca se imprime ni persiste.
 - Excepcion aprobada para Fase 0: no se ejecuta `make lint` porque el Makefile pertenece al andamiaje de Fase 1 y aun no existe.
 - La busqueda automatica de secretos debe excluir `artefactos/` y las URLs de imagen de `cf.geekdo-images.com`, o exigir el patron completo de una clave con `sk-` seguido de al menos 20 caracteres sin guiones intermedios de URL. Se confirmo un falso positivo dentro de una URL de imagen del catalogo.
+- Decisiones de entrega: Bloque 1 ajusta cobertura y plan; Bloque 2 incorpora perfiles B2B y Cafe demo; Bloque 3 implementa la Fase 4; Bloque 4 considera Fase 5 solo si hay tiempo. Cada bloque se cierra y reporta por separado.
 
 ## Fase 1
 

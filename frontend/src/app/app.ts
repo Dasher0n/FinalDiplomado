@@ -266,12 +266,6 @@ Chart.register(
         <h2 class="font-serif text-4xl">Cobertura de la colección</h2>
         <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
           <section class="panel coverage-summary">
-            <div class="coverage-stacks">
-              <canvas
-                id="barras-resumen"
-                aria-label="Estados de cobertura por eje"
-              ></canvas>
-            </div>
             <div class="coverage-radar coverage-radar-small">
               <canvas
                 id="radar-cobertura"
@@ -322,7 +316,7 @@ Chart.register(
                   min="0"
                   max="10"
                   step="0.1"
-                  value="0"
+                  value="6.5"
               /></label>
               <label
                 >Votos mínimos<input
@@ -454,9 +448,7 @@ Chart.register(
                         </div>
                         <div class="impacto-lista">
                           @for (eje of impactoEjes(juego.impacto); track eje.nombre) {
-                            <div class="impacto-fila" [class.sin-cambio]="!eje.cambio">
-                              <span>{{ eje.nombre }}</span><i></i><b>{{ eje.antes }} → {{ eje.despues }}</b>
-                            </div>
+                            @if (eje.cambio) { <p class="impacto-texto">{{ eje.nombre }} {{ eje.antes }} → {{ eje.despues }} ({{ eje.despues - eje.antes >= 0 ? '+' : '' }}{{ eje.despues - eje.antes }})</p> }
                           }
                           <p class="transiciones">{{ transiciones(juego.impacto) }}</p>
                         </div>
