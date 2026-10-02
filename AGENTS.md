@@ -92,6 +92,10 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - Cafe excluye la mecanica exacta `Legacy Game` y los titulos cuyo nombre inicia exactamente con `EXIT: The Game`. La segunda es una regla explicita de serie porque el catalogo no tiene una etiqueta especifica para EXIT.
 - No se excluyen `Game: Escape (Queen Games)`, `Game: Lost Legacy` ni `Game: Flash Point Legacy of Flame`.
 
+## Bloque 3
+
+- La Fase 4 implementa planner con degradacion determinista, plan persistido antes de tools, ejecucion secuencial, narrador por plantillas y critic determinista. El chat usa el perfil activo como contexto y no expone modo precio.
+
 ## Bloque 2
 
 - Se agregaron perfiles versionados de colección. `coleccionista` conserva meta 2 en todos los niveles y reproduce las pruebas doradas y el anexo existentes.

@@ -226,6 +226,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Conversar */
+        post: operations["chat_conversar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Runs */
+        get: operations["chat_runs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run */
+        get: operations["chat_run"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -253,6 +304,15 @@ export interface components {
             /** Despues */
             despues: number;
         };
+        /** CandidatoChat */
+        CandidatoChat: {
+            /** Id */
+            id: string;
+            /** Nombre */
+            nombre: string;
+            /** Imagen Url */
+            imagen_url?: string | null;
+        };
         /** Capabilities */
         Capabilities: {
             /** Llm Active */
@@ -263,6 +323,36 @@ export interface components {
             api_fase: number;
             /** Endpoints Habilitados */
             endpoints_habilitados: string[];
+        };
+        /** ChatRespuesta */
+        ChatRespuesta: {
+            /** Run Id */
+            run_id: string;
+            /** Session Id */
+            session_id: string;
+            /** Intent */
+            intent: string;
+            /** Plan */
+            plan: components["schemas"]["PasoPlan"][];
+            /** Answer */
+            answer: string;
+            /** Tarjetas */
+            tarjetas?: components["schemas"]["TarjetaChat"][];
+            /** Candidatos */
+            candidatos?: components["schemas"]["CandidatoChat"][];
+            /** Critic Passed */
+            critic_passed: boolean;
+            /** Llm Used */
+            llm_used: boolean;
+        };
+        /** ChatSolicitud */
+        ChatSolicitud: {
+            /** Mensaje */
+            mensaje: string;
+            /** Session Id */
+            session_id?: string | null;
+            /** Game Id */
+            game_id?: string | null;
         };
         /** CoberturaEjeRespuesta */
         CoberturaEjeRespuesta: {
@@ -657,6 +747,24 @@ export interface components {
             juegos_sin_precio: number;
             impacto: components["schemas"]["ImpactoCobertura"];
         };
+        /** PasoPlan */
+        PasoPlan: {
+            /** Id */
+            id: string;
+            /** Tool */
+            tool: string;
+            /** Args */
+            args?: {
+                [key: string]: unknown;
+            };
+            /** Depends On */
+            depends_on?: string[];
+            /**
+             * Estado
+             * @default pendiente
+             */
+            estado: string;
+        };
         /** PerfilRespuesta */
         PerfilRespuesta: {
             /** Id */
@@ -731,6 +839,21 @@ export interface components {
             /** Url Bgp */
             url_bgp: string | null;
         };
+        /** RunResumen */
+        RunResumen: {
+            /** Id */
+            id: string;
+            /** Session Id */
+            session_id: string | null;
+            /** Pregunta */
+            pregunta: string;
+            /** Intent */
+            intent: string | null;
+            /** Estado */
+            estado: string;
+            /** Creado En */
+            creado_en: string;
+        };
         /** SimilitudRespuesta */
         SimilitudRespuesta: {
             /** Mecanicas */
@@ -743,6 +866,15 @@ export interface components {
             tematica: number | null;
             /** Total */
             total: number;
+        };
+        /** TarjetaChat */
+        TarjetaChat: {
+            /** Tipo */
+            tipo: string;
+            /** Datos */
+            datos: {
+                [key: string]: unknown;
+            };
         };
         /** ValidationError */
         ValidationError: {
@@ -1187,6 +1319,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VentaImpactoRespuesta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_conversar: {
+        parameters: {
+            query?: {
+                perfil?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatSolicitud"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatRespuesta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_runs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResumen"][];
+                };
+            };
+        };
+    };
+    chat_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatRespuesta"];
                 };
             };
             /** @description Validation Error */

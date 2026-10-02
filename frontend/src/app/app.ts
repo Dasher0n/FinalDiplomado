@@ -32,6 +32,7 @@ import {
   PlanCompraRespuesta,
   Perfil,
   VentaImpactoRespuesta,
+  ChatRespuesta,
 } from "./core/api/catalogo.service";
 
 Chart.register(
@@ -509,49 +510,43 @@ Chart.register(
 
     @if (vista() === "chat") {
       <section class="mx-auto max-w-3xl px-4 py-7">
-        <p class="eyebrow">Vista previa del asistente</p>
+        <p class="eyebrow">Asistente de ludoteca · {{ etiquetaPerfil() }}</p>
         <h2 class="font-serif text-4xl">Pregunta a Wise Dice</h2>
         <article class="chat-card mt-6">
-          <p class="bubble user">
-            Tengo ganas de comprar Wyrmspan, ¿vale la pena?
-          </p>
-          @if (evaluacion()) {
-            <div class="bubble answer">
-              <p class="text-sm">
-                <b>Candidato:</b> {{ evaluacion()!.juego.nombre }}
-              </p>
-              <p class="text-sm">
-                <b>Más parecido:</b>
-                {{
-                  evaluacion()!.juego_mas_parecido?.nombre ?? "Sin comparación"
-                }}
-              </p>
-              <div class="resultado-evaluacion">
-                <b>{{ etiqueta(evaluacion()!.veredicto) }}</b>
-                <p>{{ evaluacion()!.veredicto_razones.join(" ") }}</p>
-                <p>
-                  Similitud total:
-                  {{ evaluacion()!.similitud?.total | number: "1.2-2" }}
-                </p>
-                @for (bloque of barras(evaluacion()!); track bloque.nombre) {
-                  <div class="bar-label">
-                    {{ bloque.nombre }}
-                    <span>{{ bloque.valor | number: "1.0-0" }}%</span>
-                  </div>
-                  <div class="bar"><i [style.width.%]="bloque.valor"></i></div>
-                }
-              </div>
-            </div>
-          } @else {
-            <p class="text-sm text-stone-600">
-              Preparando la evaluación de Wyrmspan...
+          @for (mensaje of mensajesChat(); track $index) {
+            <p class="bubble" [class.user]="mensaje.role === 'user'" [class.answer]="mensaje.role === 'assistant'">
+              {{ mensaje.texto }}
             </p>
           }
-          <input
-            class="input mt-4 w-full"
-            disabled
-            value="El chat conversacional estará disponible en la siguiente fase."
-          />
+          @if (chatRespuesta()) {
+            <div class="bubble answer">
+              <div class="flex flex-wrap gap-1">
+                @for (paso of chatRespuesta()!.plan; track paso.id) {
+                  <span class="level-chip">{{ paso.tool }} · {{ paso.estado }}</span>
+                }
+              </div>
+              <p class="mt-3 whitespace-pre-line">{{ chatRespuesta()!.answer }}</p>
+              @for (tarjeta of chatRespuesta()!.tarjetas; track $index) {
+                @if (tarjetaJuego(tarjeta); as juego) {
+                  <article class="recommendation mt-3">
+                    <b>{{ juego.nombre }}</b>
+                    @if (tarjetaVeredicto(tarjeta); as veredicto) { <p>{{ etiqueta(veredicto) }}</p> }
+                  </article>
+                }
+              }
+              @if ((chatRespuesta()!.candidatos ?? []).length) {
+                <div class="mt-3 flex flex-wrap gap-2">
+                  @for (candidato of chatRespuesta()!.candidatos ?? []; track candidato.id) {
+                    <button class="chip" (click)="enviarChat(candidato.nombre, candidato.id)">{{ candidato.nombre }}</button>
+                  }
+                </div>
+              }
+            </div>
+          }
+          <div class="mt-4 flex gap-2">
+            <input #pregunta class="input w-full" placeholder="Ejemplo: ¿Qué le falta a mi colección?" (keyup.enter)="enviarChat(pregunta.value); pregunta.value = ''" />
+            <button class="primary" (click)="enviarChat(pregunta.value); pregunta.value = ''">Enviar</button>
+          </div>
         </article>
       </section>
     }
@@ -754,7 +749,9 @@ export class App {
   protected readonly cobertura = signal<CoberturaRespuesta | null>(null);
   protected readonly plan = signal<PlanCompraRespuesta | null>(null);
   protected readonly noche = signal<EstaNocheRespuesta | null>(null);
-  protected readonly evaluacion = signal<EvaluarRespuesta | null>(null);
+  protected readonly chatRespuesta = signal<ChatRespuesta | null>(null);
+  protected readonly mensajesChat = signal<{ role: "user" | "assistant"; texto: string }[]>([]);
+  private chatSessionId: string | undefined;
   protected readonly evaluacionDetalle = signal<EvaluarRespuesta | null>(null);
   protected readonly ventaDetalle = signal<VentaImpactoRespuesta | null>(null);
   protected readonly tooltip = signal<{
@@ -767,7 +764,6 @@ export class App {
   constructor() {
     void this.cargarPerfiles();
     void this.cargarColeccion();
-    void this.cargarPreviewChat();
   }
 
   protected async cambiarPerfil(perfil: string): Promise<void> {
@@ -864,6 +860,19 @@ export class App {
       );
   }
 
+  protected async enviarChat(mensaje: string, gameId?: string): Promise<void> {
+    if (!mensaje.trim()) return;
+    this.mensajesChat.update((mensajes) => [...mensajes, { role: "user", texto: mensaje }]);
+    try {
+      const respuesta = await firstValueFrom(this.api.chat(mensaje, this.perfilActivo(), this.chatSessionId, gameId));
+      this.chatSessionId = respuesta.session_id;
+      this.chatRespuesta.set(respuesta);
+      this.mensajesChat.update((mensajes) => [...mensajes, { role: "assistant", texto: respuesta.answer }]);
+    } catch {
+      this.error.set("No fue posible consultar al asistente.");
+    }
+  }
+
   protected rango(juego: JuegoDetalle): string {
     return `${juego.jugadores_minimos ?? "n/d"} a ${juego.jugadores_maximos ?? "n/d"}`;
   }
@@ -933,6 +942,20 @@ export class App {
           { nombre: "Temática", valor: 100 * (similitud.tematica ?? 0) },
         ]
       : [];
+  }
+  protected tarjetaJuego(
+    tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number],
+  ): { nombre: string } | null {
+    const juego = tarjeta.datos["juego"];
+    return juego && typeof juego === "object" && "nombre" in juego && typeof juego.nombre === "string"
+      ? { nombre: juego.nombre }
+      : null;
+  }
+  protected tarjetaVeredicto(
+    tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number],
+  ): string | null {
+    const veredicto = tarjeta.datos["veredicto"];
+    return typeof veredicto === "string" ? veredicto : null;
   }
   protected etiquetasNiveles(
     niveles: EvaluarRespuesta["niveles_que_cubre"],
@@ -1057,19 +1080,6 @@ export class App {
       );
     } catch {
       this.error.set("No fue posible cargar la colección demo.");
-    }
-  }
-  private async cargarPreviewChat(): Promise<void> {
-    try {
-      const juegos = (await firstValueFrom(this.api.buscar("Wyrmspan"))).juegos;
-      if (juegos[0])
-        this.evaluacion.set(
-          await firstValueFrom(
-            this.api.evaluar(juegos[0].id, this.perfilActivo()),
-          ),
-        );
-    } catch {
-      /* La vista previa queda pendiente si la API no esta disponible. */
     }
   }
   private async cargarCobertura(): Promise<void> {
