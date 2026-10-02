@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-CONFIGURACION_PERFILES_VERSION = 1
+CONFIGURACION_PERFILES_VERSION = 2
 
 CAFE_GAME_IDS = (
     "822",
@@ -97,7 +97,7 @@ PERFILES = (
         "id": "cafe",
         "nombre": "Café demo",
         "tipo": "mesa",
-        "descripcion": "Ludoteca B2B para una mesa con variedad y rotación.",
+        "descripcion": "Ludoteca B2B variada y rotativa. No opera partidas en solitario.",
         "metas": {
             "Jugadores": {"1": 0, "2": 3, "3 a 4": 4, "5 a 6": 5, "7 o más": 4},
             "Duración": {"hasta 30": 6, "31 a 60": 6, "61 a 120": 2, "más de 120": 1},

@@ -13,7 +13,7 @@ from app.engine.motor import (
     cobertura,
     evaluar_redundancia,
     niveles_de_juego,
-    plan_compra,
+    opciones_compra,
     que_saco_hoy,
 )
 from app.repositories.catalogo import CatalogoRepository
@@ -33,6 +33,7 @@ from app.schemas.engine import (
     JuegoPlanCompra,
     JuegoSimilar,
     NivelCubierto,
+    OpcionPlanCompra,
     PlanCompraRespuesta,
     PlanCompraSolicitud,
     SimilitudRespuesta,
@@ -281,9 +282,10 @@ async def comprar_plan(
         raise SolicitudInvalidaMotor("El modo precio requiere un presupuesto.")
     artefactos = _artefactos(request)
     repo = CatalogoRepository(session)
-    resultado = plan_compra(
+    coleccion = await _coleccion(session, user, perfil.id)
+    resultados = opciones_compra(
         artefactos,
-        await _coleccion(session, user, perfil.id),
+        coleccion,
         await repo.todos_los_juegos(),
         n=solicitud.n,
         modo=solicitud.modo,
@@ -294,7 +296,6 @@ async def comprar_plan(
         orden=solicitud.orden,
         metas=perfil.metas,
     )
-    coleccion = await _coleccion(session, user, perfil.id)
     cobertura_actual = cobertura(artefactos, coleccion, perfil.metas)
     estados_huecos = {
         (eje, nivel): "faltante"
@@ -307,31 +308,38 @@ async def comprar_plan(
         if eje not in solicitud.ejes_ignorados
         for nivel in eje_cobertura.debiles
     }
-    juegos_plan = []
-    acumulados = list(coleccion)
-    for juego in resultado.juegos:
-        antes = list(acumulados)
-        acumulados.append(juego)
-        juegos_plan.append(
-            JuegoPlanCompra(
-                **_juego(juego, artefactos, estados_huecos).model_dump(),
-                impacto=_impacto_cobertura(artefactos, antes, acumulados, perfil.metas),
+    opciones = []
+    for etiqueta, resultado in zip(("A", "B", "C"), resultados, strict=True):
+        juegos_plan = []
+        acumulados = list(coleccion)
+        for juego in resultado.juegos:
+            antes = list(acumulados)
+            acumulados.append(juego)
+            juegos_plan.append(
+                JuegoPlanCompra(
+                    **_juego(juego, artefactos, estados_huecos).model_dump(),
+                    impacto=_impacto_cobertura(artefactos, antes, acumulados, perfil.metas),
+                )
+            )
+        opciones.append(
+            OpcionPlanCompra(
+                etiqueta=etiqueta,
+                juegos=juegos_plan,
+                valor_cubierto=resultado.valor_cubierto,
+                valor_pendiente=resultado.valor_pendiente,
+                precio_total_usd=round(
+                    sum(
+                        float(juego.precio_usd)
+                        for juego in resultado.juegos
+                        if juego.precio_usd is not None
+                    ),
+                    2,
+                ),
+                juegos_sin_precio=sum(juego.precio_usd is None for juego in resultado.juegos),
+                impacto=_impacto_cobertura(artefactos, coleccion, acumulados, perfil.metas),
             )
         )
-    return PlanCompraRespuesta(
-        juegos=juegos_plan,
-        valor_cubierto=resultado.valor_cubierto,
-        valor_pendiente=resultado.valor_pendiente,
-        precio_total_usd=round(
-            sum(
-                float(juego.precio_usd)
-                for juego in resultado.juegos
-                if juego.precio_usd is not None
-            ),
-            2,
-        ),
-        juegos_sin_precio=sum(juego.precio_usd is None for juego in resultado.juegos),
-    )
+    return PlanCompraRespuesta(opciones=opciones)
 
 
 @router.post("/tonight", response_model=EstaNocheRespuesta)

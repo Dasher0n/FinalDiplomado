@@ -125,12 +125,18 @@ class JuegoPlanCompra(JuegoMotor):
     impacto: ImpactoCobertura
 
 
-class PlanCompraRespuesta(BaseModel):
+class OpcionPlanCompra(BaseModel):
+    etiqueta: str
     juegos: list[JuegoPlanCompra]
     valor_cubierto: float
     valor_pendiente: float
     precio_total_usd: float
     juegos_sin_precio: int
+    impacto: ImpactoCobertura
+
+
+class PlanCompraRespuesta(BaseModel):
+    opciones: list[OpcionPlanCompra]
 
 
 class EstaNocheSolicitud(BaseModel):

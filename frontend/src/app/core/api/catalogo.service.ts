@@ -89,8 +89,6 @@ export class CatalogoService {
   plan(
     datos: {
       n: number;
-      modo: string;
-      presupuesto?: number;
       average_min: number;
       users_rated_min: number;
       orden: string;
@@ -99,7 +97,7 @@ export class CatalogoService {
   ) {
     return this.http.post<PlanCompraRespuesta>(
       "/api/v1/engine/buy-plan",
-      datos,
+      { ...datos, modo: "juego" },
       { params: { perfil } },
     );
   }

@@ -14,6 +14,7 @@ from app.engine.motor import (
     buscar_local,
     cobertura,
     evaluar_redundancia,
+    opciones_compra,
     plan_compra,
     que_saco_hoy,
     regla_exacta,
@@ -175,6 +176,58 @@ def test_plan_permite_priorizar_mejor_valorados() -> None:
         orden="mejor_valorados",
     )
     assert len(resultado.juegos) == 1
+
+
+def test_opciones_de_plan_son_disjuntas_y_no_mejoran_la_anterior() -> None:
+    juegos = cargar_juegos({"266192", "410201", "350184"})
+
+    opciones = opciones_compra(
+        ARTEFACTOS,
+        [juegos["266192"]],
+        [juegos["410201"], juegos["350184"]],
+        n=1,
+        modo="juego",
+        users_rated_min=0,
+    )
+
+    assert len(opciones) == 3
+    ids = [{juego.id for juego in opcion.juegos} for opcion in opciones]
+    assert not ids[0] & ids[1]
+    assert not ids[0] & ids[2]
+    assert not ids[1] & ids[2]
+    assert opciones[0].valor_cubierto >= opciones[1].valor_cubierto >= opciones[2].valor_cubierto
+
+
+def test_plan_reparte_el_valor_de_meta_superior_a_dos() -> None:
+    primero = Game(
+        id="primero",
+        nombre="Primero",
+        fila_vector=0,
+        nivel_jugadores=["2"],
+        average=7,
+        users_rated=1000,
+    )
+    segundo = Game(
+        id="segundo",
+        nombre="Segundo",
+        fila_vector=1,
+        nivel_jugadores=["2"],
+        average=7,
+        users_rated=1000,
+    )
+
+    resultado = plan_compra(
+        ARTEFACTOS,
+        [],
+        [primero, segundo],
+        n=2,
+        modo="juego",
+        users_rated_min=0,
+        metas={"Jugadores": {"2": 3}},
+    )
+
+    assert resultado.valor_cubierto == pytest.approx(0.15)
+    assert resultado.valor_pendiente == pytest.approx(5.85)
 
 
 def test_que_saco_hoy_y_busqueda_ambigua() -> None:

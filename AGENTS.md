@@ -51,6 +51,7 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - Excepcion aprobada para Fase 0: no se ejecuta `make lint` porque el Makefile pertenece al andamiaje de Fase 1 y aun no existe.
 - La busqueda automatica de secretos debe excluir `artefactos/` y las URLs de imagen de `cf.geekdo-images.com`, o exigir el patron completo de una clave con `sk-` seguido de al menos 20 caracteres sin guiones intermedios de URL. Se confirmo un falso positivo dentro de una URL de imagen del catalogo.
 - Decisiones de entrega: Bloque 1 ajusta cobertura y plan; Bloque 2 incorpora perfiles B2B y Cafe demo; Bloque 3 implementa la Fase 4; Bloque 4 considera Fase 5 solo si hay tiempo. Cada bloque se cierra y reporta por separado.
+- Cambio de alcance del plan: la interfaz y las tools del chat solo exponen planes por numero de juegos con tres opciones disjuntas. El modo precio se conserva en backend y pruebas, pero no se expone. Los precios de BoardGamePrices quedan como referencia en el detalle.
 
 ## Fase 1
 

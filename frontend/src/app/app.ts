@@ -294,22 +294,6 @@ Chart.register(
             </div>
           </section>
           <section class="panel">
-            <div class="flex flex-wrap gap-2">
-              <button
-                class="chip"
-                [class.active]="modoPlan() === 'juego'"
-                (click)="modoPlan.set('juego')"
-              >
-                Plan por juegos
-              </button>
-              <button
-                class="chip"
-                [class.active]="modoPlan() === 'precio'"
-                (click)="modoPlan.set('precio')"
-              >
-                Plan por precio
-              </button>
-            </div>
             <div class="mt-3 flex flex-wrap items-end gap-3">
               <label
                 >Número de juegos<input
@@ -319,14 +303,6 @@ Chart.register(
                   min="1"
                   max="20"
                   value="5"
-              /></label>
-              <label [class.hidden]="modoPlan() !== 'precio'"
-                >Presupuesto USD<input
-                  #presupuesto
-                  class="input mt-1"
-                  type="number"
-                  min="1"
-                  value="60"
               /></label>
               <label
                 >Promedio mínimo<input
@@ -356,9 +332,7 @@ Chart.register(
                 class="primary"
                 (click)="
                   cargarPlan(
-                    modoPlan(),
                     +planN.value,
-                    modoPlan() === 'precio' ? +presupuesto.value : undefined,
                     +promedio.value,
                     +votos.value,
                     orden.value
@@ -368,17 +342,10 @@ Chart.register(
                 Crear plan
               </button>
             </div>
-            @if (modoPlan() === "juego") {
-              <p class="guarantee">
-                Mejor ajuste usa cobertura pendiente por juego: garantiza al
-                menos el 63% del óptimo para este modelo.
-              </p>
-            } @else {
-              <p class="guarantee">
-                Por precio compara el greedy con el mejor juego individual que
-                cabe en tu presupuesto.
-              </p>
-            }
+            <p class="guarantee">
+              Cada alternativa usa cobertura pendiente por juego. B y C no
+              repiten juegos de las opciones anteriores.
+            </p>
             @if (cobertura()) {
               <div class="mt-4 grid gap-3 sm:grid-cols-2">
                 @for (eje of ejes(); track eje.nombre) {
@@ -398,92 +365,99 @@ Chart.register(
             }
             @if (plan()) {
               <div class="mt-5 border-t pt-4">
-                <div class="plan-summary">
-                  <b>Plan de compra</b
-                  ><span
-                    >{{ plan()!.juegos.length }} juegos · USD
-                    {{ plan()!.precio_total_usd | number: "1.2-2" }} visibles ·
-                    valor pendiente
-                    {{ plan()!.valor_pendiente | number: "1.2-2" }}</span
-                  >
-                </div>
-                <p class="mt-1 text-xs text-stone-600">
-                  {{ plan()!.juegos_sin_precio }} sin precio disponible. El
-                  total usa precios visibles, no el costo interno del algoritmo.
-                </p>
                 <div class="chip-legend">
                   ><span class="level-chip missing-chip">Nivel faltante</span
                   ><span class="level-chip weak-chip">Nivel débil</span>
                 </div>
                 <div class="mt-3 grid gap-3">
-                  @for (juego of plan()!.juegos; track juego.id) {
+                  @for (opcion of plan()!.opciones; track opcion.etiqueta) {
                     <article class="recommendation">
-                      <div class="flex gap-3">
-                        @if (juego.imagen_url) {
-                          <img
-                            class="plan-cover"
-                            [src]="juego.imagen_url"
-                            [alt]="juego.nombre"
-                          />
+                      <div class="plan-summary">
+                        <b>Opción {{ opcion.etiqueta }}</b
+                        ><span
+                          >{{ opcion.juegos.length }} juegos · valor cubierto
+                          {{ opcion.valor_cubierto | number: "1.2-2" }} ·
+                          pendiente
+                          {{ opcion.valor_pendiente | number: "1.2-2" }}</span
+                        >
+                      </div>
+                      <p class="transiciones">
+                        {{ transiciones(opcion.impacto) }}
+                      </p>
+                      <div class="mt-3 grid gap-3">
+                        @for (juego of opcion.juegos; track juego.id) {
+                          <article class="recommendation">
+                            <div class="flex gap-3">
+                              @if (juego.imagen_url) {
+                                <img
+                                  class="plan-cover"
+                                  [src]="juego.imagen_url"
+                                  [alt]="juego.nombre"
+                                />
+                              }
+                              <div>
+                                <b>{{ juego.nombre }}</b>
+                                <p>
+                                  @if (juego.precio_usd) {
+                                    USD {{ juego.precio_usd }} EE. UU.
+                                  } @else {
+                                    Precio no disponible
+                                  }
+                                </p>
+                                @if (juego.fecha_precio) {
+                                  <small
+                                    >Actualizado
+                                    {{ juego.fecha_precio | date }}</small
+                                  >
+                                }
+                                @if (juego.url_bgp) {
+                                  <a
+                                    class="ml-2 text-amber-800 underline"
+                                    [href]="juego.url_bgp"
+                                    target="_blank"
+                                    rel="noopener"
+                                    >BoardGamePrices</a
+                                  >
+                                }
+                                <div class="mt-2 flex flex-wrap gap-1">
+                                  @for (
+                                    nivel of juego.niveles_que_cubre;
+                                    track nivel.eje + nivel.nivel
+                                  ) {
+                                    <span
+                                      class="level-chip"
+                                      [class.missing-chip]="
+                                        nivel.estado === 'faltante'
+                                      "
+                                      [class.weak-chip]="
+                                        nivel.estado === 'debil'
+                                      "
+                                      >{{ nivel.eje }}: {{ nivel.nivel }}</span
+                                    >
+                                  }
+                                </div>
+                              </div>
+                              <div class="impacto-lista">
+                                @for (
+                                  eje of impactoEjes(juego.impacto);
+                                  track eje.nombre
+                                ) {
+                                  @if (eje.cambio) {
+                                    <p class="impacto-texto">
+                                      {{ eje.nombre }} {{ eje.antes }} →
+                                      {{ eje.despues }} ({{
+                                        eje.despues - eje.antes >= 0 ? "+" : ""
+                                      }}{{ eje.despues - eje.antes }})
+                                    </p>
+                                  }
+                                }
+                                <p class="transiciones">
+                                  {{ transiciones(juego.impacto) }}
+                                </p>
+                              </div>
+                            </div>
+                          </article>
                         }
-                        <div>
-                          <b>{{ juego.nombre }}</b>
-                          <p>
-                            @if (juego.precio_usd) {
-                              USD {{ juego.precio_usd }} EE. UU.
-                            } @else {
-                              Precio no disponible
-                            }
-                          </p>
-                          @if (juego.fecha_precio) {
-                            <small
-                              >Actualizado
-                              {{ juego.fecha_precio | date }}</small
-                            >
-                          }
-                          @if (juego.url_bgp) {
-                            <a
-                              class="ml-2 text-amber-800 underline"
-                              [href]="juego.url_bgp"
-                              target="_blank"
-                              rel="noopener"
-                              >BoardGamePrices</a
-                            >
-                          }
-                          <div class="mt-2 flex flex-wrap gap-1">
-                            @for (
-                              nivel of juego.niveles_que_cubre;
-                              track nivel.eje + nivel.nivel
-                            ) {
-                              <span
-                                class="level-chip"
-                                [class.missing-chip]="
-                                  nivel.estado === 'faltante'
-                                "
-                                [class.weak-chip]="nivel.estado === 'debil'"
-                                >{{ nivel.eje }}: {{ nivel.nivel }}</span
-                              >
-                            }
-                          </div>
-                        </div>
-                        <div class="impacto-lista">
-                          @for (
-                            eje of impactoEjes(juego.impacto);
-                            track eje.nombre
-                          ) {
-                            @if (eje.cambio) {
-                              <p class="impacto-texto">
-                                {{ eje.nombre }} {{ eje.antes }} →
-                                {{ eje.despues }} ({{
-                                  eje.despues - eje.antes >= 0 ? "+" : ""
-                                }}{{ eje.despues - eje.antes }})
-                              </p>
-                            }
-                          }
-                          <p class="transiciones">
-                            {{ transiciones(juego.impacto) }}
-                          </p>
-                        </div>
                       </div>
                     </article>
                   }
@@ -779,7 +753,6 @@ export class App {
   protected readonly error = signal("");
   protected readonly cobertura = signal<CoberturaRespuesta | null>(null);
   protected readonly plan = signal<PlanCompraRespuesta | null>(null);
-  protected readonly modoPlan = signal("juego");
   protected readonly noche = signal<EstaNocheRespuesta | null>(null);
   protected readonly evaluacion = signal<EvaluarRespuesta | null>(null);
   protected readonly evaluacionDetalle = signal<EvaluarRespuesta | null>(null);
@@ -853,9 +826,7 @@ export class App {
   }
 
   protected async cargarPlan(
-    modo: string,
     n: number,
-    presupuesto: number | undefined,
     average_min: number,
     users_rated_min: number,
     orden: string,
@@ -865,8 +836,6 @@ export class App {
         this.api.plan(
           {
             n,
-            modo,
-            presupuesto,
             average_min,
             users_rated_min,
             orden,

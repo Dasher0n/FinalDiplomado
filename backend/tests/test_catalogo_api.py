@@ -63,7 +63,7 @@ def test_profiles_expose_versioned_goals_and_isolated_context(api_client: TestCl
 
     assert profiles.status_code == 200
     cafe_profile = next(item for item in profiles.json()["perfiles"] if item["id"] == "cafe")
-    assert cafe_profile["version_configuracion"] == 1
+    assert cafe_profile["version_configuracion"] == 2
     assert cafe_profile["metas"]["Jugadores"]["1"] == 0
     assert cafe.status_code == 200
     assert cafe.json()["juegos_en_coleccion"] == 0
@@ -185,14 +185,25 @@ def test_plan_only_lists_missing_or_weak_levels(api_client: TestClient) -> None:
     )
 
     assert plan.status_code == 200
-    assert "precio_total_usd" in plan.json()
-    assert "juegos_sin_precio" in plan.json()
-    assert "costo" not in plan.json()
-    for game in plan.json()["juegos"]:
-        assert set(game["impacto"]["ejes"]) == set(coverage)
-        for level in game["niveles_que_cubre"]:
-            assert coverage[level["eje"]]["conteo_por_nivel"][level["nivel"]] < 2
-            assert level["estado"] in {"faltante", "debil"}
+    opciones = plan.json()["opciones"]
+    assert [opcion["etiqueta"] for opcion in opciones] == ["A", "B", "C"]
+    assert (
+        opciones[0]["valor_cubierto"]
+        >= opciones[1]["valor_cubierto"]
+        >= opciones[2]["valor_cubierto"]
+    )
+    ids = [{juego["id"] for juego in opcion["juegos"]} for opcion in opciones]
+    assert not ids[0] & ids[1]
+    assert not ids[0] & ids[2]
+    assert not ids[1] & ids[2]
+    for opcion in opciones:
+        assert "costo" not in opcion
+        assert set(opcion["impacto"]["ejes"]) == set(coverage)
+        for game in opcion["juegos"]:
+            assert set(game["impacto"]["ejes"]) == set(coverage)
+            for level in game["niveles_que_cubre"]:
+                assert coverage[level["eje"]]["conteo_por_nivel"][level["nivel"]] < 2
+                assert level["estado"] in {"faltante", "debil"}
 
 
 def test_impacto_venta_de_codenames_deja_jugadores_sin_cobertura(api_client: TestClient) -> None:

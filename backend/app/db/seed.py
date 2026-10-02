@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -205,6 +205,13 @@ async def seed_demo_user_and_collection(session: AsyncSession) -> tuple[bool, in
                     metas=perfil["metas"],
                 )
             )
+        elif existentes[profile_id].version_configuracion < CONFIGURACION_PERFILES_VERSION:
+            existente = existentes[profile_id]
+            existente.nombre = cast(str, perfil["nombre"])
+            existente.tipo = cast(str, perfil["tipo"])
+            existente.descripcion = cast(str, perfil["descripcion"])
+            existente.version_configuracion = CONFIGURACION_PERFILES_VERSION
+            existente.metas = cast(dict[str, Any], perfil["metas"])
     await session.flush()
 
     additions: list[UserCollection] = []

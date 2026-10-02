@@ -86,6 +86,53 @@ async def init_db() -> None:
                 await connection.execute(
                     text("UPDATE user_collection SET profile_id = 'coleccionista'")
                 )
+            indices = (
+                await connection.execute(text("PRAGMA index_list(user_collection)"))
+            ).mappings()
+            for indice in indices:
+                if not indice["unique"]:
+                    continue
+                columnas_indice = (
+                    await connection.execute(text(f"PRAGMA index_info({indice['name']})"))
+                ).mappings()
+                if {columna["name"] for columna in columnas_indice} == {"user_id", "game_id"}:
+                    await connection.execute(text("DROP TABLE IF EXISTS user_collection_perfiles"))
+                    await connection.execute(
+                        text(
+                            "INSERT OR IGNORE INTO collection_profiles "
+                            "(id, nombre, tipo, descripcion, version_configuracion, "
+                            "metas, creado_en) "
+                            "VALUES ('coleccionista', 'Coleccionista', 'personal', '', 0, '{}', "
+                            "CURRENT_TIMESTAMP)"
+                        )
+                    )
+                    await connection.execute(
+                        text(
+                            "CREATE TABLE user_collection_perfiles ("
+                            "id VARCHAR(32) NOT NULL PRIMARY KEY, "
+                            "user_id VARCHAR(32) NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                            "profile_id VARCHAR(32) NOT NULL REFERENCES collection_profiles(id) "
+                            "ON DELETE CASCADE, "
+                            "game_id VARCHAR(32) NOT NULL REFERENCES games(ID) ON DELETE CASCADE, "
+                            "precio_pagado NUMERIC, agregado_en DATETIME NOT NULL, "
+                            "CONSTRAINT uq_coleccion_perfil_juego "
+                            "UNIQUE (user_id, profile_id, game_id)"
+                            ")"
+                        )
+                    )
+                    await connection.execute(
+                        text(
+                            "INSERT INTO user_collection_perfiles "
+                            "(id, user_id, profile_id, game_id, precio_pagado, agregado_en) "
+                            "SELECT id, user_id, profile_id, game_id, precio_pagado, agregado_en "
+                            "FROM user_collection"
+                        )
+                    )
+                    await connection.execute(text("DROP TABLE user_collection"))
+                    await connection.execute(
+                        text("ALTER TABLE user_collection_perfiles RENAME TO user_collection")
+                    )
+                    break
 
 
 async def dispose_db() -> None:

@@ -189,6 +189,7 @@ def plan_compra(
     precios_usuario: dict[str, Decimal | float] | None = None,
     orden: str = "mejor_ajuste",
     metas: dict[str, dict[str, int]] | None = None,
+    excluir_ids: Iterable[str] = (),
 ) -> ResultadoCompra:
     if modo not in {"juego", "precio"}:
         raise ValueError("El modo debe ser juego o precio")
@@ -197,19 +198,42 @@ def plan_compra(
     if orden not in {"mejor_ajuste", "mejor_valorados"}:
         raise ValueError("El orden debe ser mejor_ajuste o mejor_valorados")
     coleccion = tuple(coleccion)
+    excluidos = set(excluir_ids)
     ignorados = set(ejes_ignorados)
     precios_usuario = precios_usuario or {}
-    actual = cobertura(artefactos, coleccion, metas)
     metas = metas or {}
-    valores = {
-        (eje, nivel): (
-            1 / sum(metas.get(eje, {}).get(nivel_eje, 2) > 0 for nivel_eje in artefactos.tipos[eje])
-        )
-        * (1 if nivel in resultado.faltantes else 0.5 / (metas.get(eje, {}).get(nivel, 2) - 1))
-        for eje, resultado in actual.ejes.items()
+    conteos = {
+        (eje, nivel): 0
+        for eje, niveles in artefactos.tipos.items()
         if eje not in ignorados
-        for nivel in (*resultado.faltantes, *resultado.debiles)
+        for nivel in niveles
+        if metas.get(eje, {}).get(nivel, 2) > 0
     }
+    for juego in coleccion:
+        for nivel in niveles_de_juego(juego, artefactos.tipos):
+            if nivel in conteos:
+                conteos[nivel] += 1
+    conteos_iniciales = dict(conteos)
+
+    def valor_incremental(nivel: tuple[str, str], conteo: int) -> float:
+        eje, etiqueta = nivel
+        meta = metas.get(eje, {}).get(etiqueta, 2)
+        if conteo >= meta:
+            return 0
+        niveles_relevantes = sum(
+            metas.get(eje, {}).get(item, 2) > 0 for item in artefactos.tipos[eje]
+        )
+        if conteo == 0:
+            return 0.5 / niveles_relevantes
+        return 0.5 / niveles_relevantes / (meta - 1)
+
+    def valor_pendiente(conteos_actuales: dict[tuple[str, str], int]) -> float:
+        return sum(
+            sum(valor_incremental(nivel, conteo + paso) for paso in range(meta - conteo))
+            for nivel, conteo in conteos_actuales.items()
+            for eje, etiqueta in [nivel]
+            for meta in [metas.get(eje, {}).get(etiqueta, 2)]
+        )
 
     def costo(juego: Game) -> float | None:
         if modo == "juego":
@@ -220,15 +244,18 @@ def plan_compra(
     disponibles = [
         juego
         for juego in candidatos
-        if juego.id not in {existente.id for existente in coleccion}
+        if juego.id not in {existente.id for existente in coleccion} | excluidos
         and (juego.average or 0) >= average_min
         and (juego.users_rated or 0) >= users_rated_min
         and costo(juego) is not None
-        and niveles_de_juego(juego, artefactos.tipos) & set(valores)
+        and any(
+            valor_incremental(nivel, conteos[nivel])
+            for nivel in niveles_de_juego(juego, artefactos.tipos) & set(conteos)
+        )
     ]
     seleccion: list[Game] = []
-    pendiente = dict(valores)
     gasto = 0.0
+    valor_greedy = 0.0
     while disponibles and (modo == "precio" or len(seleccion) < n):
         opciones = [
             juego
@@ -240,24 +267,26 @@ def plan_compra(
 
         def clave(juego: Game) -> tuple[float, float]:
             valor = sum(
-                pendiente.get(nivel, 0) for nivel in niveles_de_juego(juego, artefactos.tipos)
+                valor_incremental(nivel, conteos[nivel])
+                for nivel in niveles_de_juego(juego, artefactos.tipos) & set(conteos)
             )
             ajuste = valor / (costo(juego) or 1)
-            if orden == "mejor_valorados":
-                return (juego.average or 0, ajuste)
             return (ajuste, juego.average or 0)
 
         elegido = max(opciones, key=clave)
         valor = sum(
-            pendiente.pop(nivel, 0) for nivel in niveles_de_juego(elegido, artefactos.tipos)
+            valor_incremental(nivel, conteos[nivel])
+            for nivel in niveles_de_juego(elegido, artefactos.tipos) & set(conteos)
         )
         if valor == 0:
             break
         seleccion.append(elegido)
+        for nivel in niveles_de_juego(elegido, artefactos.tipos) & set(conteos):
+            conteos[nivel] += 1
+        valor_greedy += valor
         gasto += costo(elegido) or 0
         disponibles.remove(elegido)
 
-    valor_greedy = sum(valor for nivel, valor in valores.items() if nivel not in pendiente)
     if modo == "precio":
         individuales = [
             juego for juego in disponibles + seleccion if (costo(juego) or 0) <= (presupuesto or 0)
@@ -267,25 +296,71 @@ def plan_compra(
                 individuales,
                 key=lambda juego: (
                     sum(
-                        valores.get(nivel, 0) for nivel in niveles_de_juego(juego, artefactos.tipos)
+                        valor_incremental(nivel, conteos_iniciales[nivel])
+                        for nivel in niveles_de_juego(juego, artefactos.tipos)
+                        & set(conteos_iniciales)
                     ),
                     juego.average or 0,
                 ),
             )
             valor_individual = sum(
-                valores.get(nivel, 0)
+                valor_incremental(nivel, conteos_iniciales[nivel])
                 for nivel in niveles_de_juego(mejor_individual, artefactos.tipos)
+                & set(conteos_iniciales)
             )
             if valor_individual > valor_greedy:
                 seleccion = [mejor_individual]
                 gasto = costo(mejor_individual) or 0
-                pendiente = {
-                    nivel: valor
-                    for nivel, valor in valores.items()
-                    if nivel not in niveles_de_juego(mejor_individual, artefactos.tipos)
-                }
                 valor_greedy = valor_individual
-    return ResultadoCompra(tuple(seleccion), valor_greedy, sum(pendiente.values()), gasto)
+                conteos = dict(conteos_iniciales)
+                for nivel in niveles_de_juego(mejor_individual, artefactos.tipos) & set(conteos):
+                    conteos[nivel] += 1
+    return ResultadoCompra(
+        tuple(seleccion),
+        round(valor_greedy, 12),
+        round(valor_pendiente(conteos), 12),
+        gasto,
+    )
+
+
+def opciones_compra(
+    artefactos: ArtefactosMotor,
+    coleccion: Iterable[Game],
+    candidatos: Iterable[Game],
+    *,
+    n: int,
+    modo: str,
+    presupuesto: float | None = None,
+    average_min: float = 0,
+    users_rated_min: int = 1000,
+    ejes_ignorados: Iterable[str] = (),
+    precios_usuario: dict[str, Decimal | float] | None = None,
+    orden: str = "mejor_ajuste",
+    metas: dict[str, dict[str, int]] | None = None,
+) -> tuple[ResultadoCompra, ...]:
+    """Genera alternativas disjuntas para que cada plan sea una decisión real."""
+    candidatos = tuple(candidatos)
+    excluidos: set[str] = set()
+    opciones: list[ResultadoCompra] = []
+    for _ in range(3):
+        resultado = plan_compra(
+            artefactos,
+            coleccion,
+            candidatos,
+            n=n,
+            modo=modo,
+            presupuesto=presupuesto,
+            average_min=average_min,
+            users_rated_min=users_rated_min,
+            ejes_ignorados=ejes_ignorados,
+            precios_usuario=precios_usuario,
+            orden=orden,
+            metas=metas,
+            excluir_ids=excluidos,
+        )
+        opciones.append(resultado)
+        excluidos.update(juego.id for juego in resultado.juegos)
+    return tuple(opciones)
 
 
 def que_saco_hoy(

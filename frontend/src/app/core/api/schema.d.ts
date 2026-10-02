@@ -641,6 +641,22 @@ export interface components {
             /** Estado */
             estado: string;
         };
+        /** OpcionPlanCompra */
+        OpcionPlanCompra: {
+            /** Etiqueta */
+            etiqueta: string;
+            /** Juegos */
+            juegos: components["schemas"]["JuegoPlanCompra"][];
+            /** Valor Cubierto */
+            valor_cubierto: number;
+            /** Valor Pendiente */
+            valor_pendiente: number;
+            /** Precio Total Usd */
+            precio_total_usd: number;
+            /** Juegos Sin Precio */
+            juegos_sin_precio: number;
+            impacto: components["schemas"]["ImpactoCobertura"];
+        };
         /** PerfilRespuesta */
         PerfilRespuesta: {
             /** Id */
@@ -667,16 +683,8 @@ export interface components {
         };
         /** PlanCompraRespuesta */
         PlanCompraRespuesta: {
-            /** Juegos */
-            juegos: components["schemas"]["JuegoPlanCompra"][];
-            /** Valor Cubierto */
-            valor_cubierto: number;
-            /** Valor Pendiente */
-            valor_pendiente: number;
-            /** Precio Total Usd */
-            precio_total_usd: number;
-            /** Juegos Sin Precio */
-            juegos_sin_precio: number;
+            /** Opciones */
+            opciones: components["schemas"]["OpcionPlanCompra"][];
         };
         /** PlanCompraSolicitud */
         PlanCompraSolicitud: {
