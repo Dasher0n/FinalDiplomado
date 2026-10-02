@@ -56,6 +56,29 @@ def test_collection_returns_demo_games(api_client: TestClient) -> None:
     ]
 
 
+def test_profiles_expose_versioned_goals_and_isolated_context(api_client: TestClient) -> None:
+    profiles = api_client.get("/api/v1/profiles")
+    cafe = api_client.get("/api/v1/profiles/context", params={"perfil": "cafe"})
+    collector = api_client.get("/api/v1/profiles/context")
+
+    assert profiles.status_code == 200
+    cafe_profile = next(item for item in profiles.json()["perfiles"] if item["id"] == "cafe")
+    assert cafe_profile["version_configuracion"] == 1
+    assert cafe_profile["metas"]["Jugadores"]["1"] == 0
+    assert cafe.status_code == 200
+    assert cafe.json()["juegos_en_coleccion"] == 0
+    assert collector.json()["juegos_en_coleccion"] == 3
+
+
+def test_cafe_coverage_ignores_zero_goal(api_client: TestClient) -> None:
+    response = api_client.get("/api/v1/engine/coverage", params={"perfil": "cafe"})
+
+    assert response.status_code == 200
+    jugadores = response.json()["ejes"]["Jugadores"]
+    assert "1" not in jugadores["conteo_por_nivel"]
+    assert jugadores["meta_por_nivel"]["2"] == 3
+
+
 def test_games_searches_catalog_without_simulated_data(api_client: TestClient) -> None:
     response = api_client.get("/api/v1/games", params={"q": "span", "limit": 1})
 

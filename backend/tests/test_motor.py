@@ -19,6 +19,7 @@ from app.engine.motor import (
     regla_exacta,
     similitud,
 )
+from app.profiles import CAFE_GAME_IDS, PERFILES
 
 RAIZ = Path(__file__).resolve().parents[2]
 ARTEFACTOS = ArtefactosMotor.cargar(RAIZ / "artefactos")
@@ -127,6 +128,23 @@ def test_cobertura_de_coleccion_demo() -> None:
         resultado.ejes["Temática"].faltantes
     )
     assert {"5 a 6", "7 o más"} <= set(resultado.ejes["Jugadores"].debiles)
+
+
+def test_cobertura_del_cafe_aplica_metas_y_omite_niveles_irrelevantes() -> None:
+    perfil_cafe = next(perfil for perfil in PERFILES if perfil["id"] == "cafe")
+    juegos = cargar_juegos(set(CAFE_GAME_IDS))
+
+    resultado = cobertura(ARTEFACTOS, juegos.values(), perfil_cafe["metas"])
+
+    assert len(juegos) == 40
+    assert "1" not in resultado.ejes["Jugadores"].cubiertos
+    assert "1" not in resultado.ejes["Jugadores"].faltantes
+    assert set(resultado.ejes["Duración"].faltantes) == {"61 a 120", "más de 120"}
+    assert set(resultado.ejes["Mecánicas"].debiles) == {
+        "Construcción de mazo",
+        "Negociación y diplomacia",
+    }
+    assert set(resultado.ejes["Temática"].faltantes) == {"Horror"}
 
 
 def test_plan_precio_compara_greedy_con_mejor_individual() -> None:

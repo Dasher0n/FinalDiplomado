@@ -85,6 +85,15 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - Cobertura, plan de compra, detalle evaluable, disponibilidad y la vista previa de Chat consumen datos reales del motor.
 - Chart.js se usa directamente para el radar de cobertura.
 
+## Bloque 2
+
+- Se agregaron perfiles versionados de colección. `coleccionista` conserva meta 2 en todos los niveles y reproduce las pruebas doradas y el anexo existentes.
+- `cafe` usa los 40 IDs entregados, con metas por nivel para operación B2B. Los niveles con meta 0 no participan en cobertura, faltantes, debilidades ni en el valor del plan.
+- La valoración de un nivel faltante es `1 / niveles relevantes del eje`; una cobertura parcial reparte la mitad restante entre las posiciones de la meta 2 a la meta configurada.
+- La API acepta `perfil` como contexto para colección y motor, expone `GET /profiles` y `GET /profiles/context`, y la interfaz ofrece el selector `Modo mesa` para Café demo.
+- La inicialización SQLite añade `profile_id` a una colección ya creada y asigna sus filas existentes a `coleccionista`, sin borrar datos.
+- Con la siembra real, Café demo tiene 40 juegos. Con `n=5`, `average_min=6.5` y `users_rated_min=1000`, el plan por precio USD 60 propone EXIT: The Game - The Forbidden Castle, Kingdom Legacy: Feudal Kingdom, The Werewolves of Miller's Hollow y Level 10, por USD 47.82 y valor pendiente 0.025.
+
 ## Estado por fases
 
 | Fase | Estado | Contenido |

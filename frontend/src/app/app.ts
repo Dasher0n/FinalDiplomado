@@ -30,6 +30,7 @@ import {
   JuegoDetalle,
   JuegoListado,
   PlanCompraRespuesta,
+  Perfil,
   VentaImpactoRespuesta,
 } from "./core/api/catalogo.service";
 
@@ -63,6 +64,20 @@ Chart.register(
         </div>
         <nav class="wise-nav">
           <button
+            [class.active]="perfilActivo() === 'coleccionista'"
+            (click)="cambiarPerfil('coleccionista')"
+          >
+            Mi ludoteca
+          </button>
+          <button
+            [class.active]="perfilActivo() === 'cafe'"
+            (click)="cambiarPerfil('cafe')"
+          >
+            Modo mesa
+          </button>
+        </nav>
+        <nav class="wise-nav">
+          <button
             [class.active]="vista() === 'ludoteca'"
             (click)="abrir('ludoteca')"
           >
@@ -89,8 +104,10 @@ Chart.register(
       <section class="mx-auto max-w-7xl px-4 py-7">
         <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p class="eyebrow">{{ juegos().length }} juegos, una colección</p>
-            <h2 class="font-serif text-4xl">Tu librero de experiencias</h2>
+            <p class="eyebrow">
+              {{ juegos().length }} juegos, {{ etiquetaPerfil() }}
+            </p>
+            <h2 class="font-serif text-4xl">{{ tituloLudoteca() }}</h2>
           </div>
           <div class="flex gap-2">
             <button
@@ -222,7 +239,7 @@ Chart.register(
           <div class="bookcase mt-7">
             @for (fila of filasEstante(juegos()); track $index) {
               <section class="case-shelf">
-                <h3 class="shelf-plaque">Tu Colección</h3>
+                <h3 class="shelf-plaque">{{ tituloEstante() }}</h3>
                 <div class="shelf-rail">
                   <div class="shelf-games">
                     @for (juego of fila; track juego.id) {
@@ -262,8 +279,11 @@ Chart.register(
 
     @if (vista() === "cobertura") {
       <section class="mx-auto max-w-6xl px-4 py-7">
-        <p class="eyebrow">Mapa de variedad</p>
-        <h2 class="font-serif text-4xl">Cobertura de la colección</h2>
+        <p class="eyebrow">Mapa de variedad · {{ etiquetaPerfil() }}</p>
+        <h2 class="font-serif text-4xl">
+          Cobertura
+          {{ perfilActivo() === "cafe" ? "de la mesa" : "de la colección" }}
+        </h2>
         <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
           <section class="panel coverage-summary">
             <div class="coverage-radar coverage-radar-small">
@@ -447,10 +467,22 @@ Chart.register(
                           </div>
                         </div>
                         <div class="impacto-lista">
-                          @for (eje of impactoEjes(juego.impacto); track eje.nombre) {
-                            @if (eje.cambio) { <p class="impacto-texto">{{ eje.nombre }} {{ eje.antes }} → {{ eje.despues }} ({{ eje.despues - eje.antes >= 0 ? '+' : '' }}{{ eje.despues - eje.antes }})</p> }
+                          @for (
+                            eje of impactoEjes(juego.impacto);
+                            track eje.nombre
+                          ) {
+                            @if (eje.cambio) {
+                              <p class="impacto-texto">
+                                {{ eje.nombre }} {{ eje.antes }} →
+                                {{ eje.despues }} ({{
+                                  eje.despues - eje.antes >= 0 ? "+" : ""
+                                }}{{ eje.despues - eje.antes }})
+                              </p>
+                            }
                           }
-                          <p class="transiciones">{{ transiciones(juego.impacto) }}</p>
+                          <p class="transiciones">
+                            {{ transiciones(juego.impacto) }}
+                          </p>
                         </div>
                       </div>
                     </article>
@@ -587,10 +619,16 @@ Chart.register(
                 }
               </div>
               <button class="primary mt-3" (click)="evaluarDetalle()">
-                {{ enColeccion(seleccionado()!.id) ? "Ver aporte en mi colección" : "Evaluar compra" }}
+                {{
+                  enColeccion(seleccionado()!.id)
+                    ? "Ver aporte en mi colección"
+                    : "Evaluar compra"
+                }}
               </button>
               @if (enColeccion(seleccionado()!.id)) {
-                <button class="chip ml-2" (click)="simularVenta()">Simular venta</button>
+                <button class="chip ml-2" (click)="simularVenta()">
+                  Simular venta
+                </button>
               }
               @if (evaluacionDetalle()) {
                 <div class="resultado-evaluacion mt-4">
@@ -612,18 +650,35 @@ Chart.register(
                     </p>
                   }
                   <div class="mt-3 impacto-lista">
-                    @for (eje of impactoEjes(evaluacionDetalle()!.impacto); track eje.nombre) {
-                      <div class="impacto-fila" [class.sin-cambio]="!eje.cambio">
-                        <span>{{ eje.nombre }}</span><i></i><b>{{ eje.antes }} → {{ eje.despues }}</b>
+                    @for (
+                      eje of impactoEjes(evaluacionDetalle()!.impacto);
+                      track eje.nombre
+                    ) {
+                      <div
+                        class="impacto-fila"
+                        [class.sin-cambio]="!eje.cambio"
+                      >
+                        <span>{{ eje.nombre }}</span
+                        ><i></i><b>{{ eje.antes }} → {{ eje.despues }}</b>
                       </div>
                     }
-                    <p class="transiciones">{{ transiciones(evaluacionDetalle()!.impacto) }}</p>
+                    <p class="transiciones">
+                      {{ transiciones(evaluacionDetalle()!.impacto) }}
+                    </p>
                   </div>
                   @if (evaluacionDetalle()!.similares.length) {
-                    <p class="mt-3 text-sm font-semibold">Los 3 más parecidos</p>
+                    <p class="mt-3 text-sm font-semibold">
+                      Los 3 más parecidos
+                    </p>
                     <div class="mt-1 flex flex-wrap gap-1">
-                      @for (similar of evaluacionDetalle()!.similares; track similar.juego.id) {
-                        <span class="level-chip">{{ similar.juego.nombre }} {{ similar.similitud.total | number: "1.2-2" }}</span>
+                      @for (
+                        similar of evaluacionDetalle()!.similares;
+                        track similar.juego.id
+                      ) {
+                        <span class="level-chip"
+                          >{{ similar.juego.nombre }}
+                          {{ similar.similitud.total | number: "1.2-2" }}</span
+                        >
                       }
                     </div>
                   }
@@ -633,12 +688,21 @@ Chart.register(
                 <div class="resultado-evaluacion mt-4">
                   <b>Impacto de venderlo</b>
                   <div class="mt-3 impacto-lista">
-                    @for (eje of impactoEjes(ventaDetalle()!.impacto); track eje.nombre) {
-                      <div class="impacto-fila" [class.sin-cambio]="!eje.cambio">
-                        <span>{{ eje.nombre }}</span><i></i><b>{{ eje.antes }} → {{ eje.despues }}</b>
+                    @for (
+                      eje of impactoEjes(ventaDetalle()!.impacto);
+                      track eje.nombre
+                    ) {
+                      <div
+                        class="impacto-fila"
+                        [class.sin-cambio]="!eje.cambio"
+                      >
+                        <span>{{ eje.nombre }}</span
+                        ><i></i><b>{{ eje.antes }} → {{ eje.despues }}</b>
                       </div>
                     }
-                    <p class="transiciones">{{ transiciones(ventaDetalle()!.impacto) }}</p>
+                    <p class="transiciones">
+                      {{ transiciones(ventaDetalle()!.impacto) }}
+                    </p>
                   </div>
                 </div>
               }
@@ -689,8 +753,13 @@ Chart.register(
       </div>
     }
     @if (tooltip(); as dato) {
-      <div class="game-tooltip" [style.left.px]="dato.x" [style.top.px]="dato.y">
-        <b>{{ dato.nombre }}</b><span>{{ dato.rango }} jugadores</span>
+      <div
+        class="game-tooltip"
+        [style.left.px]="dato.x"
+        [style.top.px]="dato.y"
+      >
+        <b>{{ dato.nombre }}</b
+        ><span>{{ dato.rango }} jugadores</span>
       </div>
     }
   </main>`,
@@ -700,6 +769,8 @@ export class App {
   private grafica: Chart | null = null;
   private readonly graficas = new Map<string, Chart>();
   protected readonly vista = signal("ludoteca");
+  protected readonly perfilActivo = signal("coleccionista");
+  protected readonly perfilesDisponibles = signal<Perfil[]>([]);
   protected readonly modo = signal("estantes");
   protected readonly juegos = signal<JuegoDetalle[]>([]);
   protected readonly resultados = signal<JuegoListado[]>([]);
@@ -721,8 +792,19 @@ export class App {
   } | null>(null);
 
   constructor() {
+    void this.cargarPerfiles();
     void this.cargarColeccion();
     void this.cargarPreviewChat();
+  }
+
+  protected async cambiarPerfil(perfil: string): Promise<void> {
+    if (perfil === this.perfilActivo()) return;
+    this.perfilActivo.set(perfil);
+    this.plan.set(null);
+    this.noche.set(null);
+    this.evaluacionDetalle.set(null);
+    await this.cargarColeccion();
+    if (this.vista() === "cobertura") await this.cargarCobertura();
   }
 
   protected async abrir(vista: string): Promise<void> {
@@ -748,12 +830,12 @@ export class App {
   }
 
   protected async agregar(id: string): Promise<void> {
-    await firstValueFrom(this.api.agregar(id));
+    await firstValueFrom(this.api.agregar(id, this.perfilActivo()));
     await this.cargarColeccion();
   }
 
   protected async quitar(id: string): Promise<void> {
-    await firstValueFrom(this.api.quitar(id));
+    await firstValueFrom(this.api.quitar(id, this.perfilActivo()));
     this.seleccionado.set(null);
     await this.cargarColeccion();
   }
@@ -764,7 +846,9 @@ export class App {
   ): Promise<void> {
     if (jugadores > 0 && minutos > 0)
       this.noche.set(
-        await firstValueFrom(this.api.estaNoche({ jugadores, minutos })),
+        await firstValueFrom(
+          this.api.estaNoche({ jugadores, minutos }, this.perfilActivo()),
+        ),
       );
   }
 
@@ -778,14 +862,17 @@ export class App {
   ): Promise<void> {
     this.plan.set(
       await firstValueFrom(
-        this.api.plan({
-          n,
-          modo,
-          presupuesto,
-          average_min,
-          users_rated_min,
-          orden,
-        }),
+        this.api.plan(
+          {
+            n,
+            modo,
+            presupuesto,
+            average_min,
+            users_rated_min,
+            orden,
+          },
+          this.perfilActivo(),
+        ),
       ),
     );
   }
@@ -793,14 +880,18 @@ export class App {
   protected async evaluarDetalle(): Promise<void> {
     if (this.seleccionado())
       this.evaluacionDetalle.set(
-        await firstValueFrom(this.api.evaluar(this.seleccionado()!.id)),
+        await firstValueFrom(
+          this.api.evaluar(this.seleccionado()!.id, this.perfilActivo()),
+        ),
       );
   }
 
   protected async simularVenta(): Promise<void> {
     if (this.seleccionado())
       this.ventaDetalle.set(
-        await firstValueFrom(this.api.impactoVenta(this.seleccionado()!.id)),
+        await firstValueFrom(
+          this.api.impactoVenta(this.seleccionado()!.id, this.perfilActivo()),
+        ),
       );
   }
 
@@ -897,6 +988,19 @@ export class App {
   protected placa(valor: string): string {
     return valor.replace(/\b\p{L}/gu, (letra) => letra.toUpperCase());
   }
+  protected etiquetaPerfil(): string {
+    return this.perfilActivo() === "cafe" ? "Café demo" : "colección personal";
+  }
+  protected tituloLudoteca(): string {
+    return this.perfilActivo() === "cafe"
+      ? "Disponibilidad para tu mesa"
+      : "Tu librero de experiencias";
+  }
+  protected tituloEstante(): string {
+    return this.perfilActivo() === "cafe"
+      ? "Mesa de Café demo"
+      : "Tu colección";
+  }
   protected mostrarTooltip(evento: MouseEvent, juego: JuegoDetalle): void {
     this.tooltip.set({
       nombre: juego.nombre,
@@ -906,7 +1010,10 @@ export class App {
     });
   }
   protected impactoEjes(impacto: {
-    ejes: Record<string, { antes: Record<string, number>; despues: Record<string, number> }>;
+    ejes: Record<
+      string,
+      { antes: Record<string, number>; despues: Record<string, number> }
+    >;
   }): { nombre: string; antes: number; despues: number; cambio: boolean }[] {
     return Object.entries(impacto.ejes).map(([nombre, eje]) => ({
       nombre,
@@ -916,11 +1023,19 @@ export class App {
     }));
   }
   protected transiciones(impacto: {
-    cambios_nivel: { eje: string; nivel: string; antes: number; despues: number }[];
+    cambios_nivel: {
+      eje: string;
+      nivel: string;
+      antes: number;
+      despues: number;
+    }[];
   }): string {
-    const cambios = impacto.cambios_nivel.slice(0, 3).map((cambio) =>
-      `${cambio.eje}: ${cambio.nivel} ${cambio.antes} → ${cambio.despues}`,
-    );
+    const cambios = impacto.cambios_nivel
+      .slice(0, 3)
+      .map(
+        (cambio) =>
+          `${cambio.eje}: ${cambio.nivel} ${cambio.antes} → ${cambio.despues}`,
+      );
     return cambios.length ? cambios.join(" · ") : "No cambia la cobertura.";
   }
   protected grupos(): { nombre: string; juegos: JuegoDetalle[] }[] {
@@ -961,7 +1076,9 @@ export class App {
 
   private async cargarColeccion(): Promise<void> {
     try {
-      const coleccion = await firstValueFrom(this.api.coleccion());
+      const coleccion = await firstValueFrom(
+        this.api.coleccion(this.perfilActivo()),
+      );
       this.juegos.set(
         await Promise.all(
           coleccion.juegos.map((juego) =>
@@ -978,14 +1095,18 @@ export class App {
       const juegos = (await firstValueFrom(this.api.buscar("Wyrmspan"))).juegos;
       if (juegos[0])
         this.evaluacion.set(
-          await firstValueFrom(this.api.evaluar(juegos[0].id)),
+          await firstValueFrom(
+            this.api.evaluar(juegos[0].id, this.perfilActivo()),
+          ),
         );
     } catch {
       /* La vista previa queda pendiente si la API no esta disponible. */
     }
   }
   private async cargarCobertura(): Promise<void> {
-    this.cobertura.set(await firstValueFrom(this.api.cobertura()));
+    this.cobertura.set(
+      await firstValueFrom(this.api.cobertura(this.perfilActivo())),
+    );
     setTimeout(() => {
       this.dibujarRadar();
       this.dibujarGraficasCobertura();
@@ -1046,14 +1167,19 @@ export class App {
             datasets: [
               {
                 label: "Sólidos",
-                data: Object.values(ejes).map((eje) =>
-                  Object.values(eje.conteo_por_nivel).filter((conteo) => conteo >= 2).length,
+                data: Object.values(ejes).map(
+                  (eje) =>
+                    Object.values(eje.conteo_por_nivel).filter(
+                      (conteo) => conteo >= 2,
+                    ).length,
                 ),
                 backgroundColor: "#8d5221",
               },
               {
                 label: "Débiles",
-                data: Object.values(ejes).map((eje) => Object.keys(eje.debiles).length),
+                data: Object.values(ejes).map(
+                  (eje) => Object.keys(eje.debiles).length,
+                ),
                 backgroundColor: "#b27023",
               },
               {
@@ -1066,7 +1192,10 @@ export class App {
           options: {
             indexAxis: "y",
             maintainAspectRatio: false,
-            scales: { x: { stacked: true, ticks: { precision: 0 } }, y: { stacked: true } },
+            scales: {
+              x: { stacked: true, ticks: { precision: 0 } },
+              y: { stacked: true },
+            },
             plugins: { legend: { position: "bottom" } },
           },
         }),
@@ -1147,8 +1276,17 @@ export class App {
     );
   }
 
-
   private colorConteo(conteo: number): string {
     return conteo === 0 ? "#9b3429" : conteo === 1 ? "#b27023" : "#8d5221";
+  }
+
+  private async cargarPerfiles(): Promise<void> {
+    try {
+      this.perfilesDisponibles.set(
+        (await firstValueFrom(this.api.perfiles())).perfiles,
+      );
+    } catch {
+      this.error.set("No fue posible cargar los perfiles de ludoteca.");
+    }
   }
 }

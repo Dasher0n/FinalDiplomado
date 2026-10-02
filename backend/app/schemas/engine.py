@@ -51,6 +51,7 @@ class JuegoMotor(BaseModel):
 
 class CoberturaEjeRespuesta(BaseModel):
     porcentaje: float
+    meta_por_nivel: dict[str, int]
     cubiertos: list[str]
     faltantes: list[str]
     debiles: dict[str, str]

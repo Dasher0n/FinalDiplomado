@@ -21,6 +21,18 @@ class User(Base):
     creado_en: Mapped[datetime] = created_at_column()
 
 
+class CollectionProfile(Base):
+    __tablename__ = "collection_profiles"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(255))
+    tipo: Mapped[str] = mapped_column(String(32))
+    descripcion: Mapped[str] = mapped_column(Text)
+    version_configuracion: Mapped[int] = mapped_column(Integer)
+    metas: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    creado_en: Mapped[datetime] = created_at_column()
+
+
 class Game(Base):
     """Catalogo. Conserva todas las columnas utiles de catalogo.csv."""
 
@@ -108,10 +120,15 @@ class GameAlias(Base):
 
 class UserCollection(Base):
     __tablename__ = "user_collection"
-    __table_args__ = (UniqueConstraint("user_id", "game_id", name="uq_coleccion_juego"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "profile_id", "game_id", name="uq_coleccion_perfil_juego"),
+    )
 
     id: Mapped[str] = pk_column()
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    profile_id: Mapped[str] = mapped_column(
+        ForeignKey("collection_profiles.id", ondelete="CASCADE"), index=True
+    )
     game_id: Mapped[str] = mapped_column(ForeignKey("games.ID", ondelete="CASCADE"), index=True)
     precio_pagado: Mapped[Decimal | None] = mapped_column(default=None)
     agregado_en: Mapped[datetime] = created_at_column()

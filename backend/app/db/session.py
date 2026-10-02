@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -75,6 +75,17 @@ async def init_db() -> None:
 
     async with get_engine().begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        if settings.database_url.startswith("sqlite"):
+            columnas = (
+                await connection.execute(text("PRAGMA table_info(user_collection)"))
+            ).mappings()
+            if "profile_id" not in {columna["name"] for columna in columnas}:
+                await connection.execute(
+                    text("ALTER TABLE user_collection ADD COLUMN profile_id VARCHAR(32)")
+                )
+                await connection.execute(
+                    text("UPDATE user_collection SET profile_id = 'coleccionista'")
+                )
 
 
 async def dispose_db() -> None:

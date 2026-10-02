@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.db.models import Game, User, UserCollection
+from app.db.models import CollectionProfile, Game, User, UserCollection
 from app.db.session import dispose_db, get_sessionmaker, init_db
+from app.profiles import CAFE_GAME_IDS, CONFIGURACION_PERFILES_VERSION, PERFILES
 
 DEMO_GAMES = (
     "Wingspan",
@@ -183,20 +184,48 @@ async def seed_demo_user_and_collection(session: AsyncSession) -> tuple[bool, in
         session.add(user)
         await session.flush()
 
-    games = (
-        await session.execute(select(Game.id, Game.nombre).where(Game.nombre.in_(DEMO_GAMES)))
-    ).all()
-    game_ids = {game_id for game_id, _ in games}
-    collection_ids = set(
-        (
+    perfiles = {perfil["id"]: perfil for perfil in PERFILES}
+    existentes = {
+        perfil.id: perfil
+        for perfil in (
             await session.scalars(
-                select(UserCollection.game_id).where(UserCollection.user_id == user.id)
+                select(CollectionProfile).where(CollectionProfile.id.in_(perfiles))
             )
         ).all()
-    )
-    additions = [
-        UserCollection(user_id=user.id, game_id=game_id) for game_id in game_ids - collection_ids
-    ]
+    }
+    for profile_id, perfil in perfiles.items():
+        if profile_id not in existentes:
+            session.add(
+                CollectionProfile(
+                    id=profile_id,
+                    nombre=perfil["nombre"],
+                    tipo=perfil["tipo"],
+                    descripcion=perfil["descripcion"],
+                    version_configuracion=CONFIGURACION_PERFILES_VERSION,
+                    metas=perfil["metas"],
+                )
+            )
+    await session.flush()
+
+    additions: list[UserCollection] = []
+    for profile_id, ids in (("coleccionista", None), ("cafe", CAFE_GAME_IDS)):
+        games = await session.scalars(
+            select(Game.id).where(Game.nombre.in_(DEMO_GAMES) if ids is None else Game.id.in_(ids))
+        )
+        game_ids = set(games.all())
+        collection_ids = set(
+            (
+                await session.scalars(
+                    select(UserCollection.game_id).where(
+                        UserCollection.user_id == user.id, UserCollection.profile_id == profile_id
+                    )
+                )
+            ).all()
+        )
+        additions.extend(
+            UserCollection(user_id=user.id, profile_id=profile_id, game_id=game_id)
+            for game_id in game_ids - collection_ids
+        )
     session.add_all(additions)
     await session.flush()
     return created_user, len(additions)

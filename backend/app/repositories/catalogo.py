@@ -22,11 +22,13 @@ class CatalogoRepository:
     async def obtener_juego(self, game_id: str) -> Game | None:
         return await self._session.get(Game, game_id)
 
-    async def juegos_de_coleccion(self, user_id: str) -> list[tuple[Game, UserCollection]]:
+    async def juegos_de_coleccion(
+        self, user_id: str, profile_id: str
+    ) -> list[tuple[Game, UserCollection]]:
         statement = (
             select(Game, UserCollection)
             .join(UserCollection, UserCollection.game_id == Game.id)
-            .where(UserCollection.user_id == user_id)
+            .where(UserCollection.user_id == user_id, UserCollection.profile_id == profile_id)
             .order_by(Game.nombre)
         )
         return list((await self._session.execute(statement)).tuples().all())

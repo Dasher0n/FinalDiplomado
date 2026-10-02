@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request, status
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentProfile, CurrentUser, DbSession
 from app.api.v1.catalogo import JuegoNoEncontrado, transformar_bgp_url
 from app.core.errors import SommelierError
 from app.db.models import Game
@@ -97,9 +97,11 @@ def _juego(
     )
 
 
-def _conteos_niveles(juegos: list[Game], artefactos: ArtefactosMotor, eje: str) -> dict[str, int]:
+def _conteos_niveles(
+    juegos: list[Game], artefactos: ArtefactosMotor, eje: str, metas: dict[str, dict[str, int]]
+) -> dict[str, int]:
     atributo = _ATRIBUTO_POR_EJE[eje]
-    conteos = {nivel: 0 for nivel in artefactos.tipos[eje]}
+    conteos = {nivel: 0 for nivel in artefactos.tipos[eje] if metas.get(eje, {}).get(nivel, 2) > 0}
     for juego in juegos:
         valores = getattr(juego, atributo) or []
         if isinstance(valores, str):
@@ -111,22 +113,33 @@ def _conteos_niveles(juegos: list[Game], artefactos: ArtefactosMotor, eje: str) 
 
 
 def _impacto_cobertura(
-    artefactos: ArtefactosMotor, antes: list[Game], despues: list[Game]
+    artefactos: ArtefactosMotor,
+    antes: list[Game],
+    despues: list[Game],
+    metas: dict[str, dict[str, int]],
 ) -> ImpactoCobertura:
-    conteos_antes = {eje: _conteos_niveles(antes, artefactos, eje) for eje in artefactos.tipos}
-    conteos_despues = {eje: _conteos_niveles(despues, artefactos, eje) for eje in artefactos.tipos}
+    conteos_antes = {
+        eje: _conteos_niveles(antes, artefactos, eje, metas) for eje in artefactos.tipos
+    }
+    conteos_despues = {
+        eje: _conteos_niveles(despues, artefactos, eje, metas) for eje in artefactos.tipos
+    }
 
-    def estados(conteos: dict[str, int]) -> ConteoEstados:
+    def estados(eje: str, conteos: dict[str, int]) -> ConteoEstados:
         return ConteoEstados(
-            solidos=sum(valor >= 2 for valor in conteos.values()),
-            debiles=sum(valor == 1 for valor in conteos.values()),
+            solidos=sum(
+                valor >= metas.get(eje, {}).get(nivel, 2) for nivel, valor in conteos.items()
+            ),
+            debiles=sum(
+                0 < valor < metas.get(eje, {}).get(nivel, 2) for nivel, valor in conteos.items()
+            ),
             faltantes=sum(valor == 0 for valor in conteos.values()),
         )
 
     return ImpactoCobertura(
         ejes={
             eje: ImpactoEje(
-                antes=estados(conteos_antes[eje]), despues=estados(conteos_despues[eje])
+                antes=estados(eje, conteos_antes[eje]), despues=estados(eje, conteos_despues[eje])
             )
             for eje in artefactos.tipos
         },
@@ -139,25 +152,33 @@ def _impacto_cobertura(
     )
 
 
-async def _coleccion(session: DbSession, user: CurrentUser) -> list[Game]:
-    return [juego for juego, _ in await CatalogoRepository(session).juegos_de_coleccion(user.id)]
+async def _coleccion(session: DbSession, user: CurrentUser, perfil_id: str) -> list[Game]:
+    return [
+        juego
+        for juego, _ in await CatalogoRepository(session).juegos_de_coleccion(user.id, perfil_id)
+    ]
 
 
 @router.post("/evaluate", response_model=EvaluarRespuesta)
 async def evaluar(
-    solicitud: EvaluarSolicitud, request: Request, session: DbSession, user: CurrentUser
+    solicitud: EvaluarSolicitud,
+    request: Request,
+    session: DbSession,
+    user: CurrentUser,
+    perfil: CurrentProfile,
 ) -> EvaluarRespuesta:
     repo = CatalogoRepository(session)
     candidato = await repo.obtener_juego(solicitud.game_id)
     if candidato is None:
         raise JuegoNoEncontrado("No existe un juego con ese identificador.")
     artefactos = _artefactos(request)
-    coleccion = await _coleccion(session, user)
+    metas = perfil.metas
+    coleccion = await _coleccion(session, user, perfil.id)
     coleccion_sin_candidato = [juego for juego in coleccion if juego.id != candidato.id]
     veredicto, cercano, resultado, exacta = evaluar_redundancia(
-        artefactos, candidato, coleccion_sin_candidato
+        artefactos, candidato, coleccion_sin_candidato, metas
     )
-    cobertura_actual = cobertura(artefactos, coleccion_sin_candidato)
+    cobertura_actual = cobertura(artefactos, coleccion_sin_candidato, metas)
     estados_huecos = {
         (eje, nivel): "faltante"
         for eje, eje_cobertura in cobertura_actual.ejes.items()
@@ -185,7 +206,9 @@ async def evaluar(
         (
             (resultado_similitud, juego)
             for juego in coleccion_sin_candidato
-            for resultado_similitud in [evaluar_redundancia(artefactos, candidato, [juego])[2]]
+            for resultado_similitud in [
+                evaluar_redundancia(artefactos, candidato, [juego], metas)[2]
+            ]
             if resultado_similitud is not None
         ),
         key=lambda par: par[0].total,
@@ -207,26 +230,39 @@ async def evaluar(
             for similitud_juego, juego in similares
         ],
         impacto=_impacto_cobertura(
-            artefactos, coleccion_sin_candidato, [*coleccion_sin_candidato, candidato]
+            artefactos, coleccion_sin_candidato, [*coleccion_sin_candidato, candidato], metas
         ),
     )
 
 
 @router.get("/coverage", response_model=CoberturaRespuesta)
 async def ver_cobertura(
-    request: Request, session: DbSession, user: CurrentUser
+    request: Request, session: DbSession, user: CurrentUser, perfil: CurrentProfile
 ) -> CoberturaRespuesta:
     artefactos = _artefactos(request)
-    coleccion = await _coleccion(session, user)
-    resultado = cobertura(artefactos, coleccion)
+    coleccion = await _coleccion(session, user, perfil.id)
+    resultado = cobertura(artefactos, coleccion, perfil.metas)
     return CoberturaRespuesta(
         ejes={
             eje: CoberturaEjeRespuesta(
-                porcentaje=round(100 * len(valor.cubiertos) / len(artefactos.tipos[eje]), 1),
+                porcentaje=round(
+                    100
+                    * len(valor.cubiertos)
+                    / sum(
+                        perfil.metas.get(eje, {}).get(nivel, 2) > 0
+                        for nivel in artefactos.tipos[eje]
+                    ),
+                    1,
+                ),
+                meta_por_nivel={
+                    nivel: perfil.metas.get(eje, {}).get(nivel, 2)
+                    for nivel in artefactos.tipos[eje]
+                    if perfil.metas.get(eje, {}).get(nivel, 2) > 0
+                },
                 cubiertos=list(valor.cubiertos),
                 faltantes=list(valor.faltantes),
                 debiles=valor.debiles,
-                conteo_por_nivel=_conteos_niveles(coleccion, artefactos, eje),
+                conteo_por_nivel=_conteos_niveles(coleccion, artefactos, eje, perfil.metas),
             )
             for eje, valor in resultado.ejes.items()
         }
@@ -235,7 +271,11 @@ async def ver_cobertura(
 
 @router.post("/buy-plan", response_model=PlanCompraRespuesta)
 async def comprar_plan(
-    solicitud: PlanCompraSolicitud, request: Request, session: DbSession, user: CurrentUser
+    solicitud: PlanCompraSolicitud,
+    request: Request,
+    session: DbSession,
+    user: CurrentUser,
+    perfil: CurrentProfile,
 ) -> PlanCompraRespuesta:
     if solicitud.modo == "precio" and solicitud.presupuesto is None:
         raise SolicitudInvalidaMotor("El modo precio requiere un presupuesto.")
@@ -243,7 +283,7 @@ async def comprar_plan(
     repo = CatalogoRepository(session)
     resultado = plan_compra(
         artefactos,
-        await _coleccion(session, user),
+        await _coleccion(session, user, perfil.id),
         await repo.todos_los_juegos(),
         n=solicitud.n,
         modo=solicitud.modo,
@@ -252,9 +292,10 @@ async def comprar_plan(
         users_rated_min=solicitud.users_rated_min,
         ejes_ignorados=solicitud.ejes_ignorados,
         orden=solicitud.orden,
+        metas=perfil.metas,
     )
-    coleccion = await _coleccion(session, user)
-    cobertura_actual = cobertura(artefactos, coleccion)
+    coleccion = await _coleccion(session, user, perfil.id)
+    cobertura_actual = cobertura(artefactos, coleccion, perfil.metas)
     estados_huecos = {
         (eje, nivel): "faltante"
         for eje, eje_cobertura in cobertura_actual.ejes.items()
@@ -274,7 +315,7 @@ async def comprar_plan(
         juegos_plan.append(
             JuegoPlanCompra(
                 **_juego(juego, artefactos, estados_huecos).model_dump(),
-                impacto=_impacto_cobertura(artefactos, antes, acumulados),
+                impacto=_impacto_cobertura(artefactos, antes, acumulados, perfil.metas),
             )
         )
     return PlanCompraRespuesta(
@@ -295,11 +336,15 @@ async def comprar_plan(
 
 @router.post("/tonight", response_model=EstaNocheRespuesta)
 async def esta_noche(
-    solicitud: EstaNocheSolicitud, request: Request, session: DbSession, user: CurrentUser
+    solicitud: EstaNocheSolicitud,
+    request: Request,
+    session: DbSession,
+    user: CurrentUser,
+    perfil: CurrentProfile,
 ) -> EstaNocheRespuesta:
     artefactos = _artefactos(request)
     juegos = que_saco_hoy(
-        await _coleccion(session, user),
+        await _coleccion(session, user, perfil.id),
         solicitud.jugadores,
         solicitud.minutos,
         solicitud.edad_minima,
@@ -319,9 +364,13 @@ async def esta_noche(
 
 @router.post("/sell-impact", response_model=VentaImpactoRespuesta)
 async def impacto_venta(
-    solicitud: VentaImpactoSolicitud, request: Request, session: DbSession, user: CurrentUser
+    solicitud: VentaImpactoSolicitud,
+    request: Request,
+    session: DbSession,
+    user: CurrentUser,
+    perfil: CurrentProfile,
 ) -> VentaImpactoRespuesta:
-    coleccion = await _coleccion(session, user)
+    coleccion = await _coleccion(session, user, perfil.id)
     juego = next((item for item in coleccion if item.id == solicitud.game_id), None)
     if juego is None:
         raise JuegoNoEncontrado("Ese juego no está en tu colección.")
@@ -329,6 +378,6 @@ async def impacto_venta(
     return VentaImpactoRespuesta(
         juego=_juego(juego, artefactos),
         impacto=_impacto_cobertura(
-            artefactos, coleccion, [item for item in coleccion if item.id != juego.id]
+            artefactos, coleccion, [item for item in coleccion if item.id != juego.id], perfil.metas
         ),
     )

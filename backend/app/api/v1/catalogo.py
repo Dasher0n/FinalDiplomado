@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentProfile, CurrentUser, DbSession
 from app.core.config import settings
 from app.core.errors import SommelierError
 from app.db.models import Game, UserCollection
@@ -32,8 +32,10 @@ class JuegoNoEncontrado(SommelierError):
 
 
 @router.get("/collection", response_model=ColeccionRespuesta, summary="Coleccion demo")
-async def obtener_coleccion(session: DbSession, user: CurrentUser) -> ColeccionRespuesta:
-    juegos = await CatalogoRepository(session).juegos_de_coleccion(user.id)
+async def obtener_coleccion(
+    session: DbSession, user: CurrentUser, perfil: CurrentProfile
+) -> ColeccionRespuesta:
+    juegos = await CatalogoRepository(session).juegos_de_coleccion(user.id, perfil.id)
     return ColeccionRespuesta(
         juegos=[_juego_coleccion(game, collection) for game, collection in juegos]
     )
@@ -43,13 +45,18 @@ async def obtener_coleccion(session: DbSession, user: CurrentUser) -> ColeccionR
     "/collection", response_model=ColeccionMutacionRespuesta, status_code=status.HTTP_201_CREATED
 )
 async def agregar_coleccion(
-    solicitud: AgregarColeccionSolicitud, session: DbSession, user: CurrentUser
+    solicitud: AgregarColeccionSolicitud,
+    session: DbSession,
+    user: CurrentUser,
+    perfil: CurrentProfile,
 ) -> ColeccionMutacionRespuesta:
     if await CatalogoRepository(session).obtener_juego(solicitud.game_id) is None:
         raise JuegoNoEncontrado("No existe un juego con ese identificador.")
     existente = await session.scalar(
         select(UserCollection).where(
-            UserCollection.user_id == user.id, UserCollection.game_id == solicitud.game_id
+            UserCollection.user_id == user.id,
+            UserCollection.profile_id == perfil.id,
+            UserCollection.game_id == solicitud.game_id,
         )
     )
     if existente is not None:
@@ -58,7 +65,10 @@ async def agregar_coleccion(
         )
     session.add(
         UserCollection(
-            user_id=user.id, game_id=solicitud.game_id, precio_pagado=solicitud.precio_pagado
+            user_id=user.id,
+            profile_id=perfil.id,
+            game_id=solicitud.game_id,
+            precio_pagado=solicitud.precio_pagado,
         )
     )
     try:
@@ -73,11 +83,13 @@ async def agregar_coleccion(
 
 @router.delete("/collection/{game_id}", response_model=ColeccionMutacionRespuesta)
 async def quitar_coleccion(
-    game_id: str, session: DbSession, user: CurrentUser
+    game_id: str, session: DbSession, user: CurrentUser, perfil: CurrentProfile
 ) -> ColeccionMutacionRespuesta:
     existente = await session.scalar(
         select(UserCollection).where(
-            UserCollection.user_id == user.id, UserCollection.game_id == game_id
+            UserCollection.user_id == user.id,
+            UserCollection.profile_id == perfil.id,
+            UserCollection.game_id == game_id,
         )
     )
     if existente is None:

@@ -83,7 +83,11 @@ def similitud(artefactos: ArtefactosMotor, primero: Game, segundo: Game) -> Simi
     return Similitud(mecanicas, ocasion, interaccion, tematica, float(total))
 
 
-def cobertura(artefactos: ArtefactosMotor, juegos: Iterable[Game]) -> ResultadoCobertura:
+def cobertura(
+    artefactos: ArtefactosMotor,
+    juegos: Iterable[Game],
+    metas: dict[str, dict[str, int]] | None = None,
+) -> ResultadoCobertura:
     cuentas: dict[str, dict[str, list[str]]] = {
         eje: {nivel: [] for nivel in niveles} for eje, niveles in artefactos.tipos.items()
     }
@@ -96,15 +100,28 @@ def cobertura(artefactos: ArtefactosMotor, juegos: Iterable[Game]) -> ResultadoC
                 if nivel in cuentas[eje]:
                     cuentas[eje][nivel].append(juego.nombre)
 
+    metas = metas or {}
     ejes = {}
     for eje, niveles in cuentas.items():
+        metas_eje = metas.get(eje, {})
+        niveles_relevantes = {
+            nivel: juegos_nivel
+            for nivel, juegos_nivel in niveles.items()
+            if metas_eje.get(nivel, 2) > 0
+        }
         ejes[eje] = CoberturaEje(
-            cubiertos=tuple(nivel for nivel, juegos_nivel in niveles.items() if juegos_nivel),
-            faltantes=tuple(nivel for nivel, juegos_nivel in niveles.items() if not juegos_nivel),
+            cubiertos=tuple(
+                nivel
+                for nivel, juegos_nivel in niveles_relevantes.items()
+                if len(juegos_nivel) >= metas_eje.get(nivel, 2)
+            ),
+            faltantes=tuple(
+                nivel for nivel, juegos_nivel in niveles_relevantes.items() if not juegos_nivel
+            ),
             debiles={
                 nivel: juegos_nivel[0]
-                for nivel, juegos_nivel in niveles.items()
-                if len(juegos_nivel) == 1
+                for nivel, juegos_nivel in niveles_relevantes.items()
+                if 0 < len(juegos_nivel) < metas_eje.get(nivel, 2)
             },
         )
     return ResultadoCobertura(ejes)
@@ -129,7 +146,10 @@ def regla_exacta(candidato: Game, existente: Game) -> bool:
 
 
 def evaluar_redundancia(
-    artefactos: ArtefactosMotor, candidato: Game, coleccion: Iterable[Game]
+    artefactos: ArtefactosMotor,
+    candidato: Game,
+    coleccion: Iterable[Game],
+    metas: dict[str, dict[str, int]] | None = None,
 ) -> tuple[str, Game | None, Similitud | None, bool]:
     juegos = tuple(coleccion)
     if not juegos:
@@ -140,7 +160,7 @@ def evaluar_redundancia(
         niveles_de_juego(candidato, artefactos.tipos)
         & {
             (eje, nivel)
-            for eje, resultado in cobertura(artefactos, juegos).ejes.items()
+            for eje, resultado in cobertura(artefactos, juegos, metas).ejes.items()
             for nivel in (*resultado.faltantes, *resultado.debiles)
         }
     )
@@ -168,6 +188,7 @@ def plan_compra(
     ejes_ignorados: Iterable[str] = (),
     precios_usuario: dict[str, Decimal | float] | None = None,
     orden: str = "mejor_ajuste",
+    metas: dict[str, dict[str, int]] | None = None,
 ) -> ResultadoCompra:
     if modo not in {"juego", "precio"}:
         raise ValueError("El modo debe ser juego o precio")
@@ -178,9 +199,13 @@ def plan_compra(
     coleccion = tuple(coleccion)
     ignorados = set(ejes_ignorados)
     precios_usuario = precios_usuario or {}
-    actual = cobertura(artefactos, coleccion)
+    actual = cobertura(artefactos, coleccion, metas)
+    metas = metas or {}
     valores = {
-        (eje, nivel): (1 / len(artefactos.tipos[eje])) * (0.5 if nivel in resultado.debiles else 1)
+        (eje, nivel): (
+            1 / sum(metas.get(eje, {}).get(nivel_eje, 2) > 0 for nivel_eje in artefactos.tipos[eje])
+        )
+        * (1 if nivel in resultado.faltantes else 0.5 / (metas.get(eje, {}).get(nivel, 2) - 1))
         for eje, resultado in actual.ejes.items()
         if eje not in ignorados
         for nivel in (*resultado.faltantes, *resultado.debiles)

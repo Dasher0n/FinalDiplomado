@@ -1,8 +1,8 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from "@angular/core/testing";
 
-import { App } from './app';
+import { App } from "./app";
 
-describe('App', () => {
+describe("App", () => {
   let fixture: ComponentFixture<App>;
 
   beforeEach(async () => {
@@ -14,7 +14,7 @@ describe('App', () => {
     fixture.detectChanges();
   });
 
-  it('muestra la marca de la aplicacion', () => {
-    expect(fixture.nativeElement.textContent).toContain('Wise Dice');
+  it("muestra la marca de la aplicacion", () => {
+    expect(fixture.nativeElement.textContent).toContain("Wise Dice");
   });
 });
