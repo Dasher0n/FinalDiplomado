@@ -88,6 +88,12 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 
 ## Bloque 2
 
+- Cafe demo usa 40 juegos populares ligeros o medios y el perfil Cafe define metas versionadas por nivel. La meta 0 no participa en cobertura, faltantes, debilidades ni valor del plan.
+- Cafe excluye la mecanica exacta `Legacy Game` y los titulos cuyo nombre inicia exactamente con `EXIT: The Game`. La segunda es una regla explicita de serie porque el catalogo no tiene una etiqueta especifica para EXIT.
+- No se excluyen `Game: Escape (Queen Games)`, `Game: Lost Legacy` ni `Game: Flash Point Legacy of Flame`.
+
+## Bloque 2
+
 - Se agregaron perfiles versionados de colección. `coleccionista` conserva meta 2 en todos los niveles y reproduce las pruebas doradas y el anexo existentes.
 - `cafe` usa los 40 IDs entregados, con metas por nivel para operación B2B. Los niveles con meta 0 no participan en cobertura, faltantes, debilidades ni en el valor del plan.
 - La valoración de un nivel faltante es `1 / niveles relevantes del eje`; una cobertura parcial reparte la mitad restante entre las posiciones de la meta 2 a la meta configurada.

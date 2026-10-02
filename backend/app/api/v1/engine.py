@@ -16,6 +16,7 @@ from app.engine.motor import (
     opciones_compra,
     que_saco_hoy,
 )
+from app.profiles import juego_excluido_del_plan
 from app.repositories.catalogo import CatalogoRepository
 from app.schemas.engine import (
     CambioNivel,
@@ -283,10 +284,15 @@ async def comprar_plan(
     artefactos = _artefactos(request)
     repo = CatalogoRepository(session)
     coleccion = await _coleccion(session, user, perfil.id)
+    candidatos = [
+        juego
+        for juego in await repo.todos_los_juegos()
+        if not juego_excluido_del_plan(perfil.id, juego.nombre, juego.mechanics or [])
+    ]
     resultados = opciones_compra(
         artefactos,
         coleccion,
-        await repo.todos_los_juegos(),
+        candidatos,
         n=solicitud.n,
         modo=solicitud.modo,
         presupuesto=solicitud.presupuesto,

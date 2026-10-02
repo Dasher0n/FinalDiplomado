@@ -20,7 +20,7 @@ from app.engine.motor import (
     regla_exacta,
     similitud,
 )
-from app.profiles import CAFE_GAME_IDS, PERFILES
+from app.profiles import CAFE_GAME_IDS, PERFILES, juego_excluido_del_plan
 
 RAIZ = Path(__file__).resolve().parents[2]
 ARTEFACTOS = ArtefactosMotor.cargar(RAIZ / "artefactos")
@@ -35,6 +35,14 @@ def cargar_juegos(ids: set[str]) -> dict[str, Game]:
                 if len(juegos) == len(ids):
                     return juegos
     raise AssertionError(f"No se encontraron todos los juegos: {ids - set(juegos)}")
+
+
+def cargar_catalogo() -> list[Game]:
+    with (RAIZ / "artefactos" / "catalogo.csv").open(encoding="utf-8", newline="") as archivo:
+        return [
+            Game(**game_values(fila, fila_vector))
+            for fila_vector, fila in enumerate(csv.DictReader(archivo))
+        ]
 
 
 PARES = (
@@ -148,6 +156,47 @@ def test_cobertura_del_cafe_aplica_metas_y_omite_niveles_irrelevantes() -> None:
     assert set(resultado.ejes["Temática"].faltantes) == {"Horror"}
 
 
+def test_exclusiones_del_plan_cafe_son_exactas() -> None:
+    assert juego_excluido_del_plan("cafe", "Pandemic Legacy: Season 1", ["Legacy Game"])
+    assert juego_excluido_del_plan("cafe", "EXIT: The Game – The Forbidden Castle", [])
+    assert not juego_excluido_del_plan("cafe", "Lost Legacy: The Starship", ["Memory"])
+    assert not juego_excluido_del_plan("cafe", "Escape: The Curse of the Temple", ["Dice Rolling"])
+    assert not juego_excluido_del_plan("cafe", "Flash Point: Fire Rescue", ["Cooperative Game"])
+    assert not juego_excluido_del_plan("cafe", "Pandemic Legacy: Season 1", ["Legacy Games"])
+    assert not juego_excluido_del_plan(
+        "coleccionista", "EXIT: The Game – The Forbidden Castle", ["Legacy Game"]
+    )
+
+
+def test_plan_cafe_excluye_solo_los_candidatos_aprobados() -> None:
+    perfil_cafe = next(perfil for perfil in PERFILES if perfil["id"] == "cafe")
+    catalogo = cargar_catalogo()
+    resultado = plan_compra(
+        ARTEFACTOS,
+        [juego for juego in catalogo if juego.id in CAFE_GAME_IDS],
+        [
+            juego
+            for juego in catalogo
+            if not juego_excluido_del_plan("cafe", juego.nombre, juego.mechanics or [])
+        ],
+        n=5,
+        modo="juego",
+        average_min=6.5,
+        users_rated_min=1000,
+        metas=perfil_cafe["metas"],
+    )
+
+    assert [juego.nombre for juego in resultado.juegos] == [
+        "Arkham Horror: The Card Game (Revised Core Set)",
+        "Tend",
+        "Return to Dark Tower",
+    ]
+    assert all(
+        not juego_excluido_del_plan("cafe", juego.nombre, juego.mechanics or [])
+        for juego in resultado.juegos
+    )
+
+
 def test_plan_precio_compara_greedy_con_mejor_individual() -> None:
     juegos = cargar_juegos({"266192", "410201", "350184"})
     resultado = plan_compra(
@@ -228,6 +277,58 @@ def test_plan_reparte_el_valor_de_meta_superior_a_dos() -> None:
 
     assert resultado.valor_cubierto == pytest.approx(0.15)
     assert resultado.valor_pendiente == pytest.approx(5.85)
+
+
+def test_plan_asigna_el_valor_completo_a_una_meta_unica() -> None:
+    candidato = Game(
+        id="candidato",
+        nombre="Candidato",
+        fila_vector=0,
+        nivel_jugadores=["2"],
+        average=7,
+        users_rated=1000,
+    )
+    metas = {eje: {nivel: 0 for nivel in niveles} for eje, niveles in ARTEFACTOS.tipos.items()}
+    metas["Jugadores"]["2"] = 1
+
+    resultado = plan_compra(
+        ARTEFACTOS,
+        [],
+        [candidato],
+        n=1,
+        modo="juego",
+        users_rated_min=0,
+        metas=metas,
+    )
+
+    assert resultado.valor_cubierto == pytest.approx(1)
+    assert resultado.valor_pendiente == pytest.approx(0)
+
+
+def test_plan_mantiene_pendiente_si_falta_cobertura_de_una_meta() -> None:
+    candidato = Game(
+        id="candidato",
+        nombre="Candidato",
+        fila_vector=0,
+        nivel_jugadores=["2"],
+        average=7,
+        users_rated=1000,
+    )
+    metas = {eje: {nivel: 0 for nivel in niveles} for eje, niveles in ARTEFACTOS.tipos.items()}
+    metas["Jugadores"]["2"] = 2
+
+    resultado = plan_compra(
+        ARTEFACTOS,
+        [],
+        [candidato],
+        n=1,
+        modo="juego",
+        users_rated_min=0,
+        metas=metas,
+    )
+
+    assert resultado.valor_cubierto == pytest.approx(0.5)
+    assert resultado.valor_pendiente == pytest.approx(0.5)
 
 
 def test_que_saco_hoy_y_busqueda_ambigua() -> None:

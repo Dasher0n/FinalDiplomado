@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
+from typing import cast
+
 CONFIGURACION_PERFILES_VERSION = 2
 
 CAFE_GAME_IDS = (
@@ -98,6 +101,10 @@ PERFILES = (
         "nombre": "Café demo",
         "tipo": "mesa",
         "descripcion": "Ludoteca B2B variada y rotativa. No opera partidas en solitario.",
+        "exclusiones_plan": {
+            "mecanicas": ("Legacy Game",),
+            "prefijos_titulo": ("EXIT: The Game",),
+        },
         "metas": {
             "Jugadores": {"1": 0, "2": 3, "3 a 4": 4, "5 a 6": 5, "7 o más": 4},
             "Duración": {"hasta 30": 6, "31 a 60": 6, "61 a 120": 2, "más de 120": 1},
@@ -108,3 +115,13 @@ PERFILES = (
         },
     },
 )
+
+
+def juego_excluido_del_plan(perfil_id: str, nombre: str, mecanicas: Collection[str]) -> bool:
+    """Indica si un candidato no debe aparecer en los planes del perfil."""
+    perfil = next(perfil for perfil in PERFILES if perfil["id"] == perfil_id)
+    exclusiones = cast(dict[str, Collection[str]], perfil.get("exclusiones_plan", {}))
+    return bool(
+        set(mecanicas) & set(exclusiones.get("mecanicas", ()))
+        or nombre.startswith(tuple(exclusiones.get("prefijos_titulo", ())))
+    )

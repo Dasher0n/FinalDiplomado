@@ -224,6 +224,8 @@ def plan_compra(
             metas.get(eje, {}).get(item, 2) > 0 for item in artefactos.tipos[eje]
         )
         if conteo == 0:
+            if meta == 1:
+                return 1 / niveles_relevantes
             return 0.5 / niveles_relevantes
         return 0.5 / niveles_relevantes / (meta - 1)
 
