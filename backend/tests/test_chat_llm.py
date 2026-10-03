@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import openai
@@ -27,6 +28,67 @@ def test_critic_determinista_rechaza_cifra_fuera_de_las_tools() -> None:
     )
 
     assert findings == ["La cifra 99.0 no aparece en los resultados de las tools."]
+
+
+@pytest.mark.parametrize(
+    ("pregunta", "intent", "tool", "args"),
+    [
+        (
+            "Tengo ganas de comprar Wyrmspan, ¿vale la pena?",
+            "evaluar_compra",
+            "evaluar_compra",
+            {"nombre": "Wyrmspan"},
+        ),
+        ("¿Qué me falta?", "que_me_falta", "que_me_falta", {}),
+        (
+            "Quiero un plan de 3 juegos para cubrir huecos.",
+            "que_compro",
+            "que_compro",
+            {"n": 3},
+        ),
+        (
+            "Somos 6 y tenemos 45 minutos, ¿qué saco?",
+            "que_saco_hoy",
+            "que_saco_hoy",
+            {"jugadores": 6, "minutos": 45},
+        ),
+        ("Catan", "detalle_juego", "detalle_juego", {"nombre": "Catan"}),
+        ("¿Quién ganó el mundial de fútbol?", "fuera_de_dominio", None, {}),
+    ],
+)
+def test_planner_determinista_resuelve_guion_sin_llm(
+    pregunta: str, intent: str, tool: str | None, args: dict[str, Any]
+) -> None:
+    settings = Settings(llm_enabled=False)
+    assert not settings.llm_active
+
+    plan = chat_service._plan_determinista(pregunta, None)
+
+    assert plan.intent == intent
+    if tool is None:
+        assert plan.steps == []
+    else:
+        assert len(plan.steps) == 1
+        assert plan.steps[0].tool == tool
+        assert plan.steps[0].args == args
+
+
+@pytest.mark.asyncio
+async def test_planner_fallback_resuelve_wyrmspan_por_nombre_extraido() -> None:
+    juego = SimpleNamespace(id="410201", nombre="Wyrmspan")
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return [juego]
+
+    settings = Settings(llm_enabled=False)
+    plan = chat_service._plan_determinista("Tengo ganas de comprar Wyrmspan, ¿vale la pena?", None)
+    estado, juegos = await chat_service._resolver(
+        CatalogoPrueba(), plan.steps[0].args["nombre"], None, settings
+    )
+
+    assert estado == "encontrado"
+    assert [item.id for item in juegos] == ["410201"]
 
 
 @pytest.mark.asyncio

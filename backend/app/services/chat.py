@@ -132,50 +132,63 @@ _TOOL_MANIFEST = {
 
 def _plan_determinista(mensaje: str, game_id: str | None) -> PlanLlm:
     texto = mensaje.lower()
+    consulta = normalizar_nombre(mensaje)
     if any(palabra in texto for palabra in ("ignora", "instrucciones", "prompt", "sistema")):
         return PlanLlm(intent="fuera_de_dominio")
     if any(palabra in texto for palabra in ("regla", "reglamento", "como se juega")):
         return PlanLlm(intent="reglas")
-    if any(palabra in texto for palabra in ("vale la pena", "evalu", "redund")) or game_id:
-        return PlanLlm(
-            intent="evaluar_compra",
-            steps=[
-                PasoPlan(
-                    id="1",
-                    tool="evaluar_compra",
-                    args={"game_id": game_id} if game_id else {"nombre": mensaje},
-                )
-            ],
-        )
-    if any(palabra in texto for palabra in ("que compro", "qué compro", "recomienda", "comprar")):
+
+    pide_plan = any(palabra in consulta for palabra in ("que compro", "recomienda", "plan de")) or (
+        "comprar" in consulta and any(palabra in consulta for palabra in ("hueco", "juego"))
+    )
+    if pide_plan:
         numero = re.search(r"\b(\d{1,2})\b", texto)
         n = max(1, min(20, int(numero.group(1)))) if numero else 5
         return PlanLlm(
             intent="que_compro", steps=[PasoPlan(id="1", tool="que_compro", args={"n": n})]
         )
-    if any(palabra in texto for palabra in ("falta", "faltan", "cobertura", "hueco")):
+    if any(palabra in consulta for palabra in ("falta", "faltan", "cobertura", "hueco")):
         return PlanLlm(intent="que_me_falta", steps=[PasoPlan(id="1", tool="que_me_falta")])
-    if any(palabra in texto for palabra in ("saco", "jugamos", "somos", "minutos")):
+    if any(palabra in consulta for palabra in ("saco", "jugamos", "somos", "minuto")):
         numeros = [int(valor) for valor in re.findall(r"\b\d{1,3}\b", texto)]
-        args = {
+        args: dict[str, Any] = {
             "jugadores": numeros[0] if numeros else 4,
             "minutos": numeros[1] if len(numeros) > 1 else 60,
         }
         return PlanLlm(
             intent="que_saco_hoy", steps=[PasoPlan(id="1", tool="que_saco_hoy", args=args)]
         )
-    if any(palabra in texto for palabra in ("coleccion", "colección", "tengo")) and not game_id:
+    if any(palabra in consulta for palabra in ("vale la pena", "evalu", "redund")) or game_id:
+        args = {"game_id": game_id} if game_id else {"nombre": _extraer_nombre_juego(mensaje)}
+        return PlanLlm(
+            intent="evaluar_compra",
+            steps=[PasoPlan(id="1", tool="evaluar_compra", args=args)],
+        )
+    if any(palabra in consulta for palabra in ("coleccion", "tengo")) and not game_id:
         return PlanLlm(intent="coleccion", steps=[PasoPlan(id="1", tool="ver_coleccion")])
+    pregunta_general = re.match(r"^(quien|quienes|cuando|donde|por que)\b", consulta)
+    if pregunta_general and len(consulta.split()) >= 4:
+        return PlanLlm(intent="fuera_de_dominio")
+    args = {"game_id": game_id} if game_id else {"nombre": _extraer_nombre_juego(mensaje)}
     return PlanLlm(
         intent="detalle_juego",
-        steps=[
-            PasoPlan(
-                id="1",
-                tool="detalle_juego",
-                args={"game_id": game_id} if game_id else {"nombre": mensaje},
-            )
-        ],
+        steps=[PasoPlan(id="1", tool="detalle_juego", args=args)],
     )
+
+
+def _extraer_nombre_juego(mensaje: str) -> str:
+    """Separa el título de juego de la formulación de la pregunta."""
+    patrones = (
+        r"\b(?:comprar|compra|evaluar|evalúa)\s+(?:el juego\s+)?(?P<nombre>.+?)(?=[,;.!?¿]|$)",
+        r"\bvale la pena\s+(?P<nombre>.+?)(?=[,;.!?¿]|$)",
+    )
+    for patron in patrones:
+        coincidencia = re.search(patron, mensaje, re.IGNORECASE)
+        if coincidencia:
+            nombre = coincidencia.group("nombre").strip(" \t\r\n,;.!?¿¡")
+            if nombre:
+                return nombre
+    return mensaje.strip(" \t\r\n,;.!?¿¡")
 
 
 def _validar_plan(plan: PlanLlm | None, max_pasos: int) -> PlanLlm | None:
