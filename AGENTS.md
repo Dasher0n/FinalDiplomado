@@ -105,6 +105,8 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - El narrator solo usa hechos de tools. El critic exige el motivo de una regla exacta, los valores A, B y C en planes, faltantes y debiles en cobertura, y niveles de peso, interaccion o duracion presentes en los resultados.
 - El planner incluye ejemplos de formulaciones naturales por intent y valida el plan contra el catalogo: un juego encontrado fuerza `evaluar_compra` si no esta en la coleccion o `detalle_juego` si ya esta. La resolucion acepta el titulo antes de `:` cuando es unico, como `SETI`.
 - El narrator no ofrece funciones fuera del manifiesto ni nombres internos entre comillas invertidas. El critic rechaza ambos casos y pide al LLM detectar respuestas que no contestan la pregunta.
+- La validacion posterior solo fuerza un intent de juego para una coincidencia exacta normalizada o el titulo unico antes de `:`. Una coincidencia difusa no puede convertir una consulta general de cobertura en `evaluar_compra`.
+- `¿Y SETI?` se interpreta como consulta de compra y `Catan` conserva la coincidencia exacta con el ID `13`.
 - Se probaron las seis preguntas del guion sin LLM. Los casos reales saneados quedan en `backend/tests/fixtures/chat_casos_reales_saneados.json`; la resolucion ambigua real de Catan esta en `backend/tests/fixtures/chat_catan_ambiguo_saneado.json`. Los fixtures no guardan cabeceras.
 - Verificacion de cierre: `make test` con 83 pruebas backend y 1 frontend; `make lint` limpio; `docker compose up --build -d` con backend saludable.
 

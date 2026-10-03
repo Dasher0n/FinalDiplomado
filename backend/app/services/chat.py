@@ -389,6 +389,10 @@ async def _validar_plan_con_juego(
     if estado != "encontrado":
         return plan
     juego = juegos[0]
+    consulta_normalizada = normalizar_nombre(nombre)
+    titulo_normalizado = normalizar_nombre(juego.nombre.split(":", maxsplit=1)[0])
+    if consulta_normalizada not in {normalizar_nombre(juego.nombre), titulo_normalizado}:
+        return plan
     en_coleccion = any(item.id == juego.id for item in coleccion)
     tool = "detalle_juego" if en_coleccion else "evaluar_compra"
     intent = "detalle_juego" if en_coleccion else "evaluar_compra"

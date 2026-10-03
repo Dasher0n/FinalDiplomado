@@ -196,6 +196,22 @@ async def test_resolver_acepta_titulo_antes_de_dos_puntos() -> None:
 
 
 @pytest.mark.asyncio
+async def test_validacion_no_fuerza_juego_por_coincidencia_difusa() -> None:
+    juego = SimpleNamespace(id="444042", nombre="Alta")
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return [juego]
+
+    plan = chat_service._plan_determinista("¿Qué experiencias me faltan?", None)
+    validado = await chat_service._validar_plan_con_juego(
+        plan, "¿Qué experiencias me faltan?", CatalogoPrueba(), [], Settings(llm_enabled=False)
+    )
+
+    assert validado.intent == "que_me_falta"
+
+
+@pytest.mark.asyncio
 async def test_resolver_prioriza_coincidencia_exacta_sobre_variantes() -> None:
     juegos_catalogo = [
         SimpleNamespace(id="13", nombre="Catan"),
