@@ -123,7 +123,10 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - La sesión conserva el último juego resuelto como foco; el planner recibe tres turnos resumidos y las continuaciones sin título reutilizan ese foco.
 - Si el nombre en español no resuelve localmente y hay clave, el modelo rápido propone hasta tres títulos originales estructurados. El resultado registra `interpretado_como`; sin clave se omite este paso.
 - Una consulta de compra para un juego ya poseído no lo evalúa como compra: devuelve el impacto determinista de venderlo.
-- El librero agrupa Familia por familias mecánicas y cada grupo se renderiza en un solo mueble. Las filas se dibujan con un fondo repetido y los grupos con más de 12 juegos ocupan dos columnas cuando hay espacio.
+- El librero agrupa Familia por familias mecánicas y cada grupo se renderiza en un solo mueble. Las filas se dibujan con un fondo repetido y los grupos con más de 6 juegos ocupan todo el ancho disponible.
+- El perfil activo se conserva en el navegador y se incluye como parámetro en las llamadas de colección, motor y chat. Las colecciones reales verificadas tienen 12 juegos para `coleccionista` y 40 para `cafe`.
+- Ludoteca integra el filtro de mesa sobre el librero: el resultado `ideal` ilumina la portada, `funciona` conserva su color y el resto se oscurece. La vista compacta solo modifica la altura de portada mediante `--cover-h`.
+- El markdown del chat escapa todo contenido antes de permitir encabezados, párrafos, listas, negrita, cursiva y enlaces HTTP(S) con `rel="noopener"`.
 
 ## Bloque 2
 

@@ -31,6 +31,9 @@ body {
   display: flex;
   gap: 0.2rem;
 }
+.header-actions { display: flex; align-items: center; gap: 0.8rem; }
+.profile-selector { display: grid; gap: 0.15rem; color: #f8f1e5; font-size: 0.7rem; font-weight: 700; }
+.profile-selector select { border: 1px solid #b98a4a; border-radius: 0.35rem; background: #fffaf2; padding: 0.25rem; color: #38200d; }
 .wise-nav button {
   border-radius: 999px;
   padding: 0.45rem 0.7rem;
@@ -263,7 +266,7 @@ body {
 }
 .bubble.user {
   width: fit-content;
-  max-width: 85%;
+  max-width: 520px;
   margin: 1rem 0 1rem auto;
   background: #eee1cc;
 }
@@ -323,10 +326,10 @@ body {
 }
 .bookcase-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+  gap: 24px;
 }
-.bookcase-wide { grid-column: span 2; }
+.bookcase-wide { grid-column: 1 / -1; }
 
 .case-shelf {
   position: relative;
@@ -363,21 +366,29 @@ body {
 }
 
 .shelf-games {
+  --cover-h: 150px;
+  --plank-h: 14px;
+  --row-h: calc(var(--cover-h) + var(--plank-h) + 14px);
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
-  gap: 0.8rem;
-  padding: 2.2rem 0.75rem 0.5rem;
+  align-items: flex-end;
+  align-content: flex-start;
+  column-gap: 14px;
+  row-gap: 0;
+  padding: 0 18px;
   overflow: hidden;
-  background: repeating-linear-gradient(to bottom, transparent 0 224px, #3b2116 224px 240px, #b67c4e 240px 244px);
+  background-image: linear-gradient(to bottom, transparent calc(var(--row-h) - var(--plank-h)), #3b2116 calc(var(--row-h) - var(--plank-h)), #b67c4e var(--row-h));
+  background-size: 100% var(--row-h);
 }
 
 .game-card {
   position: relative;
   z-index: 1;
-  flex: 0 1 160px;
-  min-width: 88px;
-  align-self: end;
+  height: var(--row-h);
+  padding-bottom: var(--plank-h);
+  display: flex;
+  align-items: flex-end;
+  flex: 0 0 auto;
   cursor: pointer;
 }
 
@@ -385,14 +396,14 @@ body {
   display: flex;
   align-items: end;
   justify-content: center;
-  height: 216px;
+  height: var(--cover-h);
 }
 
 .game-cover img {
   display: block;
   width: auto;
-  max-width: 100%;
-  height: 100%;
+  max-width: calc(var(--cover-h) * 1.6);
+  height: var(--cover-h);
   object-fit: contain;
   filter: drop-shadow(5px 8px 6px rgb(10 6 4 / 55%));
   transition:
@@ -440,22 +451,7 @@ body {
   filter: drop-shadow(0 0 10px #f4cf72)
     drop-shadow(5px 8px 6px rgb(10 6 4 / 55%));
 }
-.compact-bookcases .case-shelf {
-  min-height: 215px;
-}
-.compact-bookcases .shelf-rail {
-  min-height: 170px;
-}
-.compact-bookcases .shelf-games {
-  min-height: 154px;
-  gap: 0.45rem;
-}
-.compact-bookcases .game-card {
-  min-width: 54px;
-}
-.compact-bookcases .game-cover {
-  height: 146px;
-}
+.compact-bookcases .shelf-games { --cover-h: 88px; }
 .table-legend {
   display: flex;
   flex-wrap: wrap;
@@ -484,15 +480,15 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 0.6rem;
-  margin-top: 1rem;
+  margin-top: 16px;
 }
 .assistant-message .bubble {
   flex: 1;
-  max-width: calc(100% - 2.6rem);
+  max-width: 680px;
 }
 .chat-avatar {
-  width: 2rem;
-  height: 2rem;
+  width: 36px;
+  height: 36px;
   padding: 0.2rem;
   border-radius: 50%;
   background: #3d281d;
@@ -515,6 +511,8 @@ body {
   background: linear-gradient(transparent, #fffaf2 22%);
 }
 .markdown p { margin: 0.4rem 0; }
+.chat-error { margin: 16px 0; color: #9b3429; font-weight: 700; }
+.game-summary-card { overflow: hidden; }
 
 @media (min-width: 1280px) {
   .bookcase-grid {
@@ -536,6 +534,8 @@ body {
     background: #251b16;
     padding: 0.45rem;
   }
+  .header-actions { gap: 0.35rem; }
+  .profile-selector { max-width: 7rem; }
   .wise-nav button {
     padding: 0.45rem 0.38rem;
     font-size: 0.72rem;
@@ -558,34 +558,6 @@ body {
     margin: 0;
   }
 
-  .case-shelf {
-    min-height: 260px;
-  }
-
-  .shelf-games {
-    min-height: 204px;
-    padding-right: 1.5rem;
-  }
-
-  .game-card {
-    flex: 0 0 122px;
-  }
-
-  .game-cover {
-    height: 196px;
-  }
-  .compact-bookcases .case-shelf {
-    min-height: 190px;
-  }
-  .compact-bookcases .shelf-rail {
-    min-height: 152px;
-  }
-  .compact-bookcases .shelf-games {
-    min-height: 136px;
-  }
-  .compact-bookcases .game-cover {
-    height: 128px;
-  }
   .coverage-chart-grid {
     grid-template-columns: 1fr;
   }

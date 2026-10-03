@@ -64,17 +64,17 @@ Chart.register(
             <p class="text-xs text-amber-200">Tu asesor de ludoteca</p>
           </div>
         </div>
+        <div class="header-actions">
+          <label class="profile-selector">Perfil<select #perfilSelector [value]="perfilActivo()" (change)="cambiarPerfil(perfilSelector.value)">
+            <option value="cafe">Café demo</option>
+            <option value="coleccionista">Colección personal</option>
+          </select></label>
         <nav class="wise-nav">
           <button
-            [class.active]="vista() === 'ludoteca' && perfilActivo() === 'coleccionista'"
-            (click)="abrirLudoteca('coleccionista')"
+            [class.active]="vista() === 'ludoteca'"
+            (click)="abrir('ludoteca')"
           >
             Ludoteca</button
-          ><button
-            [class.active]="vista() === 'ludoteca' && perfilActivo() === 'cafe'"
-            (click)="abrirLudoteca('cafe')"
-          >
-            Modo mesa</button
           ><button
             [class.active]="vista() === 'cobertura'"
             (click)="abrir('cobertura')"
@@ -84,6 +84,7 @@ Chart.register(
             Chat
           </button>
         </nav>
+        </div>
       </div>
     </header>
 
@@ -109,22 +110,18 @@ Chart.register(
               <p>Busca en el catálogo para añadir juegos a esta ludoteca.</p>
             </details>
           </div>
-          <div class="flex gap-2">
-            <button
-              class="chip"
-              [class.active]="modo() === 'estantes'"
-              (click)="modo.set('estantes')"
-            >
-              Estantes</button
-            ><button
-              class="chip"
-              [class.active]="modo() === 'hoy'"
-              (click)="modo.set('hoy')"
-            >
-              ¿Qué jugamos?
-            </button>
-          </div>
         </div>
+        <section class="panel mb-5 table-filter">
+          <h3 class="font-serif text-2xl">¿Qué jugamos?</h3>
+          <div class="mt-3 flex flex-wrap gap-3">
+            <label>Jugadores<input #jugadores class="input mt-1" type="number" min="1" placeholder="Ejemplo: 4" /></label>
+            <label>Minutos<input #minutos class="input mt-1" type="number" min="1" placeholder="Ejemplo: 60" /></label>
+            <label>Edad mínima<input #edad class="input mt-1" type="number" min="1" placeholder="Opcional" /></label>
+            <button class="primary self-end" (click)="cargarNoche(+jugadores.value, +minutos.value, +edad.value)">Filtrar</button>
+            <button class="chip self-end" (click)="limpiarNoche(jugadores, minutos, edad)">Limpiar</button>
+          </div>
+          @if (noche()) { <div class="table-legend"><span class="ideal-marker">Ideal: resplandor dorado</span><span>Funciona: color normal</span><span class="dimmed-marker">No cumple: oscurecido</span></div> }
+        </section>
         @if (modo() === "estantes") {
           <section class="panel">
             <div class="flex flex-wrap gap-3">
@@ -168,12 +165,14 @@ Chart.register(
           </section>
           <div class="bookcase-grid mt-7" [class.compact-bookcases]="vistaCompactaActiva()">
             @for (grupo of grupos(); track grupo.nombre) {
-              <section class="bookcase" [class.bookcase-wide]="grupo.juegos.length > 12">
+              <section class="bookcase" [class.bookcase-wide]="grupo.juegos.length > 6">
                 <h3 class="shelf-plaque">{{ placa(grupo.nombre) }} · {{ grupo.juegos.length }}</h3>
                 <div class="shelf-games">
                   @for (juego of grupo.juegos; track juego.id) {
                         <button
                           class="game-card"
+                          [class.dimmed]="noche() && !recomendadoEstaNoche(juego.id)"
+                          [class.highlighted]="ajusteEstaNoche(juego.id) === 'ideal'"
                           (click)="verDetalle(juego.id)"
                           (mouseenter)="mostrarTooltip($event, juego)"
                           (mouseleave)="tooltip.set(null)"
@@ -517,7 +516,7 @@ Chart.register(
     }
 
     @if (vista() === "chat") {
-      <section class="chat-screen mx-auto max-w-3xl px-4 py-7">
+      <section class="chat-screen mx-auto max-w-[860px] px-4 py-7">
         <p class="eyebrow">Asistente de ludoteca · {{ etiquetaPerfil() }}</p>
         <h2 class="font-serif text-4xl">Pregunta a Wise Dice</h2>
         <article class="chat-card mt-6">
@@ -544,12 +543,14 @@ Chart.register(
                     </div>
                     @for (tarjeta of respuesta.tarjetas; track $index) {
                       @if (tarjetaJuego(tarjeta); as juego) {
-                        <article class="recommendation mt-3">
-                          @if (tarjetaImagen(tarjeta); as imagen) { <img class="chat-card-cover" [src]="imagen" [alt]="juego.nombre" /> }
-                          <b>{{ juego.nombre }}</b>
-                          @if (tarjetaVeredicto(tarjeta); as veredicto) { <p>{{ etiqueta(veredicto) }}</p> }
-                          @if (tarjetaPrecio(tarjeta); as precio) { <p>{{ precio }}</p> }
-                          @if (tarjetaEnlace(tarjeta); as enlace) { <a [href]="enlace" target="_blank" rel="noopener">Ver precio en BoardGamePrices</a> }
+                          <article class="recommendation game-summary-card mt-3">
+                            @if (tarjetaImagen(tarjeta); as imagen) { <img class="chat-card-cover" [src]="imagen" [alt]="juego.nombre" /> }
+                            <b>{{ juego.nombre }}</b>
+                            @if (tarjetaAnio(tarjeta); as anio) { <p>{{ anio }}</p> }
+                            @if (tarjetaFicha(tarjeta); as ficha) { <p>{{ ficha }}</p> }
+                            @if (tarjetaVeredicto(tarjeta); as veredicto) { <p>{{ etiqueta(veredicto) }}</p> }
+                            @if (tarjetaPrecio(tarjeta); as precio) { <p>{{ precio }}</p> }
+                            @if (tarjetaEnlace(tarjeta); as enlace) { <a [href]="enlace" target="_blank" rel="noopener">Ver en BoardGamePrices</a> }
                         </article>
                       }
                     }
@@ -565,9 +566,13 @@ Chart.register(
               </div>
             }
           }
+          @if (chatEsperando()) {
+            <div class="assistant-message"><img class="chat-avatar" src="/wise-dice.svg" alt="" /><p class="bubble answer">Wise Dice está pensando…</p></div>
+          }
+          @if (chatError()) { <p class="chat-error">No pude responder ahora. Inténtalo de nuevo en unos momentos.</p> }
           <div class="chat-input">
-            <input #pregunta class="input w-full" placeholder="Ejemplo: ¿Qué le falta a mi colección?" (keyup.enter)="enviarChat(pregunta.value); pregunta.value = ''" />
-            <button class="primary" (click)="enviarChat(pregunta.value); pregunta.value = ''">Enviar</button>
+            <input #pregunta class="input w-full" [disabled]="chatEsperando()" placeholder="Ejemplo: ¿Qué le falta a mi colección?" (keyup.enter)="enviarChat(pregunta.value); pregunta.value = ''" />
+            <button class="primary" [disabled]="chatEsperando()" (click)="enviarChat(pregunta.value); pregunta.value = ''">Enviar</button>
           </div>
         </article>
       </section>
@@ -785,6 +790,8 @@ export class App {
       bienvenida: true,
     },
   ]);
+  protected readonly chatEsperando = signal(false);
+  protected readonly chatError = signal(false);
   private chatSessionId: string | undefined;
   protected readonly evaluacionDetalle = signal<EvaluarRespuesta | null>(null);
   protected readonly ventaDetalle = signal<VentaImpactoRespuesta | null>(null);
@@ -796,6 +803,10 @@ export class App {
   } | null>(null);
 
   constructor() {
+    const perfilGuardado = localStorage.getItem("wise-dice-perfil");
+    if (perfilGuardado === "cafe" || perfilGuardado === "coleccionista") {
+      this.perfilActivo.set(perfilGuardado);
+    }
     void this.cargarPerfiles();
     void this.cargarColeccion();
   }
@@ -803,6 +814,7 @@ export class App {
   protected async cambiarPerfil(perfil: string): Promise<void> {
     if (perfil === this.perfilActivo()) return;
     this.perfilActivo.set(perfil);
+    localStorage.setItem("wise-dice-perfil", perfil);
     this.plan.set(null);
     this.noche.set(null);
     this.evaluacionDetalle.set(null);
@@ -851,13 +863,25 @@ export class App {
   protected async cargarNoche(
     jugadores: number,
     minutos: number,
+    edadMinima?: number,
   ): Promise<void> {
     if (jugadores > 0 && minutos > 0)
       this.noche.set(
         await firstValueFrom(
-          this.api.estaNoche({ jugadores, minutos }, this.perfilActivo()),
+          this.api.estaNoche({ jugadores, minutos, edad_minima: edadMinima || undefined }, this.perfilActivo()),
         ),
       );
+  }
+
+  protected limpiarNoche(
+    jugadores: HTMLInputElement,
+    minutos: HTMLInputElement,
+    edad: HTMLInputElement,
+  ): void {
+    jugadores.value = "";
+    minutos.value = "";
+    edad.value = "";
+    this.noche.set(null);
   }
 
   protected async cargarPlan(
@@ -901,6 +925,8 @@ export class App {
 
   protected async enviarChat(mensaje: string, gameId?: string): Promise<void> {
     if (!mensaje.trim()) return;
+    this.chatError.set(false);
+    this.chatEsperando.set(true);
     this.mensajesChat.update((mensajes) => [...mensajes, { role: "user", texto: mensaje }]);
     try {
       const respuesta = await firstValueFrom(this.api.chat(mensaje, this.perfilActivo(), this.chatSessionId, gameId));
@@ -910,7 +936,9 @@ export class App {
         { role: "assistant", texto: respuesta.answer, respuesta },
       ]);
     } catch {
-      this.error.set("No fue posible consultar al asistente.");
+      this.chatError.set(true);
+    } finally {
+      this.chatEsperando.set(false);
     }
   }
 
@@ -1004,7 +1032,22 @@ export class App {
   }
   protected tarjetaPrecio(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
     const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
-    return juego?.["precio_usd"] == null ? null : `USD ${juego["precio_usd"]}`;
+    if (juego?.["precio_usd"] == null) return null;
+    const fecha = typeof juego["fecha_precio"] === "string" ? ` · ${juego["fecha_precio"]}` : "";
+    return `USD ${juego["precio_usd"]}${fecha}`;
+  }
+  protected tarjetaAnio(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
+    const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
+    return typeof juego?.["anio"] === "number" ? String(juego["anio"]) : null;
+  }
+  protected tarjetaFicha(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
+    const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
+    if (!juego) return null;
+    const jugadores = juego["jugadores_minimos"] != null && juego["jugadores_maximos"] != null
+      ? `${juego["jugadores_minimos"]}-${juego["jugadores_maximos"]} jugadores` : "";
+    const duracion = juego["duracion_maxima"] != null ? `${juego["duracion_maxima"]} min` : "";
+    const peso = juego["peso"] != null ? `peso ${juego["peso"]}${juego["peso_estimado"] ? " estimado" : ""}` : "";
+    return [jugadores, duracion, peso].filter(Boolean).join(" · ") || null;
   }
   protected tarjetaEnlace(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
     const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
@@ -1107,7 +1150,7 @@ export class App {
         this.agrupacion() === "familia"
           ? juego.familias_mecanicas
           : this.agrupacion() === "jugadores"
-            ? [this.rango(juego)]
+            ? juego.nivel_jugadores
             : this.agrupacion() === "duracion"
               ? [juego.nivel_duracion]
               : this.agrupacion() === "peso"

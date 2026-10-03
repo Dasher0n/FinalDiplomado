@@ -103,7 +103,10 @@ export class CatalogoService {
     );
   }
 
-  estaNoche(datos: { jugadores: number; minutos: number }, perfil: string) {
+  estaNoche(
+    datos: { jugadores: number; minutos: number; edad_minima?: number },
+    perfil: string,
+  ) {
     return this.http.post<EstaNocheRespuesta>("/api/v1/engine/tonight", datos, {
       params: { perfil },
     });
