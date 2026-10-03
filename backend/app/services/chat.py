@@ -403,10 +403,10 @@ async def _resolver(
 
 async def _resolver_con_traduccion(
     repo: CatalogoRepository, nombre: str | None, game_id: str | None, settings: Settings
-) -> tuple[str, tuple[Game, ...], dict[str, str] | None, list[str]]:
+) -> tuple[str, tuple[Game, ...], dict[str, str] | None, list[str], dict[str, Any] | None]:
     estado, juegos = await _resolver(repo, nombre, game_id, settings)
     if estado != "no_encontrado" or game_id or not nombre or not settings.llm_active:
-        return estado, juegos, None, []
+        return estado, juegos, None, [], None
     from openai import AsyncOpenAI
 
     try:
@@ -420,13 +420,24 @@ async def _resolver_con_traduccion(
             text_format=_TitulosTraducidosLlm,
         )
         titulos = salida.output_parsed.titulos if salida.output_parsed else []
-    except Exception:  # noqa: BLE001
-        return estado, juegos, None, []
+    except Exception as error:  # noqa: BLE001
+        return (
+            estado,
+            juegos,
+            None,
+            [],
+            {
+                "llm_called": True,
+                "titulos": [],
+                "error": str(error)[:300],
+            },
+        )
+    traza = {"llm_called": True, "titulos": titulos}
     for titulo in titulos[:3]:
         estado_traducido, juegos_traducidos = await _resolver(repo, titulo, None, settings)
         if estado_traducido == "encontrado":
             interpretacion = {"buscado": nombre, "resuelto": juegos_traducidos[0].nombre}
-            return estado_traducido, juegos_traducidos, interpretacion, titulos
+            return estado_traducido, juegos_traducidos, interpretacion, titulos, traza
     juegos_catalogo = await repo.todos_los_juegos()
     consultas = [normalizar_nombre(item) for item in [nombre, *titulos[:3]] if item]
     cercanos = sorted(
@@ -451,7 +462,11 @@ async def _resolver_con_traduccion(
         reverse=True,
     )
     candidatos = tuple(juego for puntaje, juego in cercanos if puntaje >= 70)[:3]
-    return ("ambiguo", candidatos, None, titulos) if candidatos else (estado, (), None, titulos)
+    return (
+        ("ambiguo", candidatos, None, titulos, traza)
+        if candidatos
+        else (estado, (), None, titulos, traza)
+    )
 
 
 async def _validar_plan_con_juego(
@@ -551,7 +566,9 @@ async def _ejecutar_tool(
     resolucion = await _resolver_con_traduccion(
         repo, args.get("nombre"), args.get("game_id"), settings
     )
-    estado, juegos_resueltos, interpretado_como, sugerencias_traduccion = resolucion
+    estado, juegos_resueltos, interpretado_como, sugerencias_traduccion, traza_traduccion = (
+        resolucion
+    )
     if estado != "encontrado":
         return {
             "estado": estado,
@@ -560,6 +577,7 @@ async def _ejecutar_tool(
                 for juego in juegos_resueltos
             ],
             "sugerencias_traduccion": sugerencias_traduccion,
+            "traza_traduccion": traza_traduccion,
         }
     juego = juegos_resueltos[0]
     if nombre == "detalle_juego":
@@ -730,6 +748,86 @@ def _con_sugerencia_final(respuesta: str, intent: str, resultados: list[dict[str
     return "\n".join(lineas).rstrip() + "\n\n" + _sugerencia_final(intent, resultados)
 
 
+def _sanear_negritas(respuesta: str) -> str:
+    """Evita que una línea con markdown incompleto afecte el resto de la respuesta."""
+    return "\n".join(
+        linea.replace("**", "") if linea.count("**") % 2 else linea
+        for linea in respuesta.splitlines()
+    )
+
+
+def _emoji_resultado(intent: str, resultados: list[dict[str, Any]]) -> str:
+    resultado = resultados[0] if resultados else {}
+    if resultado.get("estado") in {"no_encontrado", "ambiguo"}:
+        return "🎲"
+    if resultado.get("ya_en_coleccion"):
+        return "📦"
+    if resultado.get("veredicto") == "redundante":
+        return "⚠️"
+    if resultado.get("veredicto") == "parecido":
+        return "🔁"
+    if resultado.get("veredicto") in {"aporta", "parecido_pero_cubre_hueco", "complementario"}:
+        return "✅"
+    return {"que_me_falta": "🧩", "que_compro": "🛒"}.get(intent, "🎲")
+
+
+def _presentar_respuesta(respuesta: str, intent: str, resultados: list[dict[str, Any]]) -> str:
+    respuesta = _sanear_negritas(respuesta).strip()
+    return (
+        f"{_emoji_resultado(intent, resultados)} {respuesta}"
+        if respuesta
+        else _emoji_resultado(intent, resultados)
+    )
+
+
+def _formatear_resultados_narrador(resultados: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    meses = {
+        "Jan": "ene",
+        "Feb": "feb",
+        "Mar": "mar",
+        "Apr": "abr",
+        "May": "may",
+        "Jun": "jun",
+        "Jul": "jul",
+        "Aug": "ago",
+        "Sep": "sep",
+        "Oct": "oct",
+        "Nov": "nov",
+        "Dec": "dic",
+    }
+
+    def recorrer(valor: Any, clave: str | None = None, es_similitud: bool = False) -> Any:
+        if isinstance(valor, dict):
+            return {
+                nombre: recorrer(item, nombre, es_similitud or nombre == "similitud")
+                for nombre, item in valor.items()
+            }
+        if isinstance(valor, list):
+            return [recorrer(item, clave, es_similitud) for item in valor]
+        if clave == "precio_usd" and isinstance(valor, (int, float)):
+            return f"USD {valor:.2f}"
+        if clave == "fecha_precio" and isinstance(valor, str):
+            try:
+                fecha = datetime.fromisoformat(valor.replace("Z", "+00:00"))
+                texto = fecha.strftime("%-d %b %Y").replace(".", "")
+                for origen, destino in meses.items():
+                    texto = texto.replace(origen, destino)
+                return texto
+            except ValueError:
+                return valor
+        if clave == "peso" and isinstance(valor, (int, float)):
+            return f"{valor:.1f}"
+        if (
+            es_similitud
+            and clave in {"total", "mecanicas", "ocasion", "interaccion", "tematica"}
+            and isinstance(valor, (int, float))
+        ):
+            return f"{valor:.2f}"
+        return valor
+
+    return [recorrer(resultado) for resultado in resultados]
+
+
 def _valores(resultados: list[dict[str, Any]]) -> list[Any]:
     valores: list[Any] = []
 
@@ -832,7 +930,8 @@ def _precio_tiene_fuente(respuesta: str) -> bool:
     texto = respuesta.lower()
     if "precio que capturaste" in texto:
         return True
-    return "boardgameprices" in texto and bool(re.search(r"\b20\d{2}-\d{2}-\d{2}\b", texto))
+    tiene_fecha = re.search(r"\b20\d{2}-\d{2}-\d{2}\b|\b\d{1,2}\s+[a-záéíóú]+\s+20\d{2}\b", texto)
+    return "boardgameprices" in texto and bool(tiene_fecha)
 
 
 def _valores_de_clave(resultados: list[dict[str, Any]], clave: str) -> set[str]:
@@ -982,12 +1081,12 @@ async def _narrar_llm(
     from openai import AsyncOpenAI
 
     instrucciones = (
-        "Eres el narrador de Wise Dice. Responde en español y markdown breve. La primera línea "
+        "Eres el narrador de Wise Dice. Responde en español y markdown breve, sin emojis. "
+        "La primera línea "
         "debe contener la respuesta o veredicto principal en negrita, seguida de dos a cuatro "
-        "viñetas cortas y una última línea que empiece con 💡 y proponga solo una acción del "
+        "viñetas cortas y una última línea que proponga solo una acción del "
         "manifiesto: evaluar otro juego, ver qué falta, plan de compra, modo mesa o simular venta. "
-        "Usa como máximo tres emojis por respuesta, sin contar 💡, y solo 🎲, ✅, ⚠️, 🔁, 🧩, 🛒, "
-        "👥, ⏱️, ⚖️ o 📦. Usa negritas solo para juegos, el veredicto y números clave, con una "
+        "No uses emojis. Usa negritas solo para juegos, el veredicto y números clave, con una "
         "negrita como máximo por viñeta. No pegues URLs. No enumeres mecánicas o categorías "
         "crudas: si hace falta, "
         "usa familias en español. Para detalle_juego, limita el texto al resumen: la tarjeta "
@@ -1022,7 +1121,10 @@ async def _narrar_llm(
             {
                 "role": "user",
                 "content": json.dumps(
-                    {"pregunta": pregunta, "resultados_tools": resultados},
+                    {
+                        "pregunta": pregunta,
+                        "resultados_tools": _formatear_resultados_narrador(resultados),
+                    },
                     ensure_ascii=False,
                     default=str,
                 ),
@@ -1212,7 +1314,9 @@ async def responder(
         trazas.append(("narrator", "fallback", {"attempt": 0, "llm_used": False}))
 
     while True:
-        answer = _con_sugerencia_final(answer, plan.intent, resultados)
+        answer = _presentar_respuesta(
+            _con_sugerencia_final(answer, plan.intent, resultados), plan.intent, resultados
+        )
         deterministic_findings = _criticar_determinista(answer, resultados)
         critic_findings.clear()
         critic_findings.extend(deterministic_findings)
@@ -1244,6 +1348,9 @@ async def responder(
             break
         if critic_attempts >= settings.critic_max_retries:
             answer = _narrar(plan.intent, resultados)
+            answer = _presentar_respuesta(
+                _con_sugerencia_final(answer, plan.intent, resultados), plan.intent, resultados
+            )
             narrator_llm_used = False
             critic_findings.clear()
             critic_findings.extend(_criticar_determinista(answer, resultados))

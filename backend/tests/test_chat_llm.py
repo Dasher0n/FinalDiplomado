@@ -108,7 +108,7 @@ async def test_traduccion_simulada_usa_el_nombre_extraido_sin_cola(monkeypatch: 
     nombre = chat_service._extraer_nombre_juego(
         "¿Qué tal entraría Criaturas maravillosas en la colección?"
     )
-    estado, juegos, interpretado, _ = await chat_service._resolver_con_traduccion(
+    estado, juegos, interpretado, _, _ = await chat_service._resolver_con_traduccion(
         CatalogoPrueba(),
         nombre,
         None,
@@ -310,7 +310,7 @@ async def test_resolver_traduce_nombre_con_cliente_simulado(monkeypatch: Any) ->
             self.responses = Responses()
 
     monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
-    estado, juegos, interpretado, sugerencias = await chat_service._resolver_con_traduccion(
+    estado, juegos, interpretado, sugerencias, traza = await chat_service._resolver_con_traduccion(
         CatalogoPrueba(),
         "Alas",
         None,
@@ -321,6 +321,7 @@ async def test_resolver_traduce_nombre_con_cliente_simulado(monkeypatch: Any) ->
     assert juegos[0].id == "1"
     assert interpretado == {"buscado": "Alas", "resuelto": "Wingspan"}
     assert sugerencias == ["Wingspan"]
+    assert traza == {"llm_called": True, "titulos": ["Wingspan"]}
 
 
 @pytest.mark.asyncio
@@ -340,7 +341,7 @@ async def test_resolver_traduccion_no_resuelta(monkeypatch: Any) -> None:
             self.responses = Responses()
 
     monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
-    estado, juegos, interpretado, sugerencias = await chat_service._resolver_con_traduccion(
+    estado, juegos, interpretado, sugerencias, traza = await chat_service._resolver_con_traduccion(
         CatalogoPrueba(),
         "Nombre desconocido",
         None,
@@ -348,6 +349,7 @@ async def test_resolver_traduccion_no_resuelta(monkeypatch: Any) -> None:
     )
 
     assert (estado, juegos, interpretado, sugerencias) == ("no_encontrado", (), None, ["Nada"])
+    assert traza == {"llm_called": True, "titulos": ["Nada"]}
 
 
 @pytest.mark.asyncio
@@ -374,7 +376,7 @@ async def test_resolver_traduccion_devuelve_sugerencias_cercanas(monkeypatch: An
         return "no_encontrado", ()
 
     monkeypatch.setattr(chat_service, "_resolver", sin_coincidencia)
-    estado, juegos, interpretado, sugerencias = await chat_service._resolver_con_traduccion(
+    estado, juegos, interpretado, sugerencias, _ = await chat_service._resolver_con_traduccion(
         CatalogoPrueba(),
         "Criaturas maravillosas",
         None,
@@ -398,11 +400,57 @@ async def test_resolver_traduccion_se_omite_sin_clave(monkeypatch: Any) -> None:
             pytest.fail("No debe consultar el LLM sin clave.")
 
     monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
-    estado, juegos, interpretado, sugerencias = await chat_service._resolver_con_traduccion(
+    estado, juegos, interpretado, sugerencias, traza = await chat_service._resolver_con_traduccion(
         CatalogoPrueba(), "Nombre desconocido", None, Settings(llm_enabled=True)
     )
 
     assert (estado, juegos, interpretado, sugerencias) == ("no_encontrado", (), None, [])
+    assert traza is None
+
+
+@pytest.mark.asyncio
+async def test_resolver_traduccion_registra_el_error_del_llm(monkeypatch: Any) -> None:
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return []
+
+    class Responses:
+        async def parse(self, **_kwargs: Any) -> Any:
+            raise RuntimeError("fallo de traducción")
+
+    class Cliente:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.responses = Responses()
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
+    *_, traza = await chat_service._resolver_con_traduccion(
+        CatalogoPrueba(),
+        "Criaturas maravillosas",
+        None,
+        Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True),
+    )
+
+    assert traza == {"llm_called": True, "titulos": [], "error": "fallo de traducción"}
+
+
+def test_saneador_elimina_negritas_desbalanceadas_por_linea() -> None:
+    assert chat_service._sanear_negritas("**Sin cierre\n**Correcto**") == "Sin cierre\n**Correcto**"
+
+
+def test_formatear_resultados_para_narrador() -> None:
+    resultados = [
+        {
+            "juego": {"peso": 2.345, "precio_usd": 67.5, "fecha_precio": "2026-09-24T23:12:15Z"},
+            "similitud": {"total": 0.8342, "mecanicas": 0.6479},
+        }
+    ]
+
+    assert chat_service._formatear_resultados_narrador(resultados) == [
+        {
+            "juego": {"peso": "2.3", "precio_usd": "USD 67.50", "fecha_precio": "24 sep 2026"},
+            "similitud": {"total": "0.83", "mecanicas": "0.65"},
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -595,7 +643,7 @@ def test_chat_reintenta_narrador_y_persiste_critic(
     assert response.status_code == 200
     payload = response.json()
     assert payload["answer"] == (
-        fixture["narrador_corregido"] + "\n\n💡 ¿Quieres simular qué pasaría si lo vendes?"
+        "📦 " + fixture["narrador_corregido"] + "\n\n💡 ¿Quieres simular qué pasaría si lo vendes?"
     )
     assert payload["critic_passed"] is True
     assert payload["critic_attempts"] == 1
@@ -680,7 +728,7 @@ def test_chat_fuera_de_dominio_conserva_respuesta_fija(
 
     assert response.status_code == 200
     assert response.json()["answer"] == (
-        "Mi experiencia se limita al análisis y recomendación de juegos de mesa.\n\n"
+        "🎲 Mi experiencia se limita al análisis y recomendación de juegos de mesa.\n\n"
         "💡 ¿Quieres evaluar otro juego?"
     )
 

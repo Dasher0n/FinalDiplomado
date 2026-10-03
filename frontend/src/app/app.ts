@@ -1,4 +1,4 @@
-import { DatePipe, DecimalPipe } from "@angular/common";
+import { DecimalPipe } from "@angular/common";
 import {
   ChangeDetectionStrategy,
   Component,
@@ -53,7 +53,7 @@ Chart.register(
 @Component({
   selector: "app-root",
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, DecimalPipe],
+  imports: [DecimalPipe],
   template: ` <main class="min-h-screen text-stone-900">
     <header class="wise-header px-4 py-3 text-[#f8f1e5]">
       <div class="mx-auto flex max-w-7xl items-center justify-between">
@@ -65,25 +65,34 @@ Chart.register(
           </div>
         </div>
         <div class="header-actions">
-          <label class="profile-selector">Perfil<select #perfilSelector [value]="perfilActivo()" (change)="cambiarPerfil(perfilSelector.value)">
-            <option value="cafe">Café demo</option>
-            <option value="coleccionista">Colección personal</option>
-          </select></label>
-        <nav class="wise-nav">
-          <button
-            [class.active]="vista() === 'ludoteca'"
-            (click)="abrir('ludoteca')"
+          <label class="profile-selector"
+            >Perfil<select
+              #perfilSelector
+              [value]="perfilActivo()"
+              (change)="cambiarPerfil(perfilSelector.value)"
+            >
+              <option value="cafe">Café demo</option>
+              <option value="coleccionista">Colección personal</option>
+            </select></label
           >
-            Ludoteca</button
-          ><button
-            [class.active]="vista() === 'cobertura'"
-            (click)="abrir('cobertura')"
-          >
-            Cobertura</button
-          ><button [class.active]="vista() === 'chat'" (click)="abrir('chat')">
-            Chat
-          </button>
-        </nav>
+          <nav class="wise-nav">
+            <button
+              [class.active]="vista() === 'ludoteca'"
+              (click)="abrir('ludoteca')"
+            >
+              Ludoteca</button
+            ><button
+              [class.active]="vista() === 'cobertura'"
+              (click)="abrir('cobertura')"
+            >
+              Cobertura</button
+            ><button
+              [class.active]="vista() === 'chat'"
+              (click)="abrir('chat')"
+            >
+              Chat
+            </button>
+          </nav>
         </div>
       </div>
     </header>
@@ -105,7 +114,9 @@ Chart.register(
             <p class="screen-intro">{{ explicacionLudoteca() }}</p>
             <details class="how-it-works">
               <summary>¿Cómo funciona?</summary>
-              <p>Explora las portadas y abre cualquier juego para ver su ficha.</p>
+              <p>
+                Explora las portadas y abre cualquier juego para ver su ficha.
+              </p>
               <p>Elige una agrupación para encontrar experiencias similares.</p>
               <p>Busca en el catálogo para añadir juegos a esta ludoteca.</p>
             </details>
@@ -114,13 +125,52 @@ Chart.register(
         <section class="panel mb-5 table-filter">
           <h3 class="font-serif text-2xl">¿Qué jugamos?</h3>
           <div class="mt-3 flex flex-wrap gap-3">
-            <label>Jugadores<input #jugadores class="input mt-1" type="number" min="1" placeholder="Ejemplo: 4" /></label>
-            <label>Minutos<input #minutos class="input mt-1" type="number" min="1" placeholder="Ejemplo: 60" /></label>
-            <label>Edad mínima<input #edad class="input mt-1" type="number" min="1" placeholder="Opcional" /></label>
-            <button class="primary self-end" (click)="cargarNoche(+jugadores.value, +minutos.value, +edad.value)">Filtrar</button>
-            <button class="chip self-end" (click)="limpiarNoche(jugadores, minutos, edad)">Limpiar</button>
+            <label
+              >Jugadores<input
+                #jugadores
+                class="input mt-1"
+                type="number"
+                min="1"
+                placeholder="Ejemplo: 4"
+            /></label>
+            <label
+              >Minutos<input
+                #minutos
+                class="input mt-1"
+                type="number"
+                min="1"
+                placeholder="Ejemplo: 60"
+            /></label>
+            <label
+              >Edad mínima<input
+                #edad
+                class="input mt-1"
+                type="number"
+                min="1"
+                placeholder="Opcional"
+            /></label>
+            <button
+              class="primary self-end"
+              (click)="
+                cargarNoche(+jugadores.value, +minutos.value, +edad.value)
+              "
+            >
+              Filtrar
+            </button>
+            <button
+              class="chip self-end"
+              (click)="limpiarNoche(jugadores, minutos, edad)"
+            >
+              Limpiar
+            </button>
           </div>
-          @if (noche()) { <div class="table-legend"><span class="ideal-marker">Ideal: resplandor dorado</span><span>Funciona: color normal</span><span class="dimmed-marker">No cumple: oscurecido</span></div> }
+          @if (noche()) {
+            <div class="table-legend">
+              <span class="ideal-marker">Ideal: resplandor dorado</span
+              ><span>Funciona: color normal</span
+              ><span class="dimmed-marker">No cumple: oscurecido</span>
+            </div>
+          }
         </section>
         @if (modo() === "estantes") {
           <section class="panel">
@@ -163,32 +213,41 @@ Chart.register(
               </div>
             }
           </section>
-          <div class="bookcase-grid mt-7" [class.compact-bookcases]="vistaCompactaActiva()">
+          <div
+            class="bookcase-grid mt-7"
+            [class.compact-bookcases]="vistaCompactaActiva()"
+          >
             @for (grupo of grupos(); track grupo.nombre) {
-              <section class="bookcase" [class.bookcase-wide]="grupo.juegos.length > 6">
-                <h3 class="shelf-plaque">{{ placa(grupo.nombre) }} · {{ grupo.juegos.length }}</h3>
+              <section
+                class="bookcase"
+                [class.bookcase-wide]="grupo.juegos.length > 6"
+              >
+                <h3 class="shelf-plaque">
+                  {{ placa(grupo.nombre) }} · {{ grupo.juegos.length }}
+                </h3>
                 <div class="shelf-games">
                   @for (juego of grupo.juegos; track juego.id) {
-                        <button
-                          class="game-card"
-                          [class.dimmed]="noche() && !recomendadoEstaNoche(juego.id)"
-                          [class.highlighted]="ajusteEstaNoche(juego.id) === 'ideal'"
-                          (click)="verDetalle(juego.id)"
-                          (mouseenter)="mostrarTooltip($event, juego)"
-                          (mouseleave)="tooltip.set(null)"
-                        >
-                          <span class="game-cover">
-                            @if (juego.imagen_url) {
-                              <img
-                                [src]="juego.imagen_url"
-                                [alt]="juego.nombre"
-                              />
-                            }</span
-                          ><span class="game-card-info"
-                            ><b>{{ juego.nombre }}</b
-                            ><span>{{ rango(juego) }} jugadores</span></span
-                          >
-                        </button>
+                    <button
+                      class="game-card"
+                      [class.dimmed]="
+                        noche() && !recomendadoEstaNoche(juego.id)
+                      "
+                      [class.highlighted]="
+                        ajusteEstaNoche(juego.id) === 'ideal'
+                      "
+                      (click)="verDetalle(juego.id)"
+                      (mouseenter)="mostrarTooltip($event, juego)"
+                      (mouseleave)="tooltip.set(null)"
+                    >
+                      <span class="game-cover">
+                        @if (juego.imagen_url) {
+                          <img [src]="juego.imagen_url" [alt]="juego.nombre" />
+                        }</span
+                      ><span class="game-card-info"
+                        ><b>{{ juego.nombre }}</b
+                        ><span>{{ rango(juego) }} jugadores</span></span
+                      >
+                    </button>
                   }
                 </div>
               </section>
@@ -249,7 +308,9 @@ Chart.register(
                         [class.dimmed]="
                           noche() && !recomendadoEstaNoche(juego.id)
                         "
-                        [class.highlighted]="ajusteEstaNoche(juego.id) === 'ideal'"
+                        [class.highlighted]="
+                          ajusteEstaNoche(juego.id) === 'ideal'
+                        "
                         (click)="verDetalle(juego.id)"
                         (mouseenter)="mostrarTooltip($event, juego)"
                         (mouseleave)="tooltip.set(null)"
@@ -285,12 +346,18 @@ Chart.register(
           Cobertura
           {{ perfilActivo() === "cafe" ? "de la mesa" : "de la colección" }}
         </h2>
-        <p class="screen-intro">Mira qué experiencias ya cubre tu ludoteca y encuentra los huecos que aún vale la pena explorar.</p>
+        <p class="screen-intro">
+          Mira qué experiencias ya cubre tu ludoteca y encuentra los huecos que
+          aún vale la pena explorar.
+        </p>
         <details class="how-it-works">
           <summary>¿Cómo funciona?</summary>
           <p>El radar resume los seis ejes de experiencia de la colección.</p>
           <p>Faltante significa que no hay juegos; débil, que solo hay uno.</p>
-          <p>El plan prioriza juegos que cubren más variedad sin repetir opciones.</p>
+          <p>
+            El plan prioriza juegos que cubren más variedad sin repetir
+            opciones.
+          </p>
         </details>
         <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
           <section class="panel coverage-summary">
@@ -407,7 +474,8 @@ Chart.register(
                                 <b>{{ juego.nombre }}</b>
                                 <p>
                                   @if (juego.precio_usd) {
-                                    USD {{ juego.precio_usd }} EE. UU.
+                                    {{ formatoPrecio(juego.precio_usd) }} EE.
+                                    UU.
                                   } @else {
                                     Precio no disponible
                                   }
@@ -415,7 +483,7 @@ Chart.register(
                                 @if (juego.fecha_precio) {
                                   <small
                                     >Actualizado
-                                    {{ juego.fecha_precio | date }}</small
+                                    {{ fechaCorta(juego.fecha_precio) }}</small
                                   >
                                 }
                                 @if (juego.url_bgp) {
@@ -527,38 +595,81 @@ Chart.register(
               <div class="assistant-message">
                 <img class="chat-avatar" src="/wise-dice.svg" alt="Wise Dice" />
                 <div class="bubble answer">
-                  <div class="markdown" [innerHTML]="markdown(mensaje.texto)"></div>
+                  <div
+                    class="markdown"
+                    [innerHTML]="markdown(mensaje.texto)"
+                  ></div>
                   @if (mensaje.bienvenida) {
                     <div class="suggested-questions">
-                      @for (preguntaSugerida of preguntasSugeridas(); track preguntaSugerida) {
-                        <button class="chip" (click)="enviarChat(preguntaSugerida)">{{ preguntaSugerida }}</button>
+                      @for (
+                        preguntaSugerida of preguntasSugeridas();
+                        track preguntaSugerida
+                      ) {
+                        <button
+                          class="chip"
+                          (click)="enviarChat(preguntaSugerida)"
+                        >
+                          {{ preguntaSugerida }}
+                        </button>
                       }
                     </div>
                   }
                   @if (mensaje.respuesta; as respuesta) {
                     <div class="mt-3 flex flex-wrap gap-1">
                       @for (paso of respuesta.plan; track paso.id) {
-                        <span class="level-chip">{{ etiquetaTool(paso.tool) }} · {{ paso.estado }}</span>
+                        <span class="level-chip"
+                          >{{ etiquetaTool(paso.tool) }} ·
+                          {{ paso.estado }}</span
+                        >
                       }
                     </div>
                     @for (tarjeta of respuesta.tarjetas; track $index) {
                       @if (tarjetaJuego(tarjeta); as juego) {
-                          <article class="recommendation game-summary-card mt-3">
-                            @if (tarjetaImagen(tarjeta); as imagen) { <img class="chat-card-cover" [src]="imagen" [alt]="juego.nombre" /> }
-                            <b>{{ juego.nombre }}</b>
-                            @if (tarjetaFicha(tarjeta); as ficha) { <p>{{ ficha }}</p> }
-                            @if (tarjetaVeredicto(tarjeta); as veredicto) { <p>{{ etiqueta(veredicto) }}</p> }
-                            @if (tarjetaPrecio(tarjeta); as precio) { <p>{{ precio }}</p> }
-                            @if (tarjetaEnlace(tarjeta); as enlace) { <a [href]="enlace" target="_blank" rel="noopener">Ver en BoardGamePrices</a> }
+                        <article class="recommendation game-summary-card mt-3">
+                          @if (tarjetaImagen(tarjeta); as imagen) {
+                            <img
+                              class="chat-card-cover"
+                              [src]="imagen"
+                              [alt]="juego.nombre"
+                            />
+                          }
+                          <b>{{ juego.nombre }}</b>
+                          @if (tarjetaFicha(tarjeta); as ficha) {
+                            <p>{{ ficha }}</p>
+                          }
+                          @if (tarjetaVeredicto(tarjeta); as veredicto) {
+                            <p>{{ etiqueta(veredicto) }}</p>
+                          }
+                          @if (tarjetaPrecio(tarjeta); as precio) {
+                            <p>{{ precio }}</p>
+                          }
+                          @if (tarjetaEnlace(tarjeta); as enlace) {
+                            <a [href]="enlace" target="_blank" rel="noopener"
+                              >Ver en BoardGamePrices</a
+                            >
+                          }
                         </article>
                       }
                     }
-                    @if ((respuesta.candidatos ?? []).length || respuesta.sugerir_nombre_ingles) {
+                    @if (
+                      (respuesta.candidatos ?? []).length ||
+                      respuesta.sugerir_nombre_ingles
+                    ) {
                       <div class="mt-3 flex flex-wrap gap-2">
-                        @for (candidato of respuesta.candidatos ?? []; track candidato.id) {
-                          <button class="chip" (click)="enviarChat(candidato.nombre, candidato.id)">{{ candidato.nombre }}</button>
+                        @for (
+                          candidato of respuesta.candidatos ?? [];
+                          track candidato.id
+                        ) {
+                          <button
+                            class="chip"
+                            (click)="enviarChat(candidato.nombre, candidato.id)"
+                          >
+                            {{ candidato.nombre }}
+                          </button>
                         }
-                        <button class="chip" (click)="escribirNombreIngles()">Escribir el nombre en inglés</button>
+                        <button class="chip" (click)="escribirNombreIngles()">
+                          Escribir el nombre en inglés
+                        </button>
                       </div>
                     }
                   }
@@ -567,12 +678,34 @@ Chart.register(
             }
           }
           @if (chatEsperando()) {
-            <div class="assistant-message"><img class="chat-avatar" src="/wise-dice.svg" alt="Wise Dice" /><p class="bubble answer thinking"><span class="thinking-die">🎲</span> Tirando los dados…</p></div>
+            <div class="assistant-message">
+              <img class="chat-avatar" src="/wise-dice.svg" alt="Wise Dice" />
+              <p class="bubble answer thinking">
+                <span class="thinking-die">🎲</span> Tirando los dados…
+              </p>
+            </div>
           }
-          @if (chatError()) { <p class="chat-error">No pude responder ahora. Inténtalo de nuevo en unos momentos.</p> }
+          @if (chatError()) {
+            <p class="chat-error">
+              No pude responder ahora. Inténtalo de nuevo en unos momentos.
+            </p>
+          }
           <div class="chat-input">
-            <input id="chat-input" #pregunta class="input w-full" [disabled]="chatEsperando()" placeholder="Ejemplo: ¿Qué le falta a mi colección?" (keyup.enter)="enviarChat(pregunta.value); pregunta.value = ''" />
-            <button class="primary" [disabled]="chatEsperando()" (click)="enviarChat(pregunta.value); pregunta.value = ''">Enviar</button>
+            <input
+              id="chat-input"
+              #pregunta
+              class="input w-full"
+              [disabled]="chatEsperando()"
+              placeholder="Ejemplo: ¿Qué le falta a mi colección?"
+              (keyup.enter)="enviarChat(pregunta.value); pregunta.value = ''"
+            />
+            <button
+              class="primary"
+              [disabled]="chatEsperando()"
+              (click)="enviarChat(pregunta.value); pregunta.value = ''"
+            >
+              Enviar
+            </button>
           </div>
         </article>
       </section>
@@ -704,7 +837,7 @@ Chart.register(
               }
               <p class="mt-4">
                 @if (seleccionado()!.precio.precio_usd) {
-                  USD {{ seleccionado()!.precio.precio_usd }} EE. UU.
+                  {{ formatoPrecio(seleccionado()!.precio.precio_usd) }} EE. UU.
                 }
                 @if (seleccionado()!.precio.precio_confiable) {
                   <span class="text-amber-800"
@@ -714,7 +847,8 @@ Chart.register(
                   <span class="text-amber-800">Precio con pocas ofertas</span>
                 }
                 @if (seleccionado()!.precio.fecha_precio) {
-                  · Actualizado {{ seleccionado()!.precio.fecha_precio | date }}
+                  · Actualizado
+                  {{ fechaCorta(seleccionado()!.precio.fecha_precio) }}
                 }
               </p>
               @if (seleccionado()!.precio.url_bgp) {
@@ -777,16 +911,21 @@ export class App {
   protected readonly cobertura = signal<CoberturaRespuesta | null>(null);
   protected readonly plan = signal<PlanCompraRespuesta | null>(null);
   protected readonly noche = signal<EstaNocheRespuesta | null>(null);
-  protected readonly preguntasSugeridas = signal(this.elegirPreguntasSugeridas());
-  protected readonly mensajesChat = signal<{
-    role: "user" | "assistant";
-    texto: string;
-    bienvenida?: boolean;
-    respuesta?: ChatRespuesta;
-  }[]>([
+  protected readonly preguntasSugeridas = signal(
+    this.elegirPreguntasSugeridas(),
+  );
+  protected readonly mensajesChat = signal<
+    {
+      role: "user" | "assistant";
+      texto: string;
+      bienvenida?: boolean;
+      respuesta?: ChatRespuesta;
+    }[]
+  >([
     {
       role: "assistant",
-      texto: "Hola, soy Wise Dice. Puedo ayudarte a descubrir huecos, evaluar compras y elegir qué jugar hoy.",
+      texto:
+        "Hola, soy Wise Dice. Puedo ayudarte a descubrir huecos, evaluar compras y elegir qué jugar hoy.",
       bienvenida: true,
     },
   ]);
@@ -868,7 +1007,10 @@ export class App {
     if (jugadores > 0 && minutos > 0)
       this.noche.set(
         await firstValueFrom(
-          this.api.estaNoche({ jugadores, minutos, edad_minima: edadMinima || undefined }, this.perfilActivo()),
+          this.api.estaNoche(
+            { jugadores, minutos, edad_minima: edadMinima || undefined },
+            this.perfilActivo(),
+          ),
         ),
       );
   }
@@ -927,9 +1069,14 @@ export class App {
     if (!mensaje.trim()) return;
     this.chatError.set(false);
     this.chatEsperando.set(true);
-    this.mensajesChat.update((mensajes) => [...mensajes, { role: "user", texto: mensaje }]);
+    this.mensajesChat.update((mensajes) => [
+      ...mensajes,
+      { role: "user", texto: mensaje },
+    ]);
     try {
-      const respuesta = await firstValueFrom(this.api.chat(mensaje, this.perfilActivo(), this.chatSessionId, gameId));
+      const respuesta = await firstValueFrom(
+        this.api.chat(mensaje, this.perfilActivo(), this.chatSessionId, gameId),
+      );
       this.chatSessionId = respuesta.session_id;
       this.mensajesChat.update((mensajes) => [
         ...mensajes,
@@ -942,7 +1089,9 @@ export class App {
     }
   }
   protected escribirNombreIngles(): void {
-    const campo = document.getElementById("chat-input") as HTMLInputElement | null;
+    const campo = document.getElementById(
+      "chat-input",
+    ) as HTMLInputElement | null;
     if (campo) {
       campo.value = "El nombre en inglés es: ";
       campo.focus();
@@ -1023,7 +1172,10 @@ export class App {
     tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number],
   ): { nombre: string } | null {
     const juego = tarjeta.datos["juego"];
-    return juego && typeof juego === "object" && "nombre" in juego && typeof juego.nombre === "string"
+    return juego &&
+      typeof juego === "object" &&
+      "nombre" in juego &&
+      typeof juego.nombre === "string"
       ? { nombre: juego.nombre }
       : null;
   }
@@ -1033,37 +1185,72 @@ export class App {
     const veredicto = tarjeta.datos["veredicto"];
     return typeof veredicto === "string" ? veredicto : null;
   }
-  protected tarjetaImagen(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
+  protected tarjetaImagen(
+    tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number],
+  ): string | null {
     const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
-    return typeof juego?.["imagen_url"] === "string" ? juego["imagen_url"] : null;
+    return typeof juego?.["imagen_url"] === "string"
+      ? juego["imagen_url"]
+      : null;
   }
-  protected tarjetaPrecio(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
+  protected tarjetaPrecio(
+    tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number],
+  ): string | null {
     const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
     if (juego?.["precio_usd"] == null) return null;
     const precio = Number(juego["precio_usd"]);
-    const fecha = typeof juego["fecha_precio"] === "string" ? ` · ${this.fechaCorta(juego["fecha_precio"])}` : "";
-    return `USD ${precio.toFixed(2)}${fecha}`;
+    const fecha =
+      typeof juego["fecha_precio"] === "string"
+        ? ` · ${this.fechaCorta(juego["fecha_precio"])}`
+        : "";
+    return `${this.formatoPrecio(precio)}${fecha}`;
   }
-  protected tarjetaAnio(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
+  protected tarjetaAnio(
+    tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number],
+  ): string | null {
     const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
     return typeof juego?.["anio"] === "number" ? String(juego["anio"]) : null;
   }
-  protected tarjetaFicha(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
+  protected tarjetaFicha(
+    tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number],
+  ): string | null {
     const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
     if (!juego) return null;
-    const jugadores = juego["jugadores_minimos"] != null && juego["jugadores_maximos"] != null
-      ? `${juego["jugadores_minimos"]}-${juego["jugadores_maximos"]} jugadores` : "";
-    const duracion = juego["duracion_maxima"] != null ? `${juego["duracion_maxima"]} min` : "";
-    const peso = typeof juego["peso"] === "number"
-      ? `${juego["peso"].toFixed(1)} · ${juego["nivel_peso"] ?? "peso desconocido"}${juego["peso_estimado"] ? " estimado" : ""}` : "";
+    const jugadores =
+      juego["jugadores_minimos"] != null && juego["jugadores_maximos"] != null
+        ? `${juego["jugadores_minimos"]}-${juego["jugadores_maximos"]} jugadores`
+        : "";
+    const duracion =
+      juego["duracion_maxima"] != null ? `${juego["duracion_maxima"]} min` : "";
+    const peso =
+      typeof juego["peso"] === "number"
+        ? `${juego["peso"].toFixed(1)} · ${juego["nivel_peso"] ?? "peso desconocido"}${juego["peso_estimado"] ? " estimado" : ""}`
+        : "";
     const anio = typeof juego["anio"] === "number" ? String(juego["anio"]) : "";
-    return [anio, jugadores, duracion, peso].filter(Boolean).join(" · ") || null;
+    return (
+      [anio, jugadores, duracion, peso].filter(Boolean).join(" · ") || null
+    );
   }
-  private fechaCorta(valor: string): string {
-    const fecha = new Date(`${valor}T00:00:00`);
-    return Number.isNaN(fecha.getTime()) ? valor : new Intl.DateTimeFormat("es", { day: "numeric", month: "short", year: "numeric" }).format(fecha).replace(".", "");
+  protected fechaCorta(valor: string | null | undefined): string {
+    if (!valor) return "";
+    const fecha = new Date(valor);
+    return Number.isNaN(fecha.getTime())
+      ? valor
+      : new Intl.DateTimeFormat("es", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })
+          .format(fecha)
+          .replace(".", "");
   }
-  protected tarjetaEnlace(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
+  protected formatoPrecio(valor: number | string | null | undefined): string {
+    if (valor == null) return "";
+    return `USD ${Number(valor).toFixed(2)}`;
+  }
+  protected tarjetaEnlace(
+    tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number],
+  ): string | null {
     const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
     return typeof juego?.["bgp_url"] === "string" ? juego["bgp_url"] : null;
   }
@@ -1071,7 +1258,16 @@ export class App {
     return renderMarkdown(texto);
   }
   protected etiquetaTool(tool: string): string {
-    return ({ detalle_juego: "Ficha del juego", evaluar_compra: "Evaluación de compra", que_me_falta: "Huecos de la colección", que_compro: "Plan de compra", que_saco_hoy: "Modo mesa", ver_coleccion: "Tu colección" }[tool] ?? tool);
+    return (
+      {
+        detalle_juego: "Ficha del juego",
+        evaluar_compra: "Evaluación de compra",
+        que_me_falta: "Huecos de la colección",
+        que_compro: "Plan de compra",
+        que_saco_hoy: "Modo mesa",
+        ver_coleccion: "Tu colección",
+      }[tool] ?? tool
+    );
   }
   protected etiquetasNiveles(
     niveles: EvaluarRespuesta["niveles_que_cubre"],
@@ -1179,12 +1375,13 @@ export class App {
   }
 
   protected filasEstante(juegos: JuegoDetalle[]): JuegoDetalle[][] {
-    const maximo = window.innerWidth < 640 ? 3 : window.innerWidth < 1024 ? 5 : 7;
-    return Array.from({ length: Math.ceil(juegos.length / maximo) }, (_, indice) =>
-      juegos.slice(indice * maximo, (indice + 1) * maximo),
+    const maximo =
+      window.innerWidth < 640 ? 3 : window.innerWidth < 1024 ? 5 : 7;
+    return Array.from(
+      { length: Math.ceil(juegos.length / maximo) },
+      (_, indice) => juegos.slice(indice * maximo, (indice + 1) * maximo),
     );
   }
-
 
   private elegirPreguntasSugeridas(): string[] {
     const banco = [
