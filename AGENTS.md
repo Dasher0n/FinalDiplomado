@@ -101,9 +101,10 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - El narrator LLM usa `LLM_MODEL`, redacta en espanol solo a partir de resultados de tools y conserva plantillas para falta de clave, fallo o intents fijos.
 - El critic mantiene sus reglas deterministas y agrega revision estructurada con `LLM_MODEL_FAST` para cifras, juegos y atributos sin respaldo y recomendaciones no sustentadas.
 - Los rechazos regeneran la respuesta con hallazgos como feedback hasta `CRITIC_MAX_RETRIES`; al agotarse los intentos se usa la plantilla. Narrator, critic, intentos y hallazgos quedan en `agent_steps`.
-- El planner determinista extrae el titulo de una pregunta de compra, identifica plan de compra, que falta, que sacar hoy y fuera de dominio. El nombre base `Catan` se devuelve como ambiguo si hay variantes en el catalogo.
+- El planner determinista extrae el titulo de una pregunta de compra, identifica plan de compra, que falta, que sacar hoy y fuera de dominio. La resolucion prioriza una coincidencia exacta normalizada como `Catan` (`13`) y solo devuelve ambiguo sin coincidencia exacta.
+- El narrator solo usa hechos de tools. El critic exige el motivo de una regla exacta, los valores A, B y C en planes, faltantes y debiles en cobertura, y niveles de peso, interaccion o duracion presentes en los resultados.
 - Se probaron las seis preguntas del guion sin LLM. Los casos reales saneados quedan en `backend/tests/fixtures/chat_casos_reales_saneados.json`; la resolucion ambigua real de Catan esta en `backend/tests/fixtures/chat_catan_ambiguo_saneado.json`. Los fixtures no guardan cabeceras.
-- Verificacion de cierre: `make test` con 62 pruebas backend y 1 frontend; `make lint` limpio; `docker compose up --build -d` con backend saludable.
+- Verificacion de cierre: `make test` con 67 pruebas backend y 1 frontend; `make lint` limpio; `docker compose up --build -d` con backend saludable.
 
 ## Bloque 2
 

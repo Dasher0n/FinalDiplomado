@@ -92,7 +92,7 @@ async def test_planner_fallback_resuelve_wyrmspan_por_nombre_extraido() -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolver_marca_ambiguo_nombre_base_con_variantes() -> None:
+async def test_resolver_prioriza_coincidencia_exacta_sobre_variantes() -> None:
     juegos_catalogo = [
         SimpleNamespace(id="13", nombre="Catan"),
         SimpleNamespace(id="278", nombre="Catan Card Game"),
@@ -106,8 +106,66 @@ async def test_resolver_marca_ambiguo_nombre_base_con_variantes() -> None:
     settings = Settings(llm_enabled=False)
     estado, candidatos = await chat_service._resolver(CatalogoPrueba(), "Catan", None, settings)
 
-    assert estado == "ambiguo"
-    assert [juego.id for juego in candidatos] == ["13", "278", "184842"]
+    assert estado == "encontrado"
+    assert [juego.id for juego in candidatos] == ["13"]
+
+
+@pytest.mark.parametrize(
+    ("respuesta", "resultados", "hallazgo"),
+    [
+        (
+            "Wyrmspan es redundante.",
+            [{"veredicto": "redundante", "regla_exacta": "reimplementa"}],
+            "Falta explicar la regla exacta",
+        ),
+        (
+            "La opción B recomendada tiene valor cubierto.",
+            [
+                {
+                    "opciones": [
+                        {"etiqueta": "A", "valor_cubierto": 1},
+                        {"etiqueta": "B", "valor_cubierto": 1},
+                        {"etiqueta": "C", "valor_cubierto": 1},
+                    ]
+                }
+            ],
+            "El plan debe presentar A con su valor cubierto.",
+        ),
+        (
+            "El peso es pesado.",
+            [{"juego": {"nivel_peso": "medio"}}],
+            "El nivel de peso pesado no aparece en los resultados.",
+        ),
+        (
+            "Faltantes: ninguno.",
+            [{"ejes": {"Mecánicas": {"faltantes": [], "debiles": {"Subastas": "Catan"}}}}],
+            "La respuesta de cobertura debe incluir faltantes y débiles.",
+        ),
+    ],
+)
+def test_critic_determinista_aplica_reglas_nuevas(
+    respuesta: str, resultados: list[dict[str, Any]], hallazgo: str
+) -> None:
+    findings = chat_service._criticar_determinista(respuesta, resultados)
+
+    assert any(hallazgo in finding for finding in findings)
+
+
+def test_critic_determinista_rechaza_opcion_recomendada_distinta_de_a() -> None:
+    resultados = [
+        {
+            "opciones": [
+                {"etiqueta": "A", "valor_cubierto": 1},
+                {"etiqueta": "B", "valor_cubierto": 1},
+                {"etiqueta": "C", "valor_cubierto": 1},
+            ]
+        }
+    ]
+    respuesta = "A valor cubierto. B valor cubierto. C valor cubierto. Opción B recomendada."
+
+    findings = chat_service._criticar_determinista(respuesta, resultados)
+
+    assert "Solo la opción A puede llamarse recomendada." in findings
 
 
 @pytest.mark.asyncio
@@ -151,6 +209,7 @@ async def test_critic_llm_devuelve_hallazgos_estructurados(monkeypatch: Any) -> 
     assert llamadas["text_format"] is chat_service._CriticaRespuestaLlm
     assert "No uses conocimiento general" in llamadas["input"][0]["content"]
     assert "ante la duda, recházala" in llamadas["input"][0]["content"]
+    assert "afirmación descriptiva sobre un juego" in llamadas["input"][0]["content"]
 
 
 def test_chat_reintenta_narrador_y_persiste_critic(

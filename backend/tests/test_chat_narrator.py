@@ -34,4 +34,7 @@ async def test_narrador_llm_usa_cliente_simulado_y_solo_resultados(monkeypatch: 
     assert answer == "**Wingspan** aporta."
     assert llamadas["model"] == settings.llm_model
     assert "Wingspan" in llamadas["input"][1]["content"]
-    assert "no inventes cifras" in llamadas["input"][0]["content"]
+    assert "No inventes cifras" in llamadas["input"][0]["content"]
+    assert "Solo puedes afirmar hechos presentes literalmente" in llamadas["input"][0]["content"]
+    assert "reimplementa o misma_linea_de_producto" in llamadas["input"][0]["content"]
+    assert "presenta A, B y C con su valor cubierto" in llamadas["input"][0]["content"]

@@ -301,6 +301,11 @@ async def _resolver(
         return ("encontrado", (juego,)) if juego else ("no_encontrado", ())
     juegos = await repo.todos_los_juegos()
     consulta_normalizada = normalizar_nombre(nombre or "")
+    exactos = tuple(
+        juego for juego in juegos if normalizar_nombre(juego.nombre) == consulta_normalizada
+    )
+    if len(exactos) == 1:
+        return "encontrado", exactos
     incluidos = tuple(
         juego
         for juego in juegos
@@ -428,9 +433,15 @@ async def _ejecutar_tool(
         if cercano
         else None,
         "similitud": similitud.__dict__ if similitud else None,
-        "regla_exacta": exacta,
+        "regla_exacta": _motivo_regla_exacta(juego, cercano) if exacta and cercano else None,
         "niveles_que_cubre": [nivel.model_dump() for nivel in _niveles(juego, artefactos, huecos)],
     }
+
+
+def _motivo_regla_exacta(juego: Game, parecido: Game) -> str:
+    if set(juego.product_line or []) & set(parecido.product_line or []):
+        return "misma_linea_de_producto"
+    return "reimplementa"
 
 
 def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
@@ -460,13 +471,22 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
             for eje, valor in resultado["ejes"].items()
             if valor["faltantes"]
         ]
-        return "**Huecos de la colección:** " + (
-            "; ".join(faltantes) or "no hay niveles faltantes."
+        debiles = [
+            f"{eje}: {', '.join(valor['debiles'])}"
+            for eje, valor in resultado["ejes"].items()
+            if valor["debiles"]
+        ]
+        return (
+            "**Huecos de la colección**\n\n**Faltantes:** "
+            + ("; ".join(faltantes) or "ninguno.")
+            + "\n\n**Débiles:** "
+            + ("; ".join(debiles) or "ninguno.")
         )
     if intent == "que_compro":
         opciones = [
             f"**{opcion['etiqueta']}**: "
-            f"{', '.join(juego['nombre'] for juego in opcion['juegos']) or 'sin candidatos'}"
+            f"{', '.join(juego['nombre'] for juego in opcion['juegos']) or 'sin candidatos'} "
+            f"(valor cubierto: {opcion['valor_cubierto']:.2f})"
             for opcion in resultado["opciones"]
         ]
         return "Planes por número de juegos:\n\n" + "\n".join(opciones)
@@ -552,14 +572,29 @@ def _origen_web(resultados: list[dict[str, Any]]) -> bool:
 
 def _numeros_permitidos(resultados: list[dict[str, Any]]) -> list[float]:
     permitidos: list[float] = []
-    for valor in _valores(resultados):
+
+    def registrar(valor: Any) -> None:
         if isinstance(valor, bool):
-            continue
+            return
         if isinstance(valor, (int, float)):
             permitidos.append(float(valor))
         elif isinstance(valor, str):
             for numero in re.findall(r"(?<![\w.])-?\d+(?:[.,]\d+)?", valor):
                 permitidos.append(float(numero.replace(",", ".")))
+
+    def recorrer(valor: Any) -> None:
+        if isinstance(valor, dict):
+            for clave, item in valor.items():
+                registrar(clave)
+                recorrer(item)
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer(item)
+        else:
+            registrar(valor)
+
+    for resultado in resultados:
+        recorrer(resultado)
     return permitidos
 
 
@@ -568,6 +603,52 @@ def _precio_tiene_fuente(respuesta: str) -> bool:
     if "precio que capturaste" in texto:
         return True
     return "boardgameprices" in texto and bool(re.search(r"\b20\d{2}-\d{2}-\d{2}\b", texto))
+
+
+def _valores_de_clave(resultados: list[dict[str, Any]], clave: str) -> set[str]:
+    valores: set[str] = set()
+
+    def recorrer(valor: Any) -> None:
+        if isinstance(valor, dict):
+            for nombre, item in valor.items():
+                if nombre == clave and isinstance(item, str):
+                    valores.add(item.lower())
+                recorrer(item)
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer(item)
+
+    for resultado in resultados:
+        recorrer(resultado)
+    return valores
+
+
+def _criticar_niveles(respuesta: str, resultados: list[dict[str, Any]]) -> list[str]:
+    hallazgos: list[str] = []
+    patrones = {
+        "peso": (
+            r"\bpeso(?:\s*/\s*complejidad)?\s*(?:es|:)?\s*(ligero|medio|pesado)",
+            "nivel_peso",
+        ),
+        "interacción": (
+            r"\binteracci[oó]n\s*(?:es|:)?\s*(directa|indirecta|ninguna)",
+            "nivel_interaccion",
+        ),
+        "duración": (
+            r"\bduraci[oó]n\s*(?:es|:)?\s*(corta|media|larga)",
+            "nivel_duracion",
+        ),
+    }
+    texto = respuesta.lower()
+    for etiqueta, (patron, clave) in patrones.items():
+        permitidos = _valores_de_clave(resultados, clave)
+        if not permitidos:
+            continue
+        for valor in re.findall(patron, texto):
+            if valor not in permitidos:
+                hallazgos.append(f"El nivel de {etiqueta} {valor} no aparece en los resultados.")
+                break
+    return hallazgos
 
 
 def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> list[str]:
@@ -596,6 +677,30 @@ def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> 
         hallazgos.append(
             "No se puede presentar una evaluación para un resultado ambiguo o no encontrado."
         )
+    for item in resultados:
+        if item.get("regla_exacta") and not any(
+            frase in respuesta.lower()
+            for frase in ("reimplement", "línea de producto", "linea de producto")
+        ):
+            hallazgos.append(
+                "Falta explicar la regla exacta por reimplementación o línea de producto."
+            )
+        if "opciones" in item:
+            for opcion in item["opciones"]:
+                etiqueta = opcion["etiqueta"]
+                if etiqueta not in respuesta or not re.search(
+                    rf"{re.escape(etiqueta)}[^\n]*valor cubierto", respuesta, re.I
+                ):
+                    hallazgos.append(f"El plan debe presentar {etiqueta} con su valor cubierto.")
+                    break
+            recomendada = re.search(r"opci[oó]n\s+([ABC])\s+recomendad", respuesta, re.I)
+            if recomendada and recomendada.group(1).upper() != "A":
+                hallazgos.append("Solo la opción A puede llamarse recomendada.")
+        if "ejes" in item and (
+            "faltantes" not in respuesta.lower() or "débiles" not in respuesta.lower()
+        ):
+            hallazgos.append("La respuesta de cobertura debe incluir faltantes y débiles.")
+    hallazgos.extend(_criticar_niveles(respuesta, resultados))
 
     permitidos = _numeros_permitidos(resultados)
     for numero in re.findall(r"(?<![\w.])-?\d+(?:[.,]\d+)?%?", respuesta):
@@ -623,9 +728,15 @@ async def _narrar_llm(
 
     instrucciones = (
         "Eres el narrador de Wise Dice. Responde en español y markdown breve. "
-        "Usa exclusivamente los datos de las tools proporcionados: no inventes cifras, "
-        "atributos, fuentes ni recomendaciones. Explica similitudes por mecánicas y temática, "
-        "nunca como afinidad o match."
+        "Solo puedes afirmar hechos presentes literalmente en los resultados de las tools. "
+        "No uses conocimiento propio para describir jugabilidad, sensaciones, géneros ni "
+        "características: están prohibidos términos como eurogame, estructura de turno u "
+        "objetivos ocultos si no aparecen en los resultados. No inventes cifras, atributos, "
+        "fuentes ni recomendaciones. Para un veredicto, explica su motivo real: si regla_exacta "
+        "es reimplementa o misma_linea_de_producto, menciónalo; en otro caso indica similitud "
+        "total y los bloques disponibles. Nunca llames afinidad o match a la similitud. En un "
+        "plan de compra, presenta A, B y C con su valor cubierto, y solo puedes llamar "
+        "recomendada a la opción A. En que_me_falta incluye faltantes y débiles."
     )
     if retroalimentacion:
         hallazgos = [
@@ -676,6 +787,8 @@ async def _criticar_llm(
                     "contienen esa información. Una recomendación solo está respaldada si se "
                     "limita a los juegos y razones que una tool devuelve. Si una afirmación no se "
                     "puede vincular a los resultados, crea un hallazgo; ante la duda, recházala. "
+                    "Marca cualquier afirmación descriptiva sobre un juego que no figure en los "
+                    "resultados de las tools, incluida jugabilidad, sensaciones o características. "
                     "Devuelve hallazgos "
                     "con categoria y detalle, usando solo estas categorías: cifra_sin_fuente, "
                     "juego_o_atributo_no_disponible o recomendacion_sin_respaldo. Devuelve ok=true "
