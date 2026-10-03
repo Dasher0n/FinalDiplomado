@@ -107,6 +107,91 @@ def test_chat_reintenta_narrador_y_persiste_critic(
     assert persisted.json()["critic_findings"] == []
 
 
+def test_chat_aprobado_por_critic_al_primer_intento(
+    api_client: TestClient, monkeypatch: Any
+) -> None:
+    settings = Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True)
+    monkeypatch.setattr(chat_api, "settings", settings)
+    llamadas_narrador: list[list[str | dict[str, str]] | None] = []
+
+    async def planner(*_args: Any) -> chat_service.PlanLlm:
+        return chat_service.PlanLlm.model_validate(_fixture()["planner"])
+
+    async def narrator(
+        _settings: Settings,
+        _results: list[dict[str, Any]],
+        feedback: list[str | dict[str, str]] | None = None,
+    ) -> str:
+        llamadas_narrador.append(feedback)
+        return "**Wingspan** aporta a la colección."
+
+    async def critic(*_args: Any) -> list[dict[str, str]]:
+        return []
+
+    monkeypatch.setattr(chat_service, "_plan_llm", planner)
+    monkeypatch.setattr(chat_service, "_narrar_llm", narrator)
+    monkeypatch.setattr(chat_service, "_criticar_llm", critic)
+
+    response = api_client.post("/api/v1/chat", json={"mensaje": "¿Vale la pena Wingspan?"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["critic_passed"] is True
+    assert payload["critic_attempts"] == 0
+    assert llamadas_narrador == [None]
+
+
+def test_chat_usa_plantilla_sin_clave(api_client: TestClient, monkeypatch: Any) -> None:
+    monkeypatch.setattr(chat_api, "settings", Settings(llm_enabled=True))
+
+    async def no_debe_llamarse(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("No se debe usar el cliente LLM sin clave.")
+
+    monkeypatch.setattr(chat_service, "_plan_llm", no_debe_llamarse)
+    monkeypatch.setattr(chat_service, "_narrar_llm", no_debe_llamarse)
+    monkeypatch.setattr(chat_service, "_criticar_llm", no_debe_llamarse)
+
+    response = api_client.post("/api/v1/chat", json={"mensaje": "¿Qué le falta a mi colección?"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["llm_used"] is False
+    assert payload["critic_attempts"] == 0
+    assert payload["critic_passed"] is True
+    assert "Huecos de la colección" in payload["answer"]
+
+
+def test_chat_usa_plantilla_si_se_agotan_los_reintentos(
+    api_client: TestClient, monkeypatch: Any
+) -> None:
+    settings = Settings(
+        openai_api_key=SecretStr("fixture-key"), llm_enabled=True, critic_max_retries=1
+    )
+    monkeypatch.setattr(chat_api, "settings", settings)
+
+    async def planner(*_args: Any) -> chat_service.PlanLlm:
+        return chat_service.PlanLlm.model_validate(_fixture()["planner"])
+
+    async def narrator(*_args: Any, **_kwargs: Any) -> str:
+        return "**Wingspan**: aporta. Similitud total: 99.0."
+
+    async def critic(*_args: Any) -> list[dict[str, str]]:
+        return []
+
+    monkeypatch.setattr(chat_service, "_plan_llm", planner)
+    monkeypatch.setattr(chat_service, "_narrar_llm", narrator)
+    monkeypatch.setattr(chat_service, "_criticar_llm", critic)
+
+    response = api_client.post("/api/v1/chat", json={"mensaje": "¿Vale la pena Wingspan?"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["critic_attempts"] == 1
+    assert payload["critic_passed"] is True
+    assert "99.0" not in payload["answer"]
+    assert payload["llm_used"] is True
+
+
 def test_fixtures_llm_no_contienen_secretos() -> None:
     fixtures = (Path(__file__).parent / "fixtures").glob("*.json")
     for fixture in fixtures:

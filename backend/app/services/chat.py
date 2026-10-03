@@ -784,11 +784,25 @@ async def responder(
                 },
             )
         )
-        if (
-            not critic_findings
-            or not narrator_llm_used
-            or critic_attempts >= settings.critic_max_retries
-        ):
+        if not critic_findings:
+            break
+        if not narrator_llm_used:
+            break
+        if critic_attempts >= settings.critic_max_retries:
+            answer = _narrar(plan.intent, resultados)
+            narrator_llm_used = False
+            critic_findings = _criticar_determinista(answer, resultados)
+            trazas.append(
+                (
+                    "narrator",
+                    "fallback",
+                    {
+                        "attempt": critic_attempts,
+                        "llm_used": False,
+                        "reason": "critic_retries_exhausted",
+                    },
+                )
+            )
             break
         critic_attempts += 1
         try:
