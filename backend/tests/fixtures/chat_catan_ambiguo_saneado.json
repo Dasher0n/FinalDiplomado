@@ -1,0 +1,19 @@
+{
+  "pregunta": "Catan",
+  "plan_llm": {
+    "intent": "detalle_juego",
+    "steps": [{"id": "1", "tool": "detalle_juego", "args": {"nombre": "Catan"}, "depends_on": []}]
+  },
+  "respuesta_final": "Encontré varias opciones. Elige el juego exacto para evaluarlo.",
+  "critic_passed": true,
+  "critic_attempts": 1,
+  "llamadas_estimadas_esta_corrida": 3,
+  "llamadas_estimadas_acumuladas": 7,
+  "candidatos": [
+    {"id": "13", "nombre": "Catan"},
+    {"id": "278", "nombre": "Catan Card Game"},
+    {"id": "282853", "nombre": "Catan: Starfarers"},
+    {"id": "67239", "nombre": "Catan Histories: Settlers of America - Trails to Rails"},
+    {"id": "125921", "nombre": "Catan: Junior"}
+  ]
+}

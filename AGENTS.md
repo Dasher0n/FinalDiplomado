@@ -96,6 +96,15 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 
 - La Fase 4 implementa planner con degradacion determinista, plan persistido antes de tools, ejecucion secuencial, narrador por plantillas y critic determinista. El chat usa el perfil activo como contexto y no expone modo precio.
 
+## Fase 4
+
+- El narrator LLM usa `LLM_MODEL`, redacta en espanol solo a partir de resultados de tools y conserva plantillas para falta de clave, fallo o intents fijos.
+- El critic mantiene sus reglas deterministas y agrega revision estructurada con `LLM_MODEL_FAST` para cifras, juegos y atributos sin respaldo y recomendaciones no sustentadas.
+- Los rechazos regeneran la respuesta con hallazgos como feedback hasta `CRITIC_MAX_RETRIES`; al agotarse los intentos se usa la plantilla. Narrator, critic, intentos y hallazgos quedan en `agent_steps`.
+- El planner determinista extrae el titulo de una pregunta de compra, identifica plan de compra, que falta, que sacar hoy y fuera de dominio. El nombre base `Catan` se devuelve como ambiguo si hay variantes en el catalogo.
+- Se probaron las seis preguntas del guion sin LLM. Los casos reales saneados quedan en `backend/tests/fixtures/chat_casos_reales_saneados.json`; la resolucion ambigua real de Catan esta en `backend/tests/fixtures/chat_catan_ambiguo_saneado.json`. Los fixtures no guardan cabeceras.
+- Verificacion de cierre: `make test` con 62 pruebas backend y 1 frontend; `make lint` limpio; `docker compose up --build -d` con backend saludable.
+
 ## Bloque 2
 
 - Se agregaron perfiles versionados de colección. `coleccionista` conserva meta 2 en todos los niveles y reproduce las pruebas doradas y el anexo existentes.
@@ -115,3 +124,4 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 | 2 | Completada | Motor determinista, matrices, cobertura, compra, disponibilidad y pruebas doradas. |
 | 3 | Completada | API REST de coleccion y motor, con pruebas de API. |
 | 3b | Completada | Pantallas de Cobertura, detalle, disponibilidad y vista previa de Chat. |
+| 4 | Completada | Planner determinista corregido, narracion y critic LLM, regeneracion trazada, fixtures reales y pruebas del guion. |

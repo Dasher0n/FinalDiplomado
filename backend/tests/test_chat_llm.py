@@ -319,3 +319,22 @@ def test_fixture_casos_reales_saneado_sin_cabeceras() -> None:
         )
         for caso in fixture["casos"]
     )
+
+
+def test_fixture_catan_registra_ambiguedad_real() -> None:
+    ruta = Path(__file__).parent / "fixtures" / "chat_catan_ambiguo_saneado.json"
+    fixture = json.loads(ruta.read_text())
+
+    assert fixture["plan_llm"]["steps"][0]["args"] == {"nombre": "Catan"}
+    assert fixture["respuesta_final"] == (
+        "Encontré varias opciones. Elige el juego exacto para evaluarlo."
+    )
+    assert fixture["critic_passed"] is True
+    assert fixture["critic_attempts"] == 1
+    assert {candidato["id"] for candidato in fixture["candidatos"]} == {
+        "13",
+        "278",
+        "282853",
+        "67239",
+        "125921",
+    }
