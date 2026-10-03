@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr = SecretStr("")
     llm_enabled: bool = True
     llm_model: str = "gpt-5.1"
-    llm_model_fast: str = "gpt-5.1-mini"
+    llm_model_fast: str = "gpt-5.1"
     llm_model_web: str = "gpt-5.1"
     llm_temperature: float = 0.2
     llm_max_plan_steps: int = 8
@@ -51,6 +51,12 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @field_validator("llm_model_fast")
+    @classmethod
+    def normalizar_modelo_rapido(cls, value: str) -> str:
+        """Mantiene operativa la configuración previa con un modelo inexistente."""
+        return "gpt-5.1" if value == "gpt-5.1-mini" else value
 
     @property
     def has_openai_key(self) -> bool:

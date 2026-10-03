@@ -89,13 +89,15 @@ async def test_nombre_inventado_no_se_resuelve_por_coincidencia_aproximada() -> 
 @pytest.mark.asyncio
 async def test_traduccion_simulada_usa_el_nombre_extraido_sin_cola(monkeypatch: Any) -> None:
     juego = SimpleNamespace(id="400366", nombre="Wondrous Creatures", users_rated=7342)
+    llamada: dict[str, Any] = {}
 
     class CatalogoPrueba:
         async def todos_los_juegos(self) -> list[Any]:
             return [juego]
 
     class Responses:
-        async def parse(self, **_kwargs: Any) -> Any:
+        async def parse(self, **kwargs: Any) -> Any:
+            llamada.update(kwargs)
             return SimpleNamespace(
                 output_parsed=chat_service._TitulosTraducidosLlm(titulos=["Wondrous Creatures"])
             )
@@ -108,7 +110,7 @@ async def test_traduccion_simulada_usa_el_nombre_extraido_sin_cola(monkeypatch: 
     nombre = chat_service._extraer_nombre_juego(
         "¿Qué tal entraría Criaturas maravillosas en la colección?"
     )
-    estado, juegos, interpretado, _, _ = await chat_service._resolver_con_traduccion(
+    estado, juegos, interpretado, titulos, traza = await chat_service._resolver_con_traduccion(
         CatalogoPrueba(),
         nombre,
         None,
@@ -118,6 +120,9 @@ async def test_traduccion_simulada_usa_el_nombre_extraido_sin_cola(monkeypatch: 
     assert estado == "encontrado"
     assert juegos[0].id == "400366"
     assert interpretado == {"buscado": "Criaturas maravillosas", "resuelto": "Wondrous Creatures"}
+    assert titulos == ["Wondrous Creatures"]
+    assert traza == {"llm_called": True, "titulos": ["Wondrous Creatures"]}
+    assert "No propongas juegos por temática" in llamada["input"]
 
 
 @pytest.mark.asyncio
@@ -803,3 +808,7 @@ def test_fixture_catan_registra_ambiguedad_real() -> None:
         "67239",
         "125921",
     }
+
+
+def test_configuracion_normaliza_modelo_rapido_inexistente() -> None:
+    assert Settings(llm_model_fast="gpt-5.1-mini").llm_model_fast == "gpt-5.1"

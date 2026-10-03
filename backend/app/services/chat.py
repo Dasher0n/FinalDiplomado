@@ -414,8 +414,10 @@ async def _resolver_con_traduccion(
         salida = await cliente.responses.parse(
             model=settings.llm_model_fast,
             input=(
-                "Devuelve hasta tres títulos originales de BGG que puedan corresponder a este "
-                "nombre en español. No expliques nada ni inventes juegos. Nombre: " + nombre
+                "Devuelve hasta tres títulos originales exactos de BGG traducidos directamente "
+                "desde este nombre comercial en español. No propongas juegos por temática, "
+                "mecánicas o parecido. Si no conoces la traducción exacta, devuelve una lista "
+                "vacía. No expliques nada ni inventes juegos. Nombre: " + nombre
             ),
             text_format=_TitulosTraducidosLlm,
         )
@@ -586,6 +588,8 @@ async def _ejecutar_tool(
             "juego": _juego_detalle(juego).model_dump(mode="json"),
             "ya_en_coleccion": any(item.id == juego.id for item in coleccion),
             "interpretado_como": interpretado_como,
+            "sugerencias_traduccion": sugerencias_traduccion,
+            "traza_traduccion": traza_traduccion,
         }
     sin_candidato = [item for item in coleccion if item.id != juego.id]
     if any(item.id == juego.id for item in coleccion):
@@ -599,6 +603,8 @@ async def _ejecutar_tool(
                 artefactos, coleccion, sin_candidato, perfil.metas
             ).model_dump(mode="json"),
             "interpretado_como": interpretado_como,
+            "sugerencias_traduccion": sugerencias_traduccion,
+            "traza_traduccion": traza_traduccion,
         }
     veredicto, cercano, similitud, exacta = evaluar_redundancia(
         artefactos, juego, sin_candidato, perfil.metas
@@ -619,6 +625,8 @@ async def _ejecutar_tool(
         "regla_exacta": _motivo_regla_exacta(juego, cercano) if exacta and cercano else None,
         "niveles_que_cubre": [nivel.model_dump() for nivel in _niveles(juego, artefactos, huecos)],
         "interpretado_como": interpretado_como,
+        "sugerencias_traduccion": sugerencias_traduccion,
+        "traza_traduccion": traza_traduccion,
     }
 
 

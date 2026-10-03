@@ -131,6 +131,8 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - Las coincidencias aproximadas no resuelven un juego: solo producen candidatos ambiguos tras comparar cadenas completas y limitar la diferencia de longitud. La continuación "El nombre en inglés es" conserva la intención pendiente de la sesión.
 - La resolución de nombres del chat usa una sola puerta: solo coincide de forma exacta, por el prefijo antes de `:` o por una traducción exacta. La sugerencia final `💡` la añade el backend desde la intención, no el narrator.
 - La traducción de títulos guarda en el resultado persistido de la tool si se llamó al LLM, los títulos devueltos y cualquier error acotado. Así una excepción no se confunde con una respuesta sin sugerencias.
+- `gpt-5.1-mini` no está disponible para la clave del entorno y devuelve `404 model_not_found`; la configuración lo normaliza a `gpt-5.1`, modelo verificado. La traducción exige títulos originales exactos y descarta sugerencias por temática o parecido.
+- La traza de traducción también se conserva cuando una sugerencia resuelve un juego, no solo cuando queda sin resolver.
 - El narrator recibe una copia formateada de los resultados: peso con un decimal, similitudes con dos, precios `USD 67.50` y fechas `24 sep 2026`. Las cifras crudas siguen en los resultados deterministas para tarjetas y critic.
 - El backend antepone el emoji de resultado y sanea negritas markdown desbalanceadas por línea. El prompt del narrator prohíbe emojis.
 - Plan, ficha y evaluación usan los mismos formateadores de precio y fecha en Angular; no se muestran timestamps ISO en tarjetas.
