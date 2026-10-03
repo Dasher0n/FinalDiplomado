@@ -65,24 +65,15 @@ Chart.register(
         </div>
         <nav class="wise-nav">
           <button
-            [class.active]="perfilActivo() === 'coleccionista'"
-            (click)="cambiarPerfil('coleccionista')"
-          >
-            Mi ludoteca
-          </button>
-          <button
-            [class.active]="perfilActivo() === 'cafe'"
-            (click)="cambiarPerfil('cafe')"
-          >
-            Modo mesa
-          </button>
-        </nav>
-        <nav class="wise-nav">
-          <button
-            [class.active]="vista() === 'ludoteca'"
-            (click)="abrir('ludoteca')"
+            [class.active]="vista() === 'ludoteca' && perfilActivo() === 'coleccionista'"
+            (click)="abrirLudoteca('coleccionista')"
           >
             Ludoteca</button
+          ><button
+            [class.active]="vista() === 'ludoteca' && perfilActivo() === 'cafe'"
+            (click)="abrirLudoteca('cafe')"
+          >
+            Modo mesa</button
           ><button
             [class.active]="vista() === 'cobertura'"
             (click)="abrir('cobertura')"
@@ -109,6 +100,13 @@ Chart.register(
               {{ juegos().length }} juegos, {{ etiquetaPerfil() }}
             </p>
             <h2 class="font-serif text-4xl">{{ tituloLudoteca() }}</h2>
+            <p class="screen-intro">{{ explicacionLudoteca() }}</p>
+            <details class="how-it-works">
+              <summary>¿Cómo funciona?</summary>
+              <p>Explora las portadas y abre cualquier juego para ver su ficha.</p>
+              <p>Elige una agrupación para encontrar experiencias similares.</p>
+              <p>Busca en el catálogo para añadir juegos a esta ludoteca.</p>
+            </details>
           </div>
           <div class="flex gap-2">
             <button
@@ -148,6 +146,9 @@ Chart.register(
                   <option value="interaccion">Interacción</option>
                 </select></label
               >
+              <button class="chip self-end" (click)="alternarVistaEstantes()">
+                Vista: {{ vistaCompactaActiva() ? "compacta" : "cómoda" }}
+              </button>
             </div>
             @if (resultados().length) {
               <div class="mt-3 grid gap-2 sm:grid-cols-2">
@@ -164,9 +165,10 @@ Chart.register(
               </div>
             }
           </section>
-          <div class="bookcase mt-7">
+          <div class="bookcase-grid mt-7" [class.compact-bookcases]="vistaCompactaActiva()">
             @for (grupo of grupos(); track grupo.nombre) {
-              @for (fila of filasEstante(grupo.juegos); track $index) {
+              <section class="bookcase">
+                @for (fila of filasEstante(grupo.juegos); track $index) {
                 <section class="case-shelf">
                   <h3 class="shelf-plaque">
                     {{ placa(grupo.nombre) }} · {{ grupo.juegos.length }}
@@ -197,6 +199,7 @@ Chart.register(
                   </div>
                 </section>
               }
+              </section>
             }
           </div>
         } @else {
@@ -235,6 +238,11 @@ Chart.register(
               <p class="mt-4 text-sm font-semibold">
                 {{ resumenNoche() }} Las portadas iluminadas pasan los filtros.
               </p>
+              <div class="table-legend">
+                <span class="ideal-marker">Ideal: resplandor dorado</span>
+                <span>Funciona: color normal</span>
+                <span class="dimmed-marker">No cumple: oscurecido</span>
+              </div>
             }
           </section>
           <div class="bookcase mt-7">
@@ -249,7 +257,7 @@ Chart.register(
                         [class.dimmed]="
                           noche() && !recomendadoEstaNoche(juego.id)
                         "
-                        [class.highlighted]="recomendadoEstaNoche(juego.id)"
+                        [class.highlighted]="ajusteEstaNoche(juego.id) === 'ideal'"
                         (click)="verDetalle(juego.id)"
                         (mouseenter)="mostrarTooltip($event, juego)"
                         (mouseleave)="tooltip.set(null)"
@@ -285,6 +293,13 @@ Chart.register(
           Cobertura
           {{ perfilActivo() === "cafe" ? "de la mesa" : "de la colección" }}
         </h2>
+        <p class="screen-intro">Mira qué experiencias ya cubre tu ludoteca y encuentra los huecos que aún vale la pena explorar.</p>
+        <details class="how-it-works">
+          <summary>¿Cómo funciona?</summary>
+          <p>El radar resume los seis ejes de experiencia de la colección.</p>
+          <p>Faltante significa que no hay juegos; débil, que solo hay uno.</p>
+          <p>El plan prioriza juegos que cubren más variedad sin repetir opciones.</p>
+        </details>
         <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
           <section class="panel coverage-summary">
             <div class="coverage-radar coverage-radar-small">
@@ -509,41 +524,52 @@ Chart.register(
     }
 
     @if (vista() === "chat") {
-      <section class="mx-auto max-w-3xl px-4 py-7">
+      <section class="chat-screen mx-auto max-w-3xl px-4 py-7">
         <p class="eyebrow">Asistente de ludoteca · {{ etiquetaPerfil() }}</p>
         <h2 class="font-serif text-4xl">Pregunta a Wise Dice</h2>
         <article class="chat-card mt-6">
           @for (mensaje of mensajesChat(); track $index) {
-            <p class="bubble" [class.user]="mensaje.role === 'user'" [class.answer]="mensaje.role === 'assistant'">
-              {{ mensaje.texto }}
-            </p>
-          }
-          @if (chatRespuesta()) {
-            <div class="bubble answer">
-              <div class="flex flex-wrap gap-1">
-                @for (paso of chatRespuesta()!.plan; track paso.id) {
-                  <span class="level-chip">{{ paso.tool }} · {{ paso.estado }}</span>
-                }
-              </div>
-              <p class="mt-3 whitespace-pre-line">{{ chatRespuesta()!.answer }}</p>
-              @for (tarjeta of chatRespuesta()!.tarjetas; track $index) {
-                @if (tarjetaJuego(tarjeta); as juego) {
-                  <article class="recommendation mt-3">
-                    <b>{{ juego.nombre }}</b>
-                    @if (tarjetaVeredicto(tarjeta); as veredicto) { <p>{{ etiqueta(veredicto) }}</p> }
-                  </article>
-                }
-              }
-              @if ((chatRespuesta()!.candidatos ?? []).length) {
-                <div class="mt-3 flex flex-wrap gap-2">
-                  @for (candidato of chatRespuesta()!.candidatos ?? []; track candidato.id) {
-                    <button class="chip" (click)="enviarChat(candidato.nombre, candidato.id)">{{ candidato.nombre }}</button>
+            @if (mensaje.role === "user") {
+              <p class="bubble user">{{ mensaje.texto }}</p>
+            } @else {
+              <div class="assistant-message">
+                <img class="chat-avatar" src="/wise-dice.svg" alt="Wise Dice" />
+                <div class="bubble answer">
+                  <p class="whitespace-pre-line">{{ mensaje.texto }}</p>
+                  @if (mensaje.bienvenida) {
+                    <div class="suggested-questions">
+                      @for (preguntaSugerida of preguntasSugeridas(); track preguntaSugerida) {
+                        <button class="chip" (click)="enviarChat(preguntaSugerida)">{{ preguntaSugerida }}</button>
+                      }
+                    </div>
+                  }
+                  @if (mensaje.respuesta; as respuesta) {
+                    <div class="mt-3 flex flex-wrap gap-1">
+                      @for (paso of respuesta.plan; track paso.id) {
+                        <span class="level-chip">{{ paso.tool }} · {{ paso.estado }}</span>
+                      }
+                    </div>
+                    @for (tarjeta of respuesta.tarjetas; track $index) {
+                      @if (tarjetaJuego(tarjeta); as juego) {
+                        <article class="recommendation mt-3">
+                          <b>{{ juego.nombre }}</b>
+                          @if (tarjetaVeredicto(tarjeta); as veredicto) { <p>{{ etiqueta(veredicto) }}</p> }
+                        </article>
+                      }
+                    }
+                    @if ((respuesta.candidatos ?? []).length) {
+                      <div class="mt-3 flex flex-wrap gap-2">
+                        @for (candidato of respuesta.candidatos ?? []; track candidato.id) {
+                          <button class="chip" (click)="enviarChat(candidato.nombre, candidato.id)">{{ candidato.nombre }}</button>
+                        }
+                      </div>
+                    }
                   }
                 </div>
-              }
-            </div>
+              </div>
+            }
           }
-          <div class="mt-4 flex gap-2">
+          <div class="chat-input">
             <input #pregunta class="input w-full" placeholder="Ejemplo: ¿Qué le falta a mi colección?" (keyup.enter)="enviarChat(pregunta.value); pregunta.value = ''" />
             <button class="primary" (click)="enviarChat(pregunta.value); pregunta.value = ''">Enviar</button>
           </div>
@@ -741,6 +767,7 @@ export class App {
   protected readonly perfilActivo = signal("coleccionista");
   protected readonly perfilesDisponibles = signal<Perfil[]>([]);
   protected readonly modo = signal("estantes");
+  protected readonly vistaCompacta = signal<boolean | null>(null);
   protected readonly juegos = signal<JuegoDetalle[]>([]);
   protected readonly resultados = signal<JuegoListado[]>([]);
   protected readonly agrupacion = signal("familia");
@@ -749,8 +776,19 @@ export class App {
   protected readonly cobertura = signal<CoberturaRespuesta | null>(null);
   protected readonly plan = signal<PlanCompraRespuesta | null>(null);
   protected readonly noche = signal<EstaNocheRespuesta | null>(null);
-  protected readonly chatRespuesta = signal<ChatRespuesta | null>(null);
-  protected readonly mensajesChat = signal<{ role: "user" | "assistant"; texto: string }[]>([]);
+  protected readonly preguntasSugeridas = signal(this.elegirPreguntasSugeridas());
+  protected readonly mensajesChat = signal<{
+    role: "user" | "assistant";
+    texto: string;
+    bienvenida?: boolean;
+    respuesta?: ChatRespuesta;
+  }[]>([
+    {
+      role: "assistant",
+      texto: "Hola, soy Wise Dice. Puedo ayudarte a descubrir huecos, evaluar compras y elegir qué jugar hoy.",
+      bienvenida: true,
+    },
+  ]);
   private chatSessionId: string | undefined;
   protected readonly evaluacionDetalle = signal<EvaluarRespuesta | null>(null);
   protected readonly ventaDetalle = signal<VentaImpactoRespuesta | null>(null);
@@ -774,6 +812,11 @@ export class App {
     this.evaluacionDetalle.set(null);
     await this.cargarColeccion();
     if (this.vista() === "cobertura") await this.cargarCobertura();
+  }
+
+  protected async abrirLudoteca(perfil: string): Promise<void> {
+    await this.cambiarPerfil(perfil);
+    this.vista.set("ludoteca");
   }
 
   protected async abrir(vista: string): Promise<void> {
@@ -866,8 +909,10 @@ export class App {
     try {
       const respuesta = await firstValueFrom(this.api.chat(mensaje, this.perfilActivo(), this.chatSessionId, gameId));
       this.chatSessionId = respuesta.session_id;
-      this.chatRespuesta.set(respuesta);
-      this.mensajesChat.update((mensajes) => [...mensajes, { role: "assistant", texto: respuesta.answer }]);
+      this.mensajesChat.update((mensajes) => [
+        ...mensajes,
+        { role: "assistant", texto: respuesta.answer, respuesta },
+      ]);
     } catch {
       this.error.set("No fue posible consultar al asistente.");
     }
@@ -988,6 +1033,17 @@ export class App {
       ? "Disponibilidad para tu mesa"
       : "Tu librero de experiencias";
   }
+  protected explicacionLudoteca(): string {
+    return this.perfilActivo() === "cafe"
+      ? "Dinos cuántos son y cuánto tiempo tienen: iluminamos los juegos ideales para su mesa."
+      : "Recorre tu colección, agrúpala por experiencia y descubre qué historias ya viven en tu librero.";
+  }
+  protected vistaCompactaActiva(): boolean {
+    return this.vistaCompacta() ?? this.juegos().length > 24;
+  }
+  protected alternarVistaEstantes(): void {
+    this.vistaCompacta.set(!this.vistaCompactaActiva());
+  }
   protected tituloEstante(): string {
     return this.perfilActivo() === "cafe"
       ? "Mesa de Café demo"
@@ -1058,6 +1114,18 @@ export class App {
       { length: Math.ceil(juegos.length / maximo) },
       (_, indice) => juegos.slice(indice * maximo, (indice + 1) * maximo),
     );
+  }
+
+  private elegirPreguntasSugeridas(): string[] {
+    const banco = [
+      "¿Qué tal entraría SETI en la colección?",
+      "Tengo ganas de comprar Wyrmspan, ¿vale la pena?",
+      "¿Qué le falta a mi colección?",
+      "Quiero un plan de 3 juegos para cubrir huecos",
+      "Somos 6 y tenemos 45 minutos, ¿qué saco?",
+      "¿Me conviene SETI?",
+    ];
+    return [...banco].sort(() => Math.random() - 0.5).slice(0, 3);
   }
 
   @HostListener("window:resize")

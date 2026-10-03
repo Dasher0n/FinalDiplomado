@@ -112,6 +112,14 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - Se probaron las seis preguntas del guion sin LLM. Los casos reales saneados quedan en `backend/tests/fixtures/chat_casos_reales_saneados.json`; la resolucion ambigua real de Catan esta en `backend/tests/fixtures/chat_catan_ambiguo_saneado.json`. Los fixtures no guardan cabeceras.
 - Verificacion de cierre: `make test` con 83 pruebas backend y 1 frontend; `make lint` limpio; `docker compose up --build -d` con backend saludable.
 
+## Fase 6
+
+- La interfaz usa una sola barra de navegacion: Ludoteca, Modo mesa, Cobertura y Chat. Ludoteca y Modo mesa cambian el perfil activo y conservan las pantallas existentes.
+- Ludoteca, Modo mesa y Cobertura incluyen una explicacion breve y un bloque desplegable de tres lineas sobre su funcionamiento.
+- Cada grupo de la Ludoteca se presenta como un librero independiente en una cuadricula de dos o tres columnas en escritorio. Las colecciones de mas de 24 juegos empiezan en vista compacta y permiten alternar la vista.
+- En Modo mesa, solo los resultados con ajuste `ideal` usan resplandor dorado; los que funcionan conservan su color y los que no cumplen permanecen oscurecidos. La leyenda lo explica.
+- Chat inicia como conversacion con bienvenida de Wise Dice, tres preguntas aleatorias de un banco local de casos probados y burbujas diferenciadas. Los chips, tarjetas y candidatos de cada respuesta permanecen dentro de su burbuja.
+
 ## Bloque 2
 
 - Se agregaron perfiles versionados de colección. `coleccionista` conserva meta 2 en todos los niveles y reproduce las pruebas doradas y el anexo existentes.
@@ -132,3 +140,4 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 | 3 | Completada | API REST de coleccion y motor, con pruebas de API. |
 | 3b | Completada | Pantallas de Cobertura, detalle, disponibilidad y vista previa de Chat. |
 | 4 | Completada | Planner determinista corregido, narracion y critic LLM, regeneracion trazada, fixtures reales y pruebas del guion. |
+| 6 | Completada | Interfaz de ludoteca, modo mesa, cobertura y chat pulida para escritorio y movil. |
