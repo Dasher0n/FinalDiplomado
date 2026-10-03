@@ -50,3 +50,10 @@ Lee `docs/requerimiento_sommelier_juegos.md` completo antes de empezar y trabaja
 - Todo en español: código comentado, mensajes de commit, textos de la UI, documentación.
 - **Nunca uses el guion largo (em dash)** en código, comentarios, textos ni documentos.
 - Cambios pequeños y revisables. Nada de refactorizaciones que no pida la fase actual.
+
+## Ahorro de contexto
+
+- Corre comandos con salida recortada: `make test 2>&1 | tail -15`, `make lint 2>&1 | tail -15`, `docker compose up --build -d 2>&1 | tail -5`. Solo si algo falla, mira más líneas del error.
+- Nunca leas archivos grandes completos (artefactos/, catalogo.csv, package-lock.json, uv.lock, fixtures). Para datos del catálogo usa consultas puntuales que impriman pocas filas.
+- Lee solo los archivos que vas a modificar, y solo la parte necesaria.
+- No repitas en tus respuestas el contenido de archivos ni diffs completos; resume.
