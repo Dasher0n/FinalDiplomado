@@ -181,11 +181,14 @@ async def test_planner_fallback_resuelve_wyrmspan_por_nombre_extraido() -> None:
 
 @pytest.mark.asyncio
 async def test_resolver_acepta_titulo_antes_de_dos_puntos() -> None:
-    juego = SimpleNamespace(id="418059", nombre="SETI: Search for Extraterrestrial Intelligence")
+    juego = SimpleNamespace(
+        id="418059", nombre="SETI: Search for Extraterrestrial Intelligence", users_rated=5000
+    )
+    homonimo = SimpleNamespace(id="999", nombre="Seti", users_rated=900)
 
     class CatalogoPrueba:
         async def todos_los_juegos(self) -> list[Any]:
-            return [juego]
+            return [juego, homonimo]
 
     estado, juegos = await chat_service._resolver(
         CatalogoPrueba(), "SETI", None, Settings(llm_enabled=False)
@@ -193,6 +196,25 @@ async def test_resolver_acepta_titulo_antes_de_dos_puntos() -> None:
 
     assert estado == "encontrado"
     assert [item.id for item in juegos] == ["418059"]
+
+
+@pytest.mark.asyncio
+async def test_resolver_devuelve_ambiguo_sin_juego_dominante() -> None:
+    juegos_catalogo = [
+        SimpleNamespace(id="1", nombre="Nova", users_rated=400),
+        SimpleNamespace(id="2", nombre="Nova: Expansion", users_rated=300),
+    ]
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return juegos_catalogo
+
+    estado, candidatos = await chat_service._resolver(
+        CatalogoPrueba(), "Nova", None, Settings(llm_enabled=False)
+    )
+
+    assert estado == "ambiguo"
+    assert [juego.id for juego in candidatos] == ["1", "2"]
 
 
 @pytest.mark.asyncio

@@ -340,15 +340,21 @@ async def _resolver(
     exactos = tuple(
         juego for juego in juegos if normalizar_nombre(juego.nombre) == consulta_normalizada
     )
-    if len(exactos) == 1:
-        return "encontrado", exactos
     titulos_cortos = tuple(
         juego
         for juego in juegos
         if normalizar_nombre(juego.nombre.split(":", maxsplit=1)[0]) == consulta_normalizada
     )
-    if len(titulos_cortos) == 1:
-        return "encontrado", titulos_cortos
+    candidatos_directos = tuple({juego.id: juego for juego in (*exactos, *titulos_cortos)}.values())
+    if len(candidatos_directos) == 1:
+        return "encontrado", candidatos_directos
+    if candidatos_directos:
+        ordenados = tuple(
+            sorted(candidatos_directos, key=lambda juego: juego.users_rated or 0, reverse=True)
+        )
+        if (ordenados[0].users_rated or 0) >= 5 * (ordenados[1].users_rated or 0):
+            return "encontrado", (ordenados[0],)
+        return "ambiguo", ordenados[:5]
     incluidos = tuple(
         juego
         for juego in juegos
