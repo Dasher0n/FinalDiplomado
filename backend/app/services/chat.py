@@ -751,7 +751,8 @@ async def responder(
     critic_findings: list[str | dict[str, str]] = []
     critic_attempts = 0
     trazas: list[tuple[str, str, dict[str, Any]]] = []
-    if settings.llm_active:
+    narrativa_llm_permitida = plan.intent not in {"reglas", "fuera_de_dominio"}
+    if settings.llm_active and narrativa_llm_permitida:
         try:
             answer = await _narrar_llm(settings, resultados)
             narrator_llm_used = True
@@ -765,7 +766,7 @@ async def responder(
         deterministic_findings = _criticar_determinista(answer, resultados)
         critic_findings = deterministic_findings
         critic_llm_used = False
-        if not deterministic_findings and settings.llm_active:
+        if not deterministic_findings and settings.llm_active and narrativa_llm_permitida:
             try:
                 critic_findings = await _criticar_llm(settings, answer, resultados)
                 critic_llm_used = True

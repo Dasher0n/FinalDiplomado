@@ -161,6 +161,30 @@ def test_chat_usa_plantilla_sin_clave(api_client: TestClient, monkeypatch: Any) 
     assert "Huecos de la colección" in payload["answer"]
 
 
+def test_chat_fuera_de_dominio_conserva_respuesta_fija(
+    api_client: TestClient, monkeypatch: Any
+) -> None:
+    settings = Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True)
+    monkeypatch.setattr(chat_api, "settings", settings)
+
+    async def planner(*_args: Any) -> chat_service.PlanLlm:
+        return chat_service.PlanLlm(intent="fuera_de_dominio")
+
+    async def no_debe_llamarse(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("Un intent fijo no debe llamar narrator ni critic LLM.")
+
+    monkeypatch.setattr(chat_service, "_plan_llm", planner)
+    monkeypatch.setattr(chat_service, "_narrar_llm", no_debe_llamarse)
+    monkeypatch.setattr(chat_service, "_criticar_llm", no_debe_llamarse)
+
+    response = api_client.post("/api/v1/chat", json={"mensaje": "¿Quién ganó el mundial?"})
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == (
+        "Mi experiencia se limita al análisis y recomendación de juegos de mesa."
+    )
+
+
 def test_chat_usa_plantilla_si_se_agotan_los_reintentos(
     api_client: TestClient, monkeypatch: Any
 ) -> None:
