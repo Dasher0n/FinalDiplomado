@@ -129,6 +129,7 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - El markdown del chat escapa todo contenido antes de permitir encabezados, párrafos, listas, negrita, cursiva y enlaces HTTP(S) con `rel="noopener"`.
 - El foco de chat solo se reutiliza cuando no se extrae un título nuevo del mensaje. Las traducciones guardan nombre buscado, título resuelto y sugerencias del modelo en la traza; las sugerencias no resueltas se convierten en candidatos locales por similitud y votos.
 - Las coincidencias aproximadas no resuelven un juego: solo producen candidatos ambiguos tras comparar cadenas completas y limitar la diferencia de longitud. La continuación "El nombre en inglés es" conserva la intención pendiente de la sesión.
+- La resolución de nombres del chat usa una sola puerta: solo coincide de forma exacta, por el prefijo antes de `:` o por una traducción exacta. La sugerencia final `💡` la añade el backend desde la intención, no el narrator.
 
 ## Bloque 2
 

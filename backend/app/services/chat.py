@@ -173,6 +173,13 @@ def _plan_determinista(
             intent=intent_pendiente,
             steps=[PasoPlan(id="1", tool=intent_pendiente, args={"nombre": nombre})],
         )
+    if intent_pendiente in {"evaluar_compra", "detalle_juego"} and re.fullmatch(
+        r"[\w\s:,'-]{2,80}", mensaje, re.UNICODE
+    ):
+        return PlanLlm(
+            intent=intent_pendiente,
+            steps=[PasoPlan(id="1", tool=intent_pendiente, args={"nombre": mensaje.strip()})],
+        )
     if any(palabra in texto for palabra in ("ignora", "instrucciones", "prompt", "sistema")):
         return PlanLlm(intent="fuera_de_dominio")
     if any(palabra in texto for palabra in ("regla", "reglamento", "como se juega")):
@@ -248,6 +255,7 @@ def _extraer_nombre_juego(mensaje: str) -> str:
         r"\b(?:comprar|compra|evaluar|evalúa)\s+(?:el juego\s+)?(?P<nombre>.+?)(?=[,;.!?¿]|$)",
         r"\bvale la pena\s+(?P<nombre>.+?)(?=[,;.!?¿]|$)",
         r"\b(?:qu[eé]\s+tal\s+entrar[ií]a|me\s+conviene|deber[ií]a\s+comprar)\s+(?P<nombre>.+?)(?=\s+(?:en\s+(?:la\s+colecci[oó]n|mi\s+ludoteca)|para\s+mi\s+caf[eé])|[,;.!?¿]|$)",
+        r"\b(?P<nombre>.+?)(?=\s+(?:es\s+una\s+buena\s+compra|vale\s+la\s+pena|me\s+conviene)|[,;.!?¿]|$)",
         r"\by\s+(?P<nombre>.+?)(?=[,;.!?¿]|$)",
     )
     for patron in patrones:
@@ -341,6 +349,8 @@ async def _plan_llm(settings: Settings, mensaje: str, resumen: str) -> PlanLlm |
             "Eres un planificador de una ludoteca. Devuelve solo un plan de tools de solo "
             "lectura. No calcules ni respondas al usuario. Usa exclusivamente este manifiesto:\n"
             f"{manifest}\nFormulaciones naturales: {_EJEMPLOS_INTENT}\n"
+            "Para un juego, el argumento nombre debe conservar exactamente el título citado por "
+            "la persona, sin traducirlo ni sustituirlo por otro título. "
             f"Contexto de colección e historial reciente: {resumen}\nPregunta: {mensaje}"
         ),
         text_format=_PlanRespuestaLlm,
@@ -556,6 +566,7 @@ async def _ejecutar_tool(
         return {
             "estado": "encontrado",
             "juego": _juego_detalle(juego).model_dump(mode="json"),
+            "ya_en_coleccion": any(item.id == juego.id for item in coleccion),
             "interpretado_como": interpretado_como,
         }
     sin_candidato = [item for item in coleccion if item.id != juego.id]
@@ -688,12 +699,35 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
         else ""
     )
     en_coleccion = resultado.get("ya_en_coleccion")
-    estado = "ya está en tu colección" if en_coleccion else "está disponible en el catálogo"
+    estado = "📦 ya está en tu colección" if en_coleccion else "está disponible en el catálogo"
     return (
         prefijo + f"**{resultado['juego']['nombre']}** {estado}.\n\n"
         "- 🎲 Consulta los datos principales en la tarjeta.\n\n"
         "💡 ¿Quieres evaluar otro juego?"
     )
+
+
+def _sugerencia_final(intent: str, resultados: list[dict[str, Any]]) -> str:
+    resultado = resultados[0] if resultados else {}
+    if resultado.get("ya_en_coleccion"):
+        return "💡 ¿Quieres simular qué pasaría si lo vendes?"
+    return {
+        "evaluar_compra": "💡 ¿Quieres ver qué le falta a tu colección?",
+        "que_me_falta": "💡 ¿Armamos un plan de 3 juegos para cubrir esos huecos?",
+        "que_compro": "💡 ¿Quieres evaluar otro juego?",
+        "que_saco_hoy": "💡 ¿Quieres probar otra mesa?",
+        "detalle_juego": "💡 ¿Quieres evaluar otro juego?",
+        "coleccion": "💡 ¿Quieres ver qué le falta a tu colección?",
+    }.get(intent, "💡 ¿Quieres evaluar otro juego?")
+
+
+def _con_sugerencia_final(respuesta: str, intent: str, resultados: list[dict[str, Any]]) -> str:
+    lineas = [
+        linea
+        for linea in respuesta.splitlines()
+        if not linea.lstrip().startswith("💡") and "?" not in linea and "¿" not in linea
+    ]
+    return "\n".join(lineas).rstrip() + "\n\n" + _sugerencia_final(intent, resultados)
 
 
 def _valores(resultados: list[dict[str, Any]]) -> list[Any]:
@@ -860,6 +894,11 @@ def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> 
         )
     if re.search(r"\b[\wáéíóúñ]+_[\wáéíóúñ]+\b", respuesta, re.IGNORECASE):
         hallazgos.append("La respuesta no puede mostrar identificadores internos con guion bajo.")
+    preguntas = [linea for linea in respuesta.splitlines() if "?" in linea or "¿" in linea]
+    if any(not linea.lstrip().startswith("💡") for linea in preguntas):
+        hallazgos.append(
+            "Solo la sugerencia final determinista puede hacer una pregunta de seguimiento."
+        )
     if "redundante" in respuesta.lower() and not any(
         item.get("veredicto") == "redundante" for item in resultados
     ):
@@ -1173,6 +1212,7 @@ async def responder(
         trazas.append(("narrator", "fallback", {"attempt": 0, "llm_used": False}))
 
     while True:
+        answer = _con_sugerencia_final(answer, plan.intent, resultados)
         deterministic_findings = _criticar_determinista(answer, resultados)
         critic_findings.clear()
         critic_findings.extend(deterministic_findings)

@@ -594,7 +594,9 @@ def test_chat_reintenta_narrador_y_persiste_critic(
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["answer"] == fixture["narrador_corregido"]
+    assert payload["answer"] == (
+        fixture["narrador_corregido"] + "\n\n💡 ¿Quieres simular qué pasaría si lo vendes?"
+    )
     assert payload["critic_passed"] is True
     assert payload["critic_attempts"] == 1
     assert payload["llm_used"] is True
@@ -678,7 +680,8 @@ def test_chat_fuera_de_dominio_conserva_respuesta_fija(
 
     assert response.status_code == 200
     assert response.json()["answer"] == (
-        "Mi experiencia se limita al análisis y recomendación de juegos de mesa."
+        "Mi experiencia se limita al análisis y recomendación de juegos de mesa.\n\n"
+        "💡 ¿Quieres evaluar otro juego?"
     )
 
 

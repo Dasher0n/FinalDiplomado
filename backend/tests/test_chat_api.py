@@ -62,7 +62,8 @@ def test_chat_keeps_session_and_fixed_domain_answers(api_client: TestClient) -> 
     assert second.json()["intent"] == "fuera_de_dominio"
     assert (
         second.json()["answer"]
-        == "Mi experiencia se limita al análisis y recomendación de juegos de mesa."
+        == "Mi experiencia se limita al análisis y recomendación de juegos de mesa.\n\n"
+        "💡 ¿Quieres evaluar otro juego?"
     )
     runs = api_client.get("/api/v1/chat/runs")
     assert len(runs.json()) == 2

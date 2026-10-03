@@ -10,4 +10,12 @@ describe("renderMarkdown", () => {
     expect(html).toContain('target="_blank" rel="noopener"');
     expect(html).toContain("&lt;script&gt;");
   });
+
+  it("permite cursiva y emojis dentro de negritas", () => {
+    expect(renderMarkdown("**🎲 *Wingspan***")).toContain("<strong>🎲 <em>Wingspan</em></strong>");
+  });
+
+  it("permite negrita al inicio de una línea", () => {
+    expect(renderMarkdown("**Veredicto** claro")).toContain("<strong>Veredicto</strong> claro");
+  });
 });
