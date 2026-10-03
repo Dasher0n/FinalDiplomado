@@ -137,6 +137,7 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - El narrator recibe una copia formateada de los resultados: peso con un decimal, similitudes con dos, precios `USD 67.50` y fechas `24 sep 2026`. Las cifras crudas siguen en los resultados deterministas para tarjetas y critic.
 - El backend antepone el emoji de resultado y sanea negritas markdown desbalanceadas por línea. El prompt del narrator prohíbe emojis.
 - Plan, ficha y evaluación usan los mismos formateadores de precio y fecha en Angular; no se muestran timestamps ISO en tarjetas.
+- La resolución local rechaza consultas normalizadas de menos de dos caracteres y descarta títulos con clave normalizada vacía. La normalización conserva letras Unicode, incluidos alfabetos no latinos, tras quitar acentos.
 
 ## Bloque 2
 

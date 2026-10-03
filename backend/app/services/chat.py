@@ -380,13 +380,19 @@ async def _resolver(
         return ("encontrado", (juego,)) if juego else ("no_encontrado", ())
     juegos = await repo.todos_los_juegos()
     consulta_normalizada = normalizar_nombre(nombre or "")
+    if len(consulta_normalizada) < 2:
+        return "no_encontrado", ()
     exactos = tuple(
-        juego for juego in juegos if normalizar_nombre(juego.nombre) == consulta_normalizada
+        juego
+        for juego in juegos
+        if (titulo_normalizado := normalizar_nombre(juego.nombre))
+        and titulo_normalizado == consulta_normalizada
     )
     titulos_cortos = tuple(
         juego
         for juego in juegos
-        if normalizar_nombre(juego.nombre.split(":", maxsplit=1)[0]) == consulta_normalizada
+        if (titulo_corto_normalizado := normalizar_nombre(juego.nombre.split(":", maxsplit=1)[0]))
+        and titulo_corto_normalizado == consulta_normalizada
     )
     candidatos_directos = tuple({juego.id: juego for juego in (*exactos, *titulos_cortos)}.values())
     if len(candidatos_directos) == 1:

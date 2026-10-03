@@ -393,7 +393,7 @@ def normalizar_nombre(nombre: str) -> str:
         for caracter in unicodedata.normalize("NFD", nombre.lower())
         if unicodedata.category(caracter) != "Mn"
     )
-    return re.sub(r"[^a-z0-9]+", " ", sin_acentos).strip()
+    return re.sub(r"[\W_]+", " ", sin_acentos, flags=re.UNICODE).strip()
 
 
 def buscar_local(

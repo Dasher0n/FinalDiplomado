@@ -87,6 +87,57 @@ async def test_nombre_inventado_no_se_resuelve_por_coincidencia_aproximada() -> 
 
 
 @pytest.mark.asyncio
+async def test_resolver_rechaza_consultas_normalizadas_cortas() -> None:
+    juego = SimpleNamespace(id="1", nombre="스플렌더: Pokémon", users_rated=100)
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return [juego]
+
+    assert await chat_service._resolver(
+        CatalogoPrueba(), "", None, Settings(llm_enabled=False)
+    ) == ("no_encontrado", ())
+    assert await chat_service._resolver(
+        CatalogoPrueba(), ".", None, Settings(llm_enabled=False)
+    ) == ("no_encontrado", ())
+
+
+@pytest.mark.asyncio
+async def test_resolver_conserva_titulos_no_latinos_y_no_confunde_consultas() -> None:
+    juegos = [
+        SimpleNamespace(id="1", nombre="스플렌더: Pokémon", users_rated=100),
+        SimpleNamespace(id="2", nombre="Wyrmspan", users_rated=100),
+        SimpleNamespace(
+            id="3", nombre="SETI: Search for Extraterrestrial Intelligence", users_rated=100
+        ),
+        SimpleNamespace(id="4", nombre="Catan", users_rated=100),
+        SimpleNamespace(id="5", nombre="Brass: Birmingham", users_rated=100),
+    ]
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return juegos
+
+    repo = CatalogoPrueba()
+    settings = Settings(llm_enabled=False)
+    for consulta, esperado in (
+        ("스플렌더: Pokémon", "1"),
+        ("Wyrmspan", "2"),
+        ("SETI", "3"),
+        ("Catan", "4"),
+        ("Brass Birmingham", "5"),
+    ):
+        estado, encontrados = await chat_service._resolver(repo, consulta, None, settings)
+        assert estado == "encontrado"
+        assert encontrados[0].id == esperado
+
+    estado, encontrados = await chat_service._resolver(
+        repo, "Creaturas Maravillosas es buena compra?", None, settings
+    )
+    assert (estado, encontrados) == ("no_encontrado", ())
+
+
+@pytest.mark.asyncio
 async def test_traduccion_simulada_usa_el_nombre_extraido_sin_cola(monkeypatch: Any) -> None:
     juego = SimpleNamespace(id="400366", nombre="Wondrous Creatures", users_rated=7342)
     llamada: dict[str, Any] = {}
