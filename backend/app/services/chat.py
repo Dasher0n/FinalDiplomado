@@ -35,6 +35,7 @@ _TOOLS: set[str] = {
     "que_compro",
     "que_saco_hoy",
 }
+_FUNCIONES_NO_DISPONIBLES = {"comparar", "filtrar", "modo precio", "capturar precio"}
 _INTENTS = {
     "evaluar_compra",
     "que_me_falta",
@@ -107,27 +108,42 @@ class _CriticaRespuestaLlm(BaseModel):
 
 _TOOL_MANIFEST = {
     "ver_coleccion": {
-        "descripcion": "Muestra los juegos de la colección activa.",
+        "descripcion": "Úsala solo cuando el usuario pide ver o listar su colección. Ejemplo: "
+        "'¿qué juegos tengo?'.",
         "requeridos": [],
     },
     "detalle_juego": {
-        "descripcion": "Muestra la ficha de un juego del catálogo.",
+        "descripcion": "Úsala para pedir la ficha de un juego ya poseído o una consulta neutra. "
+        "Ejemplo: 'cuéntame de Catan'.",
         "requeridos": ["nombre o game_id"],
     },
     "evaluar_compra": {
-        "descripcion": "Evalúa redundancia y huecos que cubre un juego.",
+        "descripcion": "Úsala si un juego encaja, conviene o es redundante con la colección. "
+        "Ejemplo: '¿me conviene Wyrmspan?'.",
         "requeridos": ["nombre o game_id"],
     },
-    "que_me_falta": {"descripcion": "Calcula faltantes y debilidades.", "requeridos": []},
+    "que_me_falta": {
+        "descripcion": "Úsala para preguntar qué experiencias faltan o son débiles. "
+        "Ejemplo: '¿qué me falta?'.",
+        "requeridos": [],
+    },
     "que_compro": {
-        "descripcion": "Propone tres planes por número de juegos.",
+        "descripcion": "Úsala para pedir planes de compra por número de juegos. "
+        "Ejemplo: 'dame un plan de 3 juegos'.",
         "requeridos": ["n"],
     },
     "que_saco_hoy": {
-        "descripcion": "Filtra la colección para jugadores y duración.",
+        "descripcion": "Úsala para elegir qué sacar hoy según jugadores y duración. "
+        "Ejemplo: 'somos 6 y tenemos 45 minutos'.",
         "requeridos": ["jugadores", "minutos"],
     },
 }
+_EJEMPLOS_INTENT = (
+    "Evaluar compra: '¿qué tal entraría X?', '¿me conviene X?', '¿vale la pena X?', "
+    "'¿debería comprar X?' o '¿y X?'. Cobertura: '¿qué me falta?'. "
+    "Plan: 'dame un plan de 3 juegos'. Mesa: 'somos 6 y tenemos 45 minutos'. "
+    "Colección: '¿qué juegos tengo?'. Ficha: 'cuéntame de X'."
+)
 
 
 def _plan_determinista(mensaje: str, game_id: str | None) -> PlanLlm:
@@ -158,7 +174,21 @@ def _plan_determinista(mensaje: str, game_id: str | None) -> PlanLlm:
         return PlanLlm(
             intent="que_saco_hoy", steps=[PasoPlan(id="1", tool="que_saco_hoy", args=args)]
         )
-    if any(palabra in consulta for palabra in ("vale la pena", "evalu", "redund")) or game_id:
+    if (
+        any(
+            palabra in consulta
+            for palabra in (
+                "vale la pena",
+                "evalu",
+                "redund",
+                "que tal entraria",
+                "me conviene",
+                "deberia comprar",
+            )
+        )
+        or consulta.startswith("y ")
+        or game_id
+    ):
         args = {"game_id": game_id} if game_id else {"nombre": _extraer_nombre_juego(mensaje)}
         return PlanLlm(
             intent="evaluar_compra",
@@ -178,9 +208,14 @@ def _plan_determinista(mensaje: str, game_id: str | None) -> PlanLlm:
 
 def _extraer_nombre_juego(mensaje: str) -> str:
     """Separa el título de juego de la formulación de la pregunta."""
+    continuacion = re.match(r"^[¿¡]?\s*y\s+(?P<nombre>.+?)[?!.]*$", mensaje, re.IGNORECASE)
+    if continuacion:
+        return continuacion.group("nombre").strip()
     patrones = (
         r"\b(?:comprar|compra|evaluar|evalúa)\s+(?:el juego\s+)?(?P<nombre>.+?)(?=[,;.!?¿]|$)",
         r"\bvale la pena\s+(?P<nombre>.+?)(?=[,;.!?¿]|$)",
+        r"\b(?:qu[eé]\s+tal\s+entrar[ií]a|me\s+conviene|deber[ií]a\s+comprar)\s+(?P<nombre>.+?)(?=\s+en\s+la\s+colecci[oó]n|[,;.!?¿]|$)",
+        r"\by\s+(?P<nombre>.+?)(?=[,;.!?¿]|$)",
     )
     for patron in patrones:
         coincidencia = re.search(patron, mensaje, re.IGNORECASE)
@@ -272,7 +307,8 @@ async def _plan_llm(settings: Settings, mensaje: str, resumen: str) -> PlanLlm |
         input=(
             "Eres un planificador de una ludoteca. Devuelve solo un plan de tools de solo "
             "lectura. No calcules ni respondas al usuario. Usa exclusivamente este manifiesto:\n"
-            f"{manifest}\nColección: {resumen}\nPregunta: {mensaje}"
+            f"{manifest}\nFormulaciones naturales: {_EJEMPLOS_INTENT}\n"
+            f"Colección: {resumen}\nPregunta: {mensaje}"
         ),
         text_format=_PlanRespuestaLlm,
     )
@@ -306,6 +342,13 @@ async def _resolver(
     )
     if len(exactos) == 1:
         return "encontrado", exactos
+    titulos_cortos = tuple(
+        juego
+        for juego in juegos
+        if normalizar_nombre(juego.nombre.split(":", maxsplit=1)[0]) == consulta_normalizada
+    )
+    if len(titulos_cortos) == 1:
+        return "encontrado", titulos_cortos
     incluidos = tuple(
         juego
         for juego in juegos
@@ -330,6 +373,26 @@ async def _resolver(
         umbral_directo=settings.fuzzy_umbral_directo,
         umbral_ambiguo=settings.fuzzy_umbral_ambiguo,
     )
+
+
+async def _validar_plan_con_juego(
+    plan: PlanLlm,
+    mensaje: str,
+    repo: CatalogoRepository,
+    coleccion: list[Game],
+    settings: Settings,
+) -> PlanLlm:
+    if any(paso.tool in {"evaluar_compra", "detalle_juego"} for paso in plan.steps):
+        return plan
+    nombre = _extraer_nombre_juego(mensaje)
+    estado, juegos = await _resolver(repo, nombre, None, settings)
+    if estado != "encontrado":
+        return plan
+    juego = juegos[0]
+    en_coleccion = any(item.id == juego.id for item in coleccion)
+    tool = "detalle_juego" if en_coleccion else "evaluar_compra"
+    intent = "detalle_juego" if en_coleccion else "evaluar_compra"
+    return PlanLlm(intent=intent, steps=[PasoPlan(id="1", tool=tool, args={"game_id": juego.id})])
 
 
 async def _ejecutar_tool(
@@ -654,6 +717,14 @@ def _criticar_niveles(respuesta: str, resultados: list[dict[str, Any]]) -> list[
 def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> list[str]:
     """Aplica las reglas de transparencia antes de gastar una llamada del critic."""
     hallazgos: list[str] = []
+    if re.search(r"`[^`]+`", respuesta):
+        hallazgos.append(
+            "La respuesta no puede mencionar nombres internos entre comillas invertidas."
+        )
+    if any(funcion in respuesta.lower() for funcion in _FUNCIONES_NO_DISPONIBLES):
+        hallazgos.append(
+            "La respuesta menciona una función que no existe en el manifiesto de tools."
+        )
     if "redundante" in respuesta.lower() and not any(
         item.get("veredicto") == "redundante" for item in resultados
     ):
@@ -721,6 +792,7 @@ def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> 
 async def _narrar_llm(
     settings: Settings,
     resultados: list[dict[str, Any]],
+    pregunta: str = "",
     retroalimentacion: list[str | dict[str, str]] | None = None,
 ) -> str:
     """Redacta exclusivamente sobre los resultados serializados de las tools."""
@@ -736,7 +808,10 @@ async def _narrar_llm(
         "es reimplementa o misma_linea_de_producto, menciónalo; en otro caso indica similitud "
         "total y los bloques disponibles. Nunca llames afinidad o match a la similitud. En un "
         "plan de compra, presenta A, B y C con su valor cubierto, y solo puedes llamar "
-        "recomendada a la opción A. En que_me_falta incluye faltantes y débiles."
+        "recomendada a la opción A. En que_me_falta incluye faltantes y débiles. Nunca menciones "
+        "funciones que no estén en el manifiesto de tools, nombres internos entre comillas "
+        "invertidas, ni precio o presupuesto salvo que el resultado incluya ese precio. Si los "
+        "resultados no responden la pregunta, dilo en una línea y haz una sola pregunta concreta."
     )
     if retroalimentacion:
         hallazgos = [
@@ -753,7 +828,11 @@ async def _narrar_llm(
             {"role": "system", "content": instrucciones},
             {
                 "role": "user",
-                "content": json.dumps(resultados, ensure_ascii=False, default=str),
+                "content": json.dumps(
+                    {"pregunta": pregunta, "resultados_tools": resultados},
+                    ensure_ascii=False,
+                    default=str,
+                ),
             },
         ],
         temperature=settings.llm_temperature,
@@ -766,7 +845,7 @@ async def _narrar_llm(
 
 
 async def _criticar_llm(
-    settings: Settings, respuesta: str, resultados: list[dict[str, Any]]
+    settings: Settings, respuesta: str, resultados: list[dict[str, Any]], pregunta: str = ""
 ) -> list[dict[str, str]]:
     """Segunda barrera: detecta solo afirmaciones sin respaldo de las tools."""
     from openai import AsyncOpenAI
@@ -789,6 +868,7 @@ async def _criticar_llm(
                     "puede vincular a los resultados, crea un hallazgo; ante la duda, recházala. "
                     "Marca cualquier afirmación descriptiva sobre un juego que no figure en los "
                     "resultados de las tools, incluida jugabilidad, sensaciones o características. "
+                    "Marca también si la respuesta no contesta la pregunta del usuario. "
                     "Devuelve hallazgos "
                     "con categoria y detalle, usando solo estas categorías: cifra_sin_fuente, "
                     "juego_o_atributo_no_disponible o recomendacion_sin_respaldo. Devuelve ok=true "
@@ -798,7 +878,11 @@ async def _criticar_llm(
             {
                 "role": "user",
                 "content": json.dumps(
-                    {"resultados_tools": resultados, "respuesta": respuesta},
+                    {
+                        "pregunta": pregunta,
+                        "resultados_tools": resultados,
+                        "respuesta": respuesta,
+                    },
                     ensure_ascii=False,
                     default=str,
                 ),
@@ -830,7 +914,8 @@ async def responder(
         chat_session = ChatSession(user_id=user.id, titulo=solicitud.mensaje[:120])
         session.add(chat_session)
         await session.flush()
-    resumen = ", ".join(juego.nombre for juego in await _coleccion(session, user, perfil.id))
+    coleccion_activa = await _coleccion(session, user, perfil.id)
+    resumen = ", ".join(juego.nombre for juego in coleccion_activa)
     plan_llm: PlanLlm | None = None
     if settings.llm_active:
         try:
@@ -840,6 +925,13 @@ async def responder(
     plan = _validar_plan(plan_llm, settings.llm_max_plan_steps)
     llm_used = plan is not None
     plan = plan or _plan_determinista(solicitud.mensaje, solicitud.game_id)
+    plan = await _validar_plan_con_juego(
+        plan,
+        solicitud.mensaje,
+        CatalogoRepository(session),
+        coleccion_activa,
+        settings,
+    )
     run = AgentRun(
         user_id=user.id,
         session_id=chat_session.id,
@@ -897,7 +989,7 @@ async def responder(
     narrativa_llm_permitida = plan.intent not in {"reglas", "fuera_de_dominio"}
     if settings.llm_active and narrativa_llm_permitida:
         try:
-            answer = await _narrar_llm(settings, resultados)
+            answer = await _narrar_llm(settings, resultados, solicitud.mensaje)
             narrator_llm_used = True
             trazas.append(("narrator", "ok", {"attempt": 0, "llm_used": True}))
         except Exception as error:  # noqa: BLE001
@@ -912,7 +1004,9 @@ async def responder(
         critic_llm_used = False
         if not deterministic_findings and settings.llm_active and narrativa_llm_permitida:
             try:
-                critic_findings.extend(await _criticar_llm(settings, answer, resultados))
+                critic_findings.extend(
+                    await _criticar_llm(settings, answer, resultados, solicitud.mensaje)
+                )
                 critic_llm_used = True
             except Exception as error:  # noqa: BLE001
                 trazas.append(
@@ -952,7 +1046,7 @@ async def responder(
             break
         critic_attempts += 1
         try:
-            answer = await _narrar_llm(settings, resultados, critic_findings)
+            answer = await _narrar_llm(settings, resultados, solicitud.mensaje, critic_findings)
             trazas.append(
                 (
                     "narrator",

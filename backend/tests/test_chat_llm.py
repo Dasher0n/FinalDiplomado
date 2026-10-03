@@ -31,6 +31,55 @@ def test_critic_determinista_rechaza_cifra_fuera_de_las_tools() -> None:
 
 
 @pytest.mark.parametrize(
+    ("respuesta", "hallazgo"),
+    [
+        ("Usa `comparar` para decidir.", "nombres internos entre comillas invertidas"),
+        ("Puedo filtrar la colección por precio.", "función que no existe"),
+    ],
+)
+def test_critic_determinista_rechaza_funciones_no_expuestas(respuesta: str, hallazgo: str) -> None:
+    findings = chat_service._criticar_determinista(respuesta, [])
+
+    assert any(hallazgo in finding for finding in findings)
+
+
+@pytest.mark.asyncio
+async def test_planner_llm_recibe_manifest_y_ejemplos_naturales(monkeypatch: Any) -> None:
+    llamadas: dict[str, Any] = {}
+
+    class Responses:
+        async def parse(self, **kwargs: Any) -> Any:
+            llamadas.update(kwargs)
+            parsed = chat_service._PlanRespuestaLlm(
+                intent="evaluar_compra",
+                steps=[
+                    chat_service._PasoPlanLlm(
+                        id="1", tool="evaluar_compra", args={"nombre": "SETI"}
+                    )
+                ],
+            )
+            return type("Respuesta", (), {"output_parsed": parsed})()
+
+    class Cliente:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.responses = Responses()
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
+    settings = Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True)
+
+    plan = await chat_service._plan_llm(
+        settings, "¿Qué tal entraría SETI en la colección?", "Wingspan"
+    )
+
+    assert plan is not None
+    assert plan.steps[0].tool == "evaluar_compra"
+    prompt = llamadas["input"]
+    assert "si un juego encaja, conviene o es redundante" in prompt
+    assert "solo cuando el usuario pide ver o listar su colección" in prompt
+    assert "¿qué tal entraría X?" in prompt
+
+
+@pytest.mark.parametrize(
     ("pregunta", "intent", "tool", "args"),
     [
         (
@@ -74,6 +123,45 @@ def test_planner_determinista_resuelve_guion_sin_llm(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("pregunta", "intent", "tool"),
+    [
+        ("¿Qué tal entraría SETI en la colección?", "evaluar_compra", "evaluar_compra"),
+        ("¿Me conviene SETI?", "evaluar_compra", "evaluar_compra"),
+        ("¿Vale la pena SETI?", "evaluar_compra", "evaluar_compra"),
+        ("¿Debería comprar SETI?", "evaluar_compra", "evaluar_compra"),
+        ("¿Y SETI?", "evaluar_compra", "evaluar_compra"),
+        ("Quiero ver mi colección", "coleccion", "ver_coleccion"),
+        ("¿Qué juegos tengo?", "coleccion", "ver_coleccion"),
+        ("¿Qué experiencias me faltan?", "que_me_falta", "que_me_falta"),
+        ("¿Dónde tengo huecos?", "que_me_falta", "que_me_falta"),
+        ("Dame un plan de 3 juegos", "que_compro", "que_compro"),
+        ("Somos 5 y tenemos 60 minutos", "que_saco_hoy", "que_saco_hoy"),
+        ("¿Quién ganó el mundial?", "fuera_de_dominio", None),
+    ],
+)
+async def test_planner_y_validacion_resuelven_parafrasis(
+    pregunta: str, intent: str, tool: str | None
+) -> None:
+    seti = SimpleNamespace(id="418059", nombre="SETI: Search for Extraterrestrial Intelligence")
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return [seti]
+
+    plan = chat_service._plan_determinista(pregunta, None)
+    plan = await chat_service._validar_plan_con_juego(
+        plan, pregunta, CatalogoPrueba(), [], Settings(llm_enabled=False)
+    )
+
+    assert plan.intent == intent
+    if tool is None:
+        assert plan.steps == []
+    else:
+        assert plan.steps[0].tool == tool
+
+
+@pytest.mark.asyncio
 async def test_planner_fallback_resuelve_wyrmspan_por_nombre_extraido() -> None:
     juego = SimpleNamespace(id="410201", nombre="Wyrmspan")
 
@@ -89,6 +177,22 @@ async def test_planner_fallback_resuelve_wyrmspan_por_nombre_extraido() -> None:
 
     assert estado == "encontrado"
     assert [item.id for item in juegos] == ["410201"]
+
+
+@pytest.mark.asyncio
+async def test_resolver_acepta_titulo_antes_de_dos_puntos() -> None:
+    juego = SimpleNamespace(id="418059", nombre="SETI: Search for Extraterrestrial Intelligence")
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return [juego]
+
+    estado, juegos = await chat_service._resolver(
+        CatalogoPrueba(), "SETI", None, Settings(llm_enabled=False)
+    )
+
+    assert estado == "encontrado"
+    assert [item.id for item in juegos] == ["418059"]
 
 
 @pytest.mark.asyncio
@@ -197,7 +301,9 @@ async def test_critic_llm_devuelve_hallazgos_estructurados(monkeypatch: Any) -> 
     settings = Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True)
     resultados = [{"juego": {"nombre": "Wingspan", "mechanics": ["Draft"]}}]
 
-    findings = await chat_service._criticar_llm(settings, "Tiene otra mecánica.", resultados)
+    findings = await chat_service._criticar_llm(
+        settings, "Tiene otra mecánica.", resultados, "¿Qué tal Wingspan?"
+    )
 
     assert findings == [
         {
@@ -210,6 +316,8 @@ async def test_critic_llm_devuelve_hallazgos_estructurados(monkeypatch: Any) -> 
     assert "No uses conocimiento general" in llamadas["input"][0]["content"]
     assert "ante la duda, recházala" in llamadas["input"][0]["content"]
     assert "afirmación descriptiva sobre un juego" in llamadas["input"][0]["content"]
+    assert "no contesta la pregunta del usuario" in llamadas["input"][0]["content"]
+    assert "¿Qué tal Wingspan?" in llamadas["input"][1]["content"]
 
 
 def test_chat_reintenta_narrador_y_persiste_critic(
@@ -225,6 +333,7 @@ def test_chat_reintenta_narrador_y_persiste_critic(
     async def narrator(
         _settings: Settings,
         _results: list[dict[str, Any]],
+        _pregunta: str,
         feedback: list[str] | None = None,
     ) -> str:
         return fixture["narrador_corregido"] if feedback else fixture["narrador_inicial"]
@@ -262,6 +371,7 @@ def test_chat_aprobado_por_critic_al_primer_intento(
     async def narrator(
         _settings: Settings,
         _results: list[dict[str, Any]],
+        _pregunta: str,
         feedback: list[str | dict[str, str]] | None = None,
     ) -> str:
         llamadas_narrador.append(feedback)
