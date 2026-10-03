@@ -764,11 +764,12 @@ async def responder(
 
     while True:
         deterministic_findings = _criticar_determinista(answer, resultados)
-        critic_findings = deterministic_findings
+        critic_findings.clear()
+        critic_findings.extend(deterministic_findings)
         critic_llm_used = False
         if not deterministic_findings and settings.llm_active and narrativa_llm_permitida:
             try:
-                critic_findings = await _criticar_llm(settings, answer, resultados)
+                critic_findings.extend(await _criticar_llm(settings, answer, resultados))
                 critic_llm_used = True
             except Exception as error:  # noqa: BLE001
                 trazas.append(
@@ -792,7 +793,8 @@ async def responder(
         if critic_attempts >= settings.critic_max_retries:
             answer = _narrar(plan.intent, resultados)
             narrator_llm_used = False
-            critic_findings = _criticar_determinista(answer, resultados)
+            critic_findings.clear()
+            critic_findings.extend(_criticar_determinista(answer, resultados))
             trazas.append(
                 (
                     "narrator",
