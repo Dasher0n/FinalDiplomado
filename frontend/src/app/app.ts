@@ -546,7 +546,6 @@ Chart.register(
                           <article class="recommendation game-summary-card mt-3">
                             @if (tarjetaImagen(tarjeta); as imagen) { <img class="chat-card-cover" [src]="imagen" [alt]="juego.nombre" /> }
                             <b>{{ juego.nombre }}</b>
-                            @if (tarjetaAnio(tarjeta); as anio) { <p>{{ anio }}</p> }
                             @if (tarjetaFicha(tarjeta); as ficha) { <p>{{ ficha }}</p> }
                             @if (tarjetaVeredicto(tarjeta); as veredicto) { <p>{{ etiqueta(veredicto) }}</p> }
                             @if (tarjetaPrecio(tarjeta); as precio) { <p>{{ precio }}</p> }
@@ -568,7 +567,7 @@ Chart.register(
             }
           }
           @if (chatEsperando()) {
-            <div class="assistant-message"><img class="chat-avatar" src="/wise-dice.svg" alt="" /><p class="bubble answer">Wise Dice está pensando…</p></div>
+            <div class="assistant-message"><img class="chat-avatar" src="/wise-dice.svg" alt="Wise Dice" /><p class="bubble answer thinking"><span class="thinking-die">🎲</span> Tirando los dados…</p></div>
           }
           @if (chatError()) { <p class="chat-error">No pude responder ahora. Inténtalo de nuevo en unos momentos.</p> }
           <div class="chat-input">
@@ -1041,8 +1040,9 @@ export class App {
   protected tarjetaPrecio(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
     const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
     if (juego?.["precio_usd"] == null) return null;
-    const fecha = typeof juego["fecha_precio"] === "string" ? ` · ${juego["fecha_precio"]}` : "";
-    return `USD ${juego["precio_usd"]}${fecha}`;
+    const precio = Number(juego["precio_usd"]);
+    const fecha = typeof juego["fecha_precio"] === "string" ? ` · ${this.fechaCorta(juego["fecha_precio"])}` : "";
+    return `USD ${precio.toFixed(2)}${fecha}`;
   }
   protected tarjetaAnio(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
     const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
@@ -1054,8 +1054,14 @@ export class App {
     const jugadores = juego["jugadores_minimos"] != null && juego["jugadores_maximos"] != null
       ? `${juego["jugadores_minimos"]}-${juego["jugadores_maximos"]} jugadores` : "";
     const duracion = juego["duracion_maxima"] != null ? `${juego["duracion_maxima"]} min` : "";
-    const peso = juego["peso"] != null ? `peso ${juego["peso"]}${juego["peso_estimado"] ? " estimado" : ""}` : "";
-    return [jugadores, duracion, peso].filter(Boolean).join(" · ") || null;
+    const peso = typeof juego["peso"] === "number"
+      ? `${juego["peso"].toFixed(1)} · ${juego["nivel_peso"] ?? "peso desconocido"}${juego["peso_estimado"] ? " estimado" : ""}` : "";
+    const anio = typeof juego["anio"] === "number" ? String(juego["anio"]) : "";
+    return [anio, jugadores, duracion, peso].filter(Boolean).join(" · ") || null;
+  }
+  private fechaCorta(valor: string): string {
+    const fecha = new Date(`${valor}T00:00:00`);
+    return Number.isNaN(fecha.getTime()) ? valor : new Intl.DateTimeFormat("es", { day: "numeric", month: "short", year: "numeric" }).format(fecha).replace(".", "");
   }
   protected tarjetaEnlace(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
     const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;

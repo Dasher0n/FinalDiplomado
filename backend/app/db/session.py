@@ -94,9 +94,14 @@ async def init_db() -> None:
             columnas_sesiones = (
                 await connection.execute(text("PRAGMA table_info(chat_sessions)"))
             ).mappings()
-            if "juego_en_foco_id" not in {columna["name"] for columna in columnas_sesiones}:
+            nombres_sesiones = {columna["name"] for columna in columnas_sesiones}
+            if "juego_en_foco_id" not in nombres_sesiones:
                 await connection.execute(
                     text("ALTER TABLE chat_sessions ADD COLUMN juego_en_foco_id VARCHAR(32)")
+                )
+            if "intent_pendiente" not in nombres_sesiones:
+                await connection.execute(
+                    text("ALTER TABLE chat_sessions ADD COLUMN intent_pendiente VARCHAR(32)")
                 )
             columnas = (
                 await connection.execute(text("PRAGMA table_info(user_collection)"))

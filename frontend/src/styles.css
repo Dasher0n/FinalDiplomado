@@ -513,6 +513,11 @@ body {
 .markdown p { margin: 0.4rem 0; }
 .chat-error { margin: 16px 0; color: #9b3429; font-weight: 700; }
 .game-summary-card { overflow: hidden; }
+.thinking-die { display: inline-block; margin-right: 0.35rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .thinking-die { animation: die-roll 0.9s linear infinite; }
+}
+@keyframes die-roll { to { transform: rotate(360deg); } }
 
 @media (min-width: 1280px) {
   .bookcase-grid {

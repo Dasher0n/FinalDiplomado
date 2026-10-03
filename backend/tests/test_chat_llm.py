@@ -43,6 +43,83 @@ def test_critic_determinista_rechaza_funciones_no_expuestas(respuesta: str, hall
     assert any(hallazgo in finding for finding in findings)
 
 
+def test_critic_determinista_rechaza_identificadores_internos() -> None:
+    findings = chat_service._criticar_determinista("Aplica regla_exacta.", [])
+
+    assert any("guion bajo" in finding for finding in findings)
+
+
+def test_planner_conserva_intencion_al_recibir_nombre_en_ingles() -> None:
+    plan = chat_service._plan_determinista(
+        "El nombre en inglés es: Wondrous Creatures",
+        None,
+        None,
+        "evaluar_compra",
+    )
+
+    assert plan.intent == "evaluar_compra"
+    assert plan.steps[0].args == {"nombre": "Wondrous Creatures"}
+
+
+def test_extraer_nombre_recorta_colas_de_contexto() -> None:
+    assert (
+        chat_service._extraer_nombre_juego(
+            "¿Qué tal entraría Criaturas maravillosas en la colección?"
+        )
+        == "Criaturas maravillosas"
+    )
+
+
+@pytest.mark.asyncio
+async def test_nombre_inventado_no_se_resuelve_por_coincidencia_aproximada() -> None:
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return [SimpleNamespace(id="1", nombre="EGO", users_rated=100)]
+
+    estado, juegos = await chat_service._resolver(
+        CatalogoPrueba(),
+        "Juegoinventado123",
+        None,
+        Settings(llm_enabled=False),
+    )
+
+    assert (estado, juegos) == ("no_encontrado", ())
+
+
+@pytest.mark.asyncio
+async def test_traduccion_simulada_usa_el_nombre_extraido_sin_cola(monkeypatch: Any) -> None:
+    juego = SimpleNamespace(id="400366", nombre="Wondrous Creatures", users_rated=7342)
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return [juego]
+
+    class Responses:
+        async def parse(self, **_kwargs: Any) -> Any:
+            return SimpleNamespace(
+                output_parsed=chat_service._TitulosTraducidosLlm(titulos=["Wondrous Creatures"])
+            )
+
+    class Cliente:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.responses = Responses()
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
+    nombre = chat_service._extraer_nombre_juego(
+        "¿Qué tal entraría Criaturas maravillosas en la colección?"
+    )
+    estado, juegos, interpretado, _ = await chat_service._resolver_con_traduccion(
+        CatalogoPrueba(),
+        nombre,
+        None,
+        Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True),
+    )
+
+    assert estado == "encontrado"
+    assert juegos[0].id == "400366"
+    assert interpretado == {"buscado": "Criaturas maravillosas", "resuelto": "Wondrous Creatures"}
+
+
 @pytest.mark.asyncio
 async def test_planner_llm_recibe_manifest_y_ejemplos_naturales(monkeypatch: Any) -> None:
     llamadas: dict[str, Any] = {}

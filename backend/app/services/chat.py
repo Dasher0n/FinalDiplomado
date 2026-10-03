@@ -17,7 +17,6 @@ from app.api.v1.engine import _artefactos, _coleccion, _juego, _niveles
 from app.core.config import Settings
 from app.db.models import AgentRun, AgentStep, ChatMessage, ChatSession, Game, ToolCall
 from app.engine.motor import (
-    buscar_local,
     cobertura,
     evaluar_redundancia,
     normalizar_nombre,
@@ -36,7 +35,13 @@ _TOOLS: set[str] = {
     "que_compro",
     "que_saco_hoy",
 }
-_FUNCIONES_NO_DISPONIBLES = {"comparar", "filtrar", "modo precio", "capturar precio"}
+_FUNCIONES_NO_DISPONIBLES = {
+    "comparar",
+    "filtrar",
+    "modo precio",
+    "capturar precio",
+    "tarjeta para compartir",
+}
 _INTENTS = {
     "evaluar_compra",
     "que_me_falta",
@@ -154,10 +159,20 @@ _EJEMPLOS_INTENT = (
 
 
 def _plan_determinista(
-    mensaje: str, game_id: str | None, juego_en_foco_id: str | None = None
+    mensaje: str,
+    game_id: str | None,
+    juego_en_foco_id: str | None = None,
+    intent_pendiente: str | None = None,
 ) -> PlanLlm:
     texto = mensaje.lower()
     consulta = normalizar_nombre(mensaje)
+    titulo_en_ingles = re.match(r"^el nombre en ingl[eé]s es:\s*(.+)$", mensaje, re.IGNORECASE)
+    if titulo_en_ingles and intent_pendiente in {"evaluar_compra", "detalle_juego"}:
+        nombre = titulo_en_ingles.group(1).strip()
+        return PlanLlm(
+            intent=intent_pendiente,
+            steps=[PasoPlan(id="1", tool=intent_pendiente, args={"nombre": nombre})],
+        )
     if any(palabra in texto for palabra in ("ignora", "instrucciones", "prompt", "sistema")):
         return PlanLlm(intent="fuera_de_dominio")
     if any(palabra in texto for palabra in ("regla", "reglamento", "como se juega")):
@@ -232,7 +247,7 @@ def _extraer_nombre_juego(mensaje: str) -> str:
     patrones = (
         r"\b(?:comprar|compra|evaluar|evalúa)\s+(?:el juego\s+)?(?P<nombre>.+?)(?=[,;.!?¿]|$)",
         r"\bvale la pena\s+(?P<nombre>.+?)(?=[,;.!?¿]|$)",
-        r"\b(?:qu[eé]\s+tal\s+entrar[ií]a|me\s+conviene|deber[ií]a\s+comprar)\s+(?P<nombre>.+?)(?=\s+en\s+la\s+colecci[oó]n|[,;.!?¿]|$)",
+        r"\b(?:qu[eé]\s+tal\s+entrar[ií]a|me\s+conviene|deber[ií]a\s+comprar)\s+(?P<nombre>.+?)(?=\s+(?:en\s+(?:la\s+colecci[oó]n|mi\s+ludoteca)|para\s+mi\s+caf[eé])|[,;.!?¿]|$)",
         r"\by\s+(?P<nombre>.+?)(?=[,;.!?¿]|$)",
     )
     for patron in patrones:
@@ -373,30 +388,7 @@ async def _resolver(
         if (ordenados[0].users_rated or 0) >= 5 * (ordenados[1].users_rated or 0):
             return "encontrado", (ordenados[0],)
         return "ambiguo", ordenados[:5]
-    incluidos = tuple(
-        juego
-        for juego in juegos
-        if len(normalizar_nombre(juego.nombre)) > 2
-        and normalizar_nombre(juego.nombre) in consulta_normalizada
-    )
-    variantes = tuple(
-        juego
-        for juego in juegos
-        if normalizar_nombre(juego.nombre).startswith(f"{consulta_normalizada} ")
-    )
-    if variantes:
-        candidatos = tuple({juego.id: juego for juego in (*incluidos, *variantes)}.values())
-        return "ambiguo", candidatos[:5]
-    if len(incluidos) == 1:
-        return "encontrado", incluidos
-    if len(incluidos) > 1:
-        return "ambiguo", incluidos[:5]
-    return buscar_local(
-        nombre or "",
-        juegos,
-        umbral_directo=settings.fuzzy_umbral_directo,
-        umbral_ambiguo=settings.fuzzy_umbral_ambiguo,
-    )
+    return "no_encontrado", ()
 
 
 async def _resolver_con_traduccion(
@@ -431,16 +423,24 @@ async def _resolver_con_traduccion(
         (
             (
                 max(
-                    fuzz.ratio(consulta, normalizar_nombre(juego.nombre)) for consulta in consultas
+                    fuzz.WRatio(consulta, normalizar_nombre(juego.nombre))
+                    for consulta in consultas
+                    if len(normalizar_nombre(juego.nombre)) <= max(1, len(consulta)) * 1.5
+                    and len(consulta) <= max(1, len(normalizar_nombre(juego.nombre))) * 1.5
                 ),
                 juego,
             )
             for juego in juegos_catalogo
+            if any(
+                len(normalizar_nombre(juego.nombre)) <= max(1, len(consulta)) * 1.5
+                and len(consulta) <= max(1, len(normalizar_nombre(juego.nombre))) * 1.5
+                for consulta in consultas
+            )
         ),
         key=lambda item: (item[0], item[1].users_rated or 0),
         reverse=True,
     )
-    candidatos = tuple(juego for puntaje, juego in cercanos if puntaje >= 60)[:3]
+    candidatos = tuple(juego for puntaje, juego in cercanos if puntaje >= 70)[:3]
     return ("ambiguo", candidatos, None, titulos) if candidatos else (estado, (), None, titulos)
 
 
@@ -606,11 +606,17 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
         return "Mi experiencia se limita al análisis y recomendación de juegos de mesa."
     resultado = resultados[0] if resultados else {}
     if resultado.get("estado") == "ambiguo":
-        return "Encontré varias opciones. Elige el juego exacto para evaluarlo."
+        return (
+            "**Necesito confirmar el juego**\n\n- 🎲 Encontré títulos parecidos en el catálogo.\n"
+            "- Elige una sugerencia o escribe el nombre en inglés.\n\n"
+            "💡 ¿Quieres evaluar otro juego?"
+        )
     if resultado.get("estado") == "no_encontrado":
         return (
-            "No encontré ese juego en el catálogo local. "
-            "La búsqueda web no está disponible en esta fase."
+            "**No encontré ese juego**\n\n"
+            "- 🎲 No hay una coincidencia segura en el catálogo local.\n"
+            "- Escribe el nombre en inglés para intentarlo de nuevo.\n\n"
+            "💡 ¿Quieres evaluar otro juego?"
         )
     if intent == "evaluar_compra":
         juego, similar = resultado["juego"], resultado.get("juego_mas_parecido")
@@ -622,16 +628,23 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
         )
         if resultado.get("ya_en_coleccion"):
             return (
-                prefijo + f"**{juego['nombre']}** ya está en tu colección. "
-                "La tarjeta muestra qué cobertura "
-                "perderías al venderlo.\n\n¿Quieres revisar otro juego para comprar?"
+                prefijo + f"**{juego['nombre']}** ya está en tu colección.\n\n"
+                "- 📦 La tarjeta muestra el impacto de simular su venta.\n"
+                "- 🧩 Así puedes revisar la cobertura que perderías.\n\n"
+                "💡 ¿Quieres simular la venta de otro juego?"
             )
-        texto = prefijo + f"**{juego['nombre']}**: {resultado['veredicto'].replace('_', ' ')}."
+        veredictos = {
+            "redundante": "⚠️ redundante",
+            "parecido_pero_cubre_hueco": "✅ aporta un hueco",
+            "complementario": "✅ complementario",
+        }
+        texto = prefijo + f"**{veredictos.get(resultado['veredicto'], '🎲 evaluado')}**"
+        texto += f"\n\n- **{juego['nombre']}** está evaluado para tu colección."
         if similar and resultado.get("similitud"):
             similitud = resultado["similitud"]
-            texto += f" Se parece a **{similar['nombre']}** por mecánicas y temática."
-            texto += f" Similitud total: {similitud['total']:.2f}."
-        return texto + "\n\n¿Quieres que revise otro juego?"
+            texto += f"\n- 🔁 Se parece a **{similar['nombre']}**."
+            texto += f"\n- **Similitud total {similitud['total']:.2f}**."
+        return texto + "\n\n💡 ¿Quieres evaluar otro juego?"
     if intent == "que_me_falta":
         faltantes = [
             f"{eje}: {', '.join(valor['faltantes'])}"
@@ -674,9 +687,12 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
         if interpretacion
         else ""
     )
+    en_coleccion = resultado.get("ya_en_coleccion")
+    estado = "ya está en tu colección" if en_coleccion else "está disponible en el catálogo"
     return (
-        prefijo + f"**{resultado['juego']['nombre']}** está en el catálogo.\n\n"
-        "¿Quieres evaluar cómo encaja en tu colección?"
+        prefijo + f"**{resultado['juego']['nombre']}** {estado}.\n\n"
+        "- 🎲 Consulta los datos principales en la tarjeta.\n\n"
+        "💡 ¿Quieres evaluar otro juego?"
     )
 
 
@@ -842,6 +858,8 @@ def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> 
         hallazgos.append(
             "La respuesta menciona una función que no existe en el manifiesto de tools."
         )
+    if re.search(r"\b[\wáéíóúñ]+_[\wáéíóúñ]+\b", respuesta, re.IGNORECASE):
+        hallazgos.append("La respuesta no puede mostrar identificadores internos con guion bajo.")
     if "redundante" in respuesta.lower() and not any(
         item.get("veredicto") == "redundante" for item in resultados
     ):
@@ -925,9 +943,14 @@ async def _narrar_llm(
     from openai import AsyncOpenAI
 
     instrucciones = (
-        "Eres el narrador de Wise Dice. Responde en español y markdown breve. "
-        "Usa como máximo ocho líneas, termina siempre con una sugerencia concreta de siguiente "
-        "pregunta y no pegues URLs. No enumeres mecánicas o categorías crudas: si hace falta, "
+        "Eres el narrador de Wise Dice. Responde en español y markdown breve. La primera línea "
+        "debe contener la respuesta o veredicto principal en negrita, seguida de dos a cuatro "
+        "viñetas cortas y una última línea que empiece con 💡 y proponga solo una acción del "
+        "manifiesto: evaluar otro juego, ver qué falta, plan de compra, modo mesa o simular venta. "
+        "Usa como máximo tres emojis por respuesta, sin contar 💡, y solo 🎲, ✅, ⚠️, 🔁, 🧩, 🛒, "
+        "👥, ⏱️, ⚖️ o 📦. Usa negritas solo para juegos, el veredicto y números clave, con una "
+        "negrita como máximo por viñeta. No pegues URLs. No enumeres mecánicas o categorías "
+        "crudas: si hace falta, "
         "usa familias en español. Para detalle_juego, limita el texto al resumen: la tarjeta "
         "contiene portada, datos, precio y enlace. Si aparece interpretado_como, escribe siempre "
         "Interpreté «X» como «Y». "
@@ -1060,8 +1083,11 @@ async def responder(
     resumen = (
         ", ".join(juego.nombre for juego in coleccion_activa) + f". Últimos turnos: {historial}"
     )
+    es_continuacion_en_ingles = bool(
+        re.match(r"^el nombre en ingl[eé]s es:\s*.+$", solicitud.mensaje, re.IGNORECASE)
+    )
     plan_llm: PlanLlm | None = None
-    if settings.llm_active:
+    if settings.llm_active and not es_continuacion_en_ingles:
         try:
             plan_llm = await _plan_llm(settings, solicitud.mensaje, resumen)
         except Exception:  # noqa: BLE001
@@ -1069,7 +1095,10 @@ async def responder(
     plan = _validar_plan(plan_llm, settings.llm_max_plan_steps)
     llm_used = plan is not None
     plan = plan or _plan_determinista(
-        solicitud.mensaje, solicitud.game_id, chat_session.juego_en_foco_id
+        solicitud.mensaje,
+        solicitud.game_id,
+        chat_session.juego_en_foco_id,
+        chat_session.intent_pendiente,
     )
     plan = await _validar_plan_con_juego(
         plan,
@@ -1220,6 +1249,10 @@ async def responder(
         juego = resultado.get("juego")
         if isinstance(juego, dict) and isinstance(juego.get("id"), str):
             chat_session.juego_en_foco_id = juego["id"]
+    if any(resultado.get("estado") in {"ambiguo", "no_encontrado"} for resultado in resultados):
+        chat_session.intent_pendiente = plan.intent
+    elif any(resultado.get("estado") == "encontrado" for resultado in resultados):
+        chat_session.intent_pendiente = None
     run.respuesta_final = answer
     run.estado = "completed"
     run.critic_passed = critic_passed
