@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -87,11 +87,22 @@ class _PlanRespuestaLlm(BaseModel):
     steps: list[_PasoPlanLlm] = Field(default_factory=list)
 
 
+class _HallazgoLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    categoria: Literal[
+        "cifra_sin_fuente",
+        "juego_o_atributo_no_disponible",
+        "recomendacion_sin_respaldo",
+    ]
+    detalle: str
+
+
 class _CriticaRespuestaLlm(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ok: bool
-    hallazgos: list[str] = Field(default_factory=list)
+    hallazgos: list[_HallazgoLlm] = Field(default_factory=list)
 
 
 _TOOL_MANIFEST = {
@@ -582,7 +593,7 @@ def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> 
 async def _narrar_llm(
     settings: Settings,
     resultados: list[dict[str, Any]],
-    retroalimentacion: list[str] | None = None,
+    retroalimentacion: list[str | dict[str, str]] | None = None,
 ) -> str:
     """Redacta exclusivamente sobre los resultados serializados de las tools."""
     from openai import AsyncOpenAI
@@ -594,7 +605,13 @@ async def _narrar_llm(
         "nunca como afinidad o match."
     )
     if retroalimentacion:
-        instrucciones += " Corrige estos incumplimientos: " + " ".join(retroalimentacion)
+        hallazgos = [
+            hallazgo
+            if isinstance(hallazgo, str)
+            else f"{hallazgo.get('categoria', 'hallazgo')}: {hallazgo.get('detalle', '')}"
+            for hallazgo in retroalimentacion
+        ]
+        instrucciones += " Corrige estos incumplimientos: " + " ".join(hallazgos)
     cliente = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
     respuesta = await cliente.responses.create(
         model=settings.llm_model,
@@ -616,7 +633,7 @@ async def _narrar_llm(
 
 async def _criticar_llm(
     settings: Settings, respuesta: str, resultados: list[dict[str, Any]]
-) -> list[str]:
+) -> list[dict[str, str]]:
     """Segunda barrera: detecta solo afirmaciones sin respaldo de las tools."""
     from openai import AsyncOpenAI
 
@@ -628,8 +645,11 @@ async def _criticar_llm(
                 "role": "system",
                 "content": (
                     "Eres el critic de Wise Dice. Revisa cifras sin fuente, mecánicas o atributos "
-                    "ausentes de los datos, y afirmaciones de calidad no sustentadas. "
-                    "Devuelve ok=true si no hay problemas. No inventes hallazgos."
+                    "ausentes de los datos, juegos no incluidos en resultados y recomendaciones "
+                    "sin respaldo. Devuelve hallazgos con categoria y detalle, usando solo estas "
+                    "categorías: cifra_sin_fuente, juego_o_atributo_no_disponible o "
+                    "recomendacion_sin_respaldo. Devuelve ok=true si no hay problemas. "
+                    "No inventes hallazgos."
                 ),
             },
             {
@@ -646,7 +666,15 @@ async def _criticar_llm(
     critica = salida.output_parsed
     if critica is None:
         raise ValueError("El critic LLM devolvió una respuesta vacía.")
-    return [] if critica.ok else critica.hallazgos or ["El critic LLM rechazó la respuesta."]
+    hallazgos = [hallazgo.model_dump() for hallazgo in critica.hallazgos]
+    if critica.ok:
+        return []
+    return hallazgos or [
+        {
+            "categoria": "recomendacion_sin_respaldo",
+            "detalle": "El critic LLM rechazó la respuesta sin más detalle.",
+        }
+    ]
 
 
 async def responder(
@@ -720,7 +748,7 @@ async def responder(
             )
     answer = _narrar(plan.intent, resultados)
     narrator_llm_used = False
-    critic_findings: list[str] = []
+    critic_findings: list[str | dict[str, str]] = []
     critic_attempts = 0
     trazas: list[tuple[str, str, dict[str, Any]]] = []
     if settings.llm_active:
@@ -791,7 +819,9 @@ async def responder(
     run.estado = "completed"
     run.critic_passed = critic_passed
     run.critic_attempts = critic_attempts
-    run.critic_findings = [{"mensaje": finding} for finding in critic_findings] or None
+    run.critic_findings = [
+        {"mensaje": finding} if isinstance(finding, str) else finding for finding in critic_findings
+    ] or None
     run.modelo = settings.llm_model if narrator_llm_used else None
     run.terminado_en = datetime.now(UTC)
     session.add_all(

@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import openai
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -25,6 +27,47 @@ def test_critic_determinista_rechaza_cifra_fuera_de_las_tools() -> None:
     )
 
     assert findings == ["La cifra 99.0 no aparece en los resultados de las tools."]
+
+
+@pytest.mark.asyncio
+async def test_critic_llm_devuelve_hallazgos_estructurados(monkeypatch: Any) -> None:
+    llamadas: dict[str, Any] = {}
+    hallazgo = chat_service._HallazgoLlm(
+        categoria="juego_o_atributo_no_disponible",
+        detalle="El narrador menciona una mecánica ausente.",
+    )
+
+    class Responses:
+        async def parse(self, **kwargs: Any) -> Any:
+            llamadas.update(kwargs)
+            return type(
+                "Respuesta",
+                (),
+                {
+                    "output_parsed": chat_service._CriticaRespuestaLlm(
+                        ok=False, hallazgos=[hallazgo]
+                    )
+                },
+            )()
+
+    class Cliente:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.responses = Responses()
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
+    settings = Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True)
+    resultados = [{"juego": {"nombre": "Wingspan", "mechanics": ["Draft"]}}]
+
+    findings = await chat_service._criticar_llm(settings, "Tiene otra mecánica.", resultados)
+
+    assert findings == [
+        {
+            "categoria": "juego_o_atributo_no_disponible",
+            "detalle": "El narrador menciona una mecánica ausente.",
+        }
+    ]
+    assert llamadas["model"] == settings.llm_model_fast
+    assert llamadas["text_format"] is chat_service._CriticaRespuestaLlm
 
 
 def test_chat_reintenta_narrador_y_persiste_critic(
