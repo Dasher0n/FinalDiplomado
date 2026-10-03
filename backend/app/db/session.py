@@ -76,6 +76,21 @@ async def init_db() -> None:
     async with get_engine().begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
         if settings.database_url.startswith("sqlite"):
+            columnas_runs = (
+                await connection.execute(text("PRAGMA table_info(agent_runs)"))
+            ).mappings()
+            nombres_runs = {columna["name"] for columna in columnas_runs}
+            if "critic_attempts" not in nombres_runs:
+                await connection.execute(
+                    text(
+                        "ALTER TABLE agent_runs ADD COLUMN critic_attempts "
+                        "INTEGER NOT NULL DEFAULT 0"
+                    )
+                )
+            if "critic_findings" not in nombres_runs:
+                await connection.execute(
+                    text("ALTER TABLE agent_runs ADD COLUMN critic_findings JSON")
+                )
             columnas = (
                 await connection.execute(text("PRAGMA table_info(user_collection)"))
             ).mappings()

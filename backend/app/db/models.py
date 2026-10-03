@@ -185,6 +185,8 @@ class AgentRun(Base):
     estado: Mapped[str] = mapped_column(String(16), default="running", index=True)
     error_mensaje: Mapped[str | None] = mapped_column(Text, default=None)
     critic_passed: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    critic_attempts: Mapped[int] = mapped_column(default=0)
+    critic_findings: Mapped[list[Any] | None] = mapped_column(default=None)
     modelo: Mapped[str | None] = mapped_column(String(64), default=None)
     creado_en: Mapped[datetime] = created_at_column()
     terminado_en: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)

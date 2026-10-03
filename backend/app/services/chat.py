@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.catalogo import _juego_detalle
 from app.api.v1.engine import _artefactos, _coleccion, _juego, _niveles
 from app.core.config import Settings
-from app.db.models import AgentRun, AgentStep, ChatMessage, ChatSession, Game
+from app.db.models import AgentRun, AgentStep, ChatMessage, ChatSession, Game, ToolCall
 from app.engine.motor import (
     buscar_local,
     cobertura,
@@ -48,8 +49,74 @@ _INTENTS = {
 
 
 class PlanLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     intent: str
     steps: list[PasoPlan] = Field(default_factory=list)
+
+
+class _ArgsPlanLlm(BaseModel):
+    """Argumentos cerrados para impedir que el plan invente parametros de tools."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str | None = None
+    game_id: str | None = None
+    n: int | None = None
+    average_min: float | None = None
+    users_rated_min: int | None = None
+    ejes_ignorados: list[str] | None = None
+    jugadores: int | None = None
+    minutos: float | None = None
+    edad_minima: int | None = None
+
+
+class _PasoPlanLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    tool: str
+    args: _ArgsPlanLlm = Field(default_factory=_ArgsPlanLlm)
+    depends_on: list[str] = Field(default_factory=list)
+
+
+class _PlanRespuestaLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    intent: str
+    steps: list[_PasoPlanLlm] = Field(default_factory=list)
+
+
+class _CriticaRespuestaLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    hallazgos: list[str] = Field(default_factory=list)
+
+
+_TOOL_MANIFEST = {
+    "ver_coleccion": {
+        "descripcion": "Muestra los juegos de la colección activa.",
+        "requeridos": [],
+    },
+    "detalle_juego": {
+        "descripcion": "Muestra la ficha de un juego del catálogo.",
+        "requeridos": ["nombre o game_id"],
+    },
+    "evaluar_compra": {
+        "descripcion": "Evalúa redundancia y huecos que cubre un juego.",
+        "requeridos": ["nombre o game_id"],
+    },
+    "que_me_falta": {"descripcion": "Calcula faltantes y debilidades.", "requeridos": []},
+    "que_compro": {
+        "descripcion": "Propone tres planes por número de juegos.",
+        "requeridos": ["n"],
+    },
+    "que_saco_hoy": {
+        "descripcion": "Filtra la colección para jugadores y duración.",
+        "requeridos": ["jugadores", "minutos"],
+    },
+}
 
 
 def _plan_determinista(mensaje: str, game_id: str | None) -> PlanLlm:
@@ -117,6 +184,13 @@ def _validar_plan(plan: PlanLlm | None, max_pasos: int) -> PlanLlm | None:
             paso.args.get("nombre") or paso.args.get("game_id")
         ):
             return None
+        if paso.tool == "que_compro" and not isinstance(paso.args.get("n"), int):
+            return None
+        if paso.tool == "que_saco_hoy" and not all(
+            isinstance(paso.args.get(argumento), (int, float))
+            for argumento in ("jugadores", "minutos")
+        ):
+            return None
     dependencias = {paso.id: set(paso.depends_on) for paso in plan.steps}
     visitados: set[str] = set()
     activos: set[str] = set()
@@ -138,6 +212,25 @@ def _validar_plan(plan: PlanLlm | None, max_pasos: int) -> PlanLlm | None:
     return plan
 
 
+def _niveles_plan(pasos: list[PasoPlan]) -> list[list[PasoPlan]]:
+    pendientes = {paso.id: paso for paso in pasos}
+    terminados: set[str] = set()
+    niveles: list[list[PasoPlan]] = []
+    while pendientes:
+        nivel = [
+            paso
+            for paso in pendientes.values()
+            if all(dependencia in terminados for dependencia in paso.depends_on)
+        ]
+        if not nivel:
+            raise ValueError("El plan contiene dependencias no resolubles.")
+        niveles.append(nivel)
+        for paso in nivel:
+            terminados.add(paso.id)
+            pendientes.pop(paso.id)
+    return niveles
+
+
 async def _plan_llm(settings: Settings, mensaje: str, resumen: str) -> PlanLlm | None:
     """Usa Responses.parse solo cuando la configuracion habilita explícitamente el LLM."""
     if not settings.llm_active:
@@ -145,15 +238,35 @@ async def _plan_llm(settings: Settings, mensaje: str, resumen: str) -> PlanLlm |
     from openai import AsyncOpenAI
 
     cliente = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+    manifest = "\n".join(
+        f"- {nombre}: {detalle['descripcion']} Argumentos requeridos: "
+        f"{', '.join(detalle['requeridos']) or 'ninguno'}."
+        for nombre, detalle in _TOOL_MANIFEST.items()
+    )
     respuesta = await cliente.responses.parse(
         model=settings.llm_model_fast,
         input=(
-            "Clasifica una pregunta de ludoteca y crea pasos de tools de solo lectura. "
-            f"Tools: {sorted(_TOOLS)}. Coleccion: {resumen}. Pregunta: {mensaje}"
+            "Eres un planificador de una ludoteca. Devuelve solo un plan de tools de solo "
+            "lectura. No calcules ni respondas al usuario. Usa exclusivamente este manifiesto:\n"
+            f"{manifest}\nColección: {resumen}\nPregunta: {mensaje}"
         ),
-        text_format=PlanLlm,
+        text_format=_PlanRespuestaLlm,
     )
-    return respuesta.output_parsed
+    parsed = respuesta.output_parsed
+    if parsed is None:
+        return None
+    return PlanLlm(
+        intent=parsed.intent,
+        steps=[
+            PasoPlan(
+                id=paso.id,
+                tool=paso.tool,
+                args=paso.args.model_dump(exclude_none=True),
+                depends_on=paso.depends_on,
+            )
+            for paso in parsed.steps
+        ],
+    )
 
 
 async def _resolver(
@@ -333,15 +446,207 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
     return f"**{resultado['juego']['nombre']}** está en el catálogo."
 
 
-def _criticar(respuesta: str, resultados: list[dict[str, Any]]) -> bool:
+def _valores(resultados: list[dict[str, Any]]) -> list[Any]:
+    valores: list[Any] = []
+
+    def recorrer(valor: Any) -> None:
+        if isinstance(valor, dict):
+            for item in valor.values():
+                recorrer(item)
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer(item)
+        else:
+            valores.append(valor)
+
+    for resultado in resultados:
+        recorrer(resultado)
+    return valores
+
+
+def _encontrar_banderas(resultados: list[dict[str, Any]]) -> bool:
+    banderas = {
+        "weight_imputado",
+        "weight_pocos_votos",
+        "duracion_imputada",
+        "jugadores_imputados",
+    }
+
+    def recorrer(valor: Any) -> bool:
+        if isinstance(valor, dict):
+            return any(clave in banderas and item is True for clave, item in valor.items()) or any(
+                recorrer(item) for item in valor.values()
+            )
+        if isinstance(valor, list):
+            return any(recorrer(item) for item in valor)
+        return False
+
+    return any(recorrer(resultado) for resultado in resultados)
+
+
+def _fuentes_web(resultados: list[dict[str, Any]]) -> set[str]:
+    fuentes: set[str] = set()
+
+    def recorrer(valor: Any) -> None:
+        if isinstance(valor, dict):
+            for clave, item in valor.items():
+                if clave in {"fuentes", "url", "source_url"}:
+                    recorrer_fuente(item)
+                recorrer(item)
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer(item)
+
+    def recorrer_fuente(valor: Any) -> None:
+        if isinstance(valor, str) and valor.startswith(("https://", "http://")):
+            fuentes.add(valor)
+        elif isinstance(valor, dict):
+            for item in valor.values():
+                recorrer_fuente(item)
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer_fuente(item)
+
+    for resultado in resultados:
+        recorrer(resultado)
+    return fuentes
+
+
+def _origen_web(resultados: list[dict[str, Any]]) -> bool:
+    return any(valor == "web" for valor in _valores(resultados))
+
+
+def _numeros_permitidos(resultados: list[dict[str, Any]]) -> list[float]:
+    permitidos: list[float] = []
+    for valor in _valores(resultados):
+        if isinstance(valor, bool):
+            continue
+        if isinstance(valor, (int, float)):
+            permitidos.append(float(valor))
+        elif isinstance(valor, str):
+            for numero in re.findall(r"(?<![\w.])-?\d+(?:[.,]\d+)?", valor):
+                permitidos.append(float(numero.replace(",", ".")))
+    return permitidos
+
+
+def _precio_tiene_fuente(respuesta: str) -> bool:
+    texto = respuesta.lower()
+    if "precio que capturaste" in texto:
+        return True
+    return "boardgameprices" in texto and bool(re.search(r"\b20\d{2}-\d{2}-\d{2}\b", texto))
+
+
+def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> list[str]:
+    """Aplica las reglas de transparencia antes de gastar una llamada del critic."""
+    hallazgos: list[str] = []
     if "redundante" in respuesta.lower() and not any(
         item.get("veredicto") == "redundante" for item in resultados
     ):
-        return False
-    return not (
-        any(item.get("estado") in {"ambiguo", "no_encontrado"} for item in resultados)
-        and "Similitud" in respuesta
+        hallazgos.append("La respuesta llama redundante a un juego sin respaldo de una tool.")
+    if _encontrar_banderas(resultados) and "estimad" not in respuesta.lower():
+        hallazgos.append("Falta indicar que hay datos estimados.")
+    fuentes = _fuentes_web(resultados)
+    if _origen_web(resultados) and (
+        "web" not in respuesta.lower() or not any(fuente in respuesta for fuente in fuentes)
+    ):
+        hallazgos.append("Falta indicar el origen web y citar una fuente.")
+    menciona_precio = re.search(r"(?:\$\s*\d|\b\d+(?:[.,]\d+)?\s*(?:usd|dólares))", respuesta, re.I)
+    if menciona_precio and not _precio_tiene_fuente(respuesta):
+        hallazgos.append(
+            "Todo precio debe incluir BoardGamePrices con fecha o indicar que lo capturaste."
+        )
+    if any(item.get("estado") in {"ambiguo", "no_encontrado"} for item in resultados) and any(
+        palabra in respuesta.lower()
+        for palabra in ("veredicto", "similitud", "redundante", "aporta")
+    ):
+        hallazgos.append(
+            "No se puede presentar una evaluación para un resultado ambiguo o no encontrado."
+        )
+
+    permitidos = _numeros_permitidos(resultados)
+    for numero in re.findall(r"(?<![\w.])-?\d+(?:[.,]\d+)?%?", respuesta):
+        valor = float(numero.rstrip("%").replace(",", "."))
+        candidatos = [valor] if not numero.endswith("%") else [valor, valor / 100]
+        if not any(
+            any(
+                abs(candidato - permitido) <= max(0.01, abs(permitido) * 0.015)
+                for permitido in permitidos
+            )
+            for candidato in candidatos
+        ):
+            hallazgos.append(f"La cifra {numero} no aparece en los resultados de las tools.")
+            break
+    return hallazgos
+
+
+async def _narrar_llm(
+    settings: Settings,
+    resultados: list[dict[str, Any]],
+    retroalimentacion: list[str] | None = None,
+) -> str:
+    """Redacta exclusivamente sobre los resultados serializados de las tools."""
+    from openai import AsyncOpenAI
+
+    instrucciones = (
+        "Eres el narrador de Wise Dice. Responde en español y markdown breve. "
+        "Usa exclusivamente los datos de las tools proporcionados: no inventes cifras, "
+        "atributos, fuentes ni recomendaciones. Explica similitudes por mecánicas y temática, "
+        "nunca como afinidad o match."
     )
+    if retroalimentacion:
+        instrucciones += " Corrige estos incumplimientos: " + " ".join(retroalimentacion)
+    cliente = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+    respuesta = await cliente.responses.create(
+        model=settings.llm_model,
+        input=[
+            {"role": "system", "content": instrucciones},
+            {
+                "role": "user",
+                "content": json.dumps(resultados, ensure_ascii=False, default=str),
+            },
+        ],
+        temperature=settings.llm_temperature,
+        max_output_tokens=1200,
+    )
+    texto = (respuesta.output_text or "").strip()
+    if not texto:
+        raise ValueError("El narrador LLM devolvió una respuesta vacía.")
+    return texto
+
+
+async def _criticar_llm(
+    settings: Settings, respuesta: str, resultados: list[dict[str, Any]]
+) -> list[str]:
+    """Segunda barrera: detecta solo afirmaciones sin respaldo de las tools."""
+    from openai import AsyncOpenAI
+
+    cliente = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+    salida = await cliente.responses.parse(
+        model=settings.llm_model_fast,
+        input=[
+            {
+                "role": "system",
+                "content": (
+                    "Eres el critic de Wise Dice. Revisa cifras sin fuente, mecánicas o atributos "
+                    "ausentes de los datos, y afirmaciones de calidad no sustentadas. "
+                    "Devuelve ok=true si no hay problemas. No inventes hallazgos."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {"resultados_tools": resultados, "respuesta": respuesta},
+                    ensure_ascii=False,
+                    default=str,
+                ),
+            },
+        ],
+        text_format=_CriticaRespuestaLlm,
+    )
+    critica = salida.output_parsed
+    if critica is None:
+        raise ValueError("El critic LLM devolvió una respuesta vacía.")
+    return [] if critica.ok else critica.hallazgos or ["El critic LLM rechazó la respuesta."]
 
 
 async def responder(
@@ -355,10 +660,13 @@ async def responder(
         session.add(chat_session)
         await session.flush()
     resumen = ", ".join(juego.nombre for juego in await _coleccion(session, user, perfil.id))
-    plan = _validar_plan(
-        await _plan_llm(settings, solicitud.mensaje, resumen) if settings.llm_active else None,
-        settings.llm_max_plan_steps,
-    )
+    plan_llm: PlanLlm | None = None
+    if settings.llm_active:
+        try:
+            plan_llm = await _plan_llm(settings, solicitud.mensaje, resumen)
+        except Exception:  # noqa: BLE001
+            plan_llm = None
+    plan = _validar_plan(plan_llm, settings.llm_max_plan_steps)
     llm_used = plan is not None
     plan = plan or _plan_determinista(solicitud.mensaje, solicitud.game_id)
     run = AgentRun(
@@ -384,19 +692,92 @@ async def responder(
     await session.commit()  # El plan queda durable antes de cualquier tool.
     resultados: list[dict[str, Any]] = []
     pasos_respuesta: list[PasoPlan] = []
-    for paso in plan.steps:
-        resultado = await _ejecutar_tool(
-            paso.tool, paso.args, session, user.id, perfil, request, settings
-        )
-        resultados.append(resultado)
-        pasos_respuesta.append(paso.model_copy(update={"estado": "completado"}))
-        session.add(
-            AgentStep(
-                user_id=user.id, run_id=run.id, agent_name="tool", step_id=paso.id, output=resultado
+    for nivel in _niveles_plan(plan.steps):
+        for paso in nivel:
+            resultado = await _ejecutar_tool(
+                paso.tool, paso.args, session, user.id, perfil, request, settings
+            )
+            resultados.append(resultado)
+            pasos_respuesta.append(paso.model_copy(update={"estado": "completado"}))
+            session.add_all(
+                [
+                    AgentStep(
+                        user_id=user.id,
+                        run_id=run.id,
+                        agent_name="tool",
+                        step_id=paso.id,
+                        output=resultado,
+                    ),
+                    ToolCall(
+                        user_id=user.id,
+                        run_id=run.id,
+                        step_id=paso.id,
+                        tool_name=paso.tool,
+                        argumentos=paso.args,
+                        resultado=resultado,
+                    ),
+                ]
+            )
+    answer = _narrar(plan.intent, resultados)
+    narrator_llm_used = False
+    critic_findings: list[str] = []
+    critic_attempts = 0
+    trazas: list[tuple[str, str, dict[str, Any]]] = []
+    if settings.llm_active:
+        try:
+            answer = await _narrar_llm(settings, resultados)
+            narrator_llm_used = True
+            trazas.append(("narrator", "ok", {"attempt": 0, "llm_used": True}))
+        except Exception as error:  # noqa: BLE001
+            trazas.append(("narrator", "fallback", {"llm_used": False, "error": str(error)[:300]}))
+    else:
+        trazas.append(("narrator", "fallback", {"attempt": 0, "llm_used": False}))
+
+    while True:
+        deterministic_findings = _criticar_determinista(answer, resultados)
+        critic_findings = deterministic_findings
+        critic_llm_used = False
+        if not deterministic_findings and settings.llm_active:
+            try:
+                critic_findings = await _criticar_llm(settings, answer, resultados)
+                critic_llm_used = True
+            except Exception as error:  # noqa: BLE001
+                trazas.append(
+                    ("critic", "fallback", {"llm_used": False, "error": str(error)[:300]})
+                )
+        trazas.append(
+            (
+                "critic",
+                "ok" if not critic_findings else "rejected",
+                {
+                    "attempt": critic_attempts,
+                    "llm_used": critic_llm_used,
+                    "findings": critic_findings,
+                },
             )
         )
-    answer = _narrar(plan.intent, resultados)
-    critic_passed = _criticar(answer, resultados)
+        if (
+            not critic_findings
+            or not narrator_llm_used
+            or critic_attempts >= settings.critic_max_retries
+        ):
+            break
+        critic_attempts += 1
+        try:
+            answer = await _narrar_llm(settings, resultados, critic_findings)
+            trazas.append(
+                (
+                    "narrator",
+                    "retry",
+                    {"attempt": critic_attempts, "llm_used": True, "feedback": critic_findings},
+                )
+            )
+        except Exception as error:  # noqa: BLE001
+            answer = _narrar(plan.intent, resultados)
+            narrator_llm_used = False
+            trazas.append(("narrator", "fallback", {"llm_used": False, "error": str(error)[:300]}))
+
+    critic_passed = not critic_findings
     tarjetas = [
         TarjetaChat(tipo=paso.tool, datos=resultado)
         for paso, resultado in zip(plan.steps, resultados, strict=True)
@@ -406,11 +787,24 @@ async def responder(
         for resultado in resultados
         for candidato in resultado.get("candidatos", [])
     ]
-    run.respuesta_final, run.estado, run.critic_passed, run.terminado_en = (
-        answer,
-        "completed",
-        critic_passed,
-        datetime.now(UTC),
+    run.respuesta_final = answer
+    run.estado = "completed"
+    run.critic_passed = critic_passed
+    run.critic_attempts = critic_attempts
+    run.critic_findings = [{"mensaje": finding} for finding in critic_findings] or None
+    run.modelo = settings.llm_model if narrator_llm_used else None
+    run.terminado_en = datetime.now(UTC)
+    session.add_all(
+        [
+            AgentStep(
+                user_id=user.id,
+                run_id=run.id,
+                agent_name=agent_name,
+                estado=estado,
+                output=output,
+            )
+            for agent_name, estado, output in trazas
+        ]
     )
     session.add(
         ChatMessage(
@@ -432,7 +826,9 @@ async def responder(
         tarjetas=tarjetas,
         candidatos=candidatos,
         critic_passed=critic_passed,
-        llm_used=llm_used,
+        critic_attempts=critic_attempts,
+        critic_findings=run.critic_findings or [],
+        llm_used=narrator_llm_used or llm_used,
     )
 
 
