@@ -34,6 +34,7 @@ import {
   VentaImpactoRespuesta,
   ChatRespuesta,
 } from "./core/api/catalogo.service";
+import { renderMarkdown } from "./core/markdown";
 
 Chart.register(
   BarController,
@@ -167,15 +168,10 @@ Chart.register(
           </section>
           <div class="bookcase-grid mt-7" [class.compact-bookcases]="vistaCompactaActiva()">
             @for (grupo of grupos(); track grupo.nombre) {
-              <section class="bookcase">
-                @for (fila of filasEstante(grupo.juegos); track $index) {
-                <section class="case-shelf">
-                  <h3 class="shelf-plaque">
-                    {{ placa(grupo.nombre) }} · {{ grupo.juegos.length }}
-                  </h3>
-                  <div class="shelf-rail">
-                    <div class="shelf-games">
-                      @for (juego of fila; track juego.id) {
+              <section class="bookcase" [class.bookcase-wide]="grupo.juegos.length > 12">
+                <h3 class="shelf-plaque">{{ placa(grupo.nombre) }} · {{ grupo.juegos.length }}</h3>
+                <div class="shelf-games">
+                  @for (juego of grupo.juegos; track juego.id) {
                         <button
                           class="game-card"
                           (click)="verDetalle(juego.id)"
@@ -194,11 +190,8 @@ Chart.register(
                             ><span>{{ rango(juego) }} jugadores</span></span
                           >
                         </button>
-                      }
-                    </div>
-                  </div>
-                </section>
-              }
+                  }
+                </div>
               </section>
             }
           </div>
@@ -535,7 +528,7 @@ Chart.register(
               <div class="assistant-message">
                 <img class="chat-avatar" src="/wise-dice.svg" alt="Wise Dice" />
                 <div class="bubble answer">
-                  <p class="whitespace-pre-line">{{ mensaje.texto }}</p>
+                  <div class="markdown" [innerHTML]="markdown(mensaje.texto)"></div>
                   @if (mensaje.bienvenida) {
                     <div class="suggested-questions">
                       @for (preguntaSugerida of preguntasSugeridas(); track preguntaSugerida) {
@@ -546,14 +539,17 @@ Chart.register(
                   @if (mensaje.respuesta; as respuesta) {
                     <div class="mt-3 flex flex-wrap gap-1">
                       @for (paso of respuesta.plan; track paso.id) {
-                        <span class="level-chip">{{ paso.tool }} · {{ paso.estado }}</span>
+                        <span class="level-chip">{{ etiquetaTool(paso.tool) }} · {{ paso.estado }}</span>
                       }
                     </div>
                     @for (tarjeta of respuesta.tarjetas; track $index) {
                       @if (tarjetaJuego(tarjeta); as juego) {
                         <article class="recommendation mt-3">
+                          @if (tarjetaImagen(tarjeta); as imagen) { <img class="chat-card-cover" [src]="imagen" [alt]="juego.nombre" /> }
                           <b>{{ juego.nombre }}</b>
                           @if (tarjetaVeredicto(tarjeta); as veredicto) { <p>{{ etiqueta(veredicto) }}</p> }
+                          @if (tarjetaPrecio(tarjeta); as precio) { <p>{{ precio }}</p> }
+                          @if (tarjetaEnlace(tarjeta); as enlace) { <a [href]="enlace" target="_blank" rel="noopener">Ver precio en BoardGamePrices</a> }
                         </article>
                       }
                     }
@@ -1002,6 +998,24 @@ export class App {
     const veredicto = tarjeta.datos["veredicto"];
     return typeof veredicto === "string" ? veredicto : null;
   }
+  protected tarjetaImagen(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
+    const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
+    return typeof juego?.["imagen_url"] === "string" ? juego["imagen_url"] : null;
+  }
+  protected tarjetaPrecio(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
+    const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
+    return juego?.["precio_usd"] == null ? null : `USD ${juego["precio_usd"]}`;
+  }
+  protected tarjetaEnlace(tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number]): string | null {
+    const juego = tarjeta.datos["juego"] as Record<string, unknown> | undefined;
+    return typeof juego?.["bgp_url"] === "string" ? juego["bgp_url"] : null;
+  }
+  protected markdown(texto: string): string {
+    return renderMarkdown(texto);
+  }
+  protected etiquetaTool(tool: string): string {
+    return ({ detalle_juego: "Ficha del juego", evaluar_compra: "Evaluación de compra", que_me_falta: "Huecos de la colección", que_compro: "Plan de compra", que_saco_hoy: "Modo mesa", ver_coleccion: "Tu colección" }[tool] ?? tool);
+  }
   protected etiquetasNiveles(
     niveles: EvaluarRespuesta["niveles_que_cubre"],
   ): string {
@@ -1108,13 +1122,12 @@ export class App {
   }
 
   protected filasEstante(juegos: JuegoDetalle[]): JuegoDetalle[][] {
-    const ancho = window.innerWidth;
-    const maximo = ancho < 640 ? 3 : ancho < 1024 ? 5 : 7;
-    return Array.from(
-      { length: Math.ceil(juegos.length / maximo) },
-      (_, indice) => juegos.slice(indice * maximo, (indice + 1) * maximo),
+    const maximo = window.innerWidth < 640 ? 3 : window.innerWidth < 1024 ? 5 : 7;
+    return Array.from({ length: Math.ceil(juegos.length / maximo) }, (_, indice) =>
+      juegos.slice(indice * maximo, (indice + 1) * maximo),
     );
   }
+
 
   private elegirPreguntasSugeridas(): string[] {
     const banco = [

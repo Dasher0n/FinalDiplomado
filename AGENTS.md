@@ -119,6 +119,11 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - Cada grupo de la Ludoteca se presenta como un librero independiente en una cuadricula de dos o tres columnas en escritorio. Las colecciones de mas de 24 juegos empiezan en vista compacta y permiten alternar la vista.
 - En Modo mesa, solo los resultados con ajuste `ideal` usan resplandor dorado; los que funcionan conservan su color y los que no cumplen permanecen oscurecidos. La leyenda lo explica.
 - Chat inicia como conversacion con bienvenida de Wise Dice, tres preguntas aleatorias de un banco local de casos probados y burbujas diferenciadas. Los chips, tarjetas y candidatos de cada respuesta permanecen dentro de su burbuja.
+- El chat renderiza markdown con un transformador local que escapa la entrada antes de aplicar formato. Las burbujas permiten cortes en URLs y palabras largas.
+- La sesión conserva el último juego resuelto como foco; el planner recibe tres turnos resumidos y las continuaciones sin título reutilizan ese foco.
+- Si el nombre en español no resuelve localmente y hay clave, el modelo rápido propone hasta tres títulos originales estructurados. El resultado registra `interpretado_como`; sin clave se omite este paso.
+- Una consulta de compra para un juego ya poseído no lo evalúa como compra: devuelve el impacto determinista de venderlo.
+- El librero agrupa Familia por familias mecánicas y cada grupo se renderiza en un solo mueble. Las filas se dibujan con un fondo repetido y los grupos con más de 12 juegos ocupan dos columnas cuando hay espacio.
 
 ## Bloque 2
 

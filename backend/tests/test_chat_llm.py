@@ -122,6 +122,13 @@ def test_planner_determinista_resuelve_guion_sin_llm(
         assert plan.steps[0].args == args
 
 
+def test_planner_determinista_usa_el_juego_en_foco_en_una_continuacion() -> None:
+    plan = chat_service._plan_determinista("¿sería una buena compra?", None, "123")
+
+    assert plan.intent == "evaluar_compra"
+    assert plan.steps[0].args == {"game_id": "123"}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("pregunta", "intent", "tool"),
@@ -196,6 +203,82 @@ async def test_resolver_acepta_titulo_antes_de_dos_puntos() -> None:
 
     assert estado == "encontrado"
     assert [item.id for item in juegos] == ["418059"]
+
+
+@pytest.mark.asyncio
+async def test_resolver_traduce_nombre_con_cliente_simulado(monkeypatch: Any) -> None:
+    juego = SimpleNamespace(id="1", nombre="Wingspan", users_rated=100)
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return [juego]
+
+    class Responses:
+        async def parse(self, **_kwargs: Any) -> Any:
+            return SimpleNamespace(
+                output_parsed=chat_service._TitulosTraducidosLlm(titulos=["Wingspan"])
+            )
+
+    class Cliente:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.responses = Responses()
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
+    estado, juegos, interpretado = await chat_service._resolver_con_traduccion(
+        CatalogoPrueba(),
+        "Alas",
+        None,
+        Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True),
+    )
+
+    assert estado == "encontrado"
+    assert juegos[0].id == "1"
+    assert interpretado == "Wingspan"
+
+
+@pytest.mark.asyncio
+async def test_resolver_traduccion_no_resuelta(monkeypatch: Any) -> None:
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return []
+
+    class Responses:
+        async def parse(self, **_kwargs: Any) -> Any:
+            return SimpleNamespace(
+                output_parsed=chat_service._TitulosTraducidosLlm(titulos=["Nada"])
+            )
+
+    class Cliente:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.responses = Responses()
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
+    estado, juegos, interpretado = await chat_service._resolver_con_traduccion(
+        CatalogoPrueba(),
+        "Nombre desconocido",
+        None,
+        Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True),
+    )
+
+    assert (estado, juegos, interpretado) == ("no_encontrado", (), None)
+
+
+@pytest.mark.asyncio
+async def test_resolver_traduccion_se_omite_sin_clave(monkeypatch: Any) -> None:
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return []
+
+    class Cliente:
+        def __init__(self, **_kwargs: Any) -> None:
+            pytest.fail("No debe consultar el LLM sin clave.")
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
+    estado, juegos, interpretado = await chat_service._resolver_con_traduccion(
+        CatalogoPrueba(), "Nombre desconocido", None, Settings(llm_enabled=True)
+    )
+
+    assert (estado, juegos, interpretado) == ("no_encontrado", (), None)
 
 
 @pytest.mark.asyncio

@@ -91,6 +91,13 @@ async def init_db() -> None:
                 await connection.execute(
                     text("ALTER TABLE agent_runs ADD COLUMN critic_findings JSON")
                 )
+            columnas_sesiones = (
+                await connection.execute(text("PRAGMA table_info(chat_sessions)"))
+            ).mappings()
+            if "juego_en_foco_id" not in {columna["name"] for columna in columnas_sesiones}:
+                await connection.execute(
+                    text("ALTER TABLE chat_sessions ADD COLUMN juego_en_foco_id VARCHAR(32)")
+                )
             columnas = (
                 await connection.execute(text("PRAGMA table_info(user_collection)"))
             ).mappings()

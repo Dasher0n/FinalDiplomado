@@ -106,6 +106,12 @@ class _CriticaRespuestaLlm(BaseModel):
     hallazgos: list[_HallazgoLlm] = Field(default_factory=list)
 
 
+class _TitulosTraducidosLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    titulos: list[str] = Field(default_factory=list, max_length=3)
+
+
 _TOOL_MANIFEST = {
     "ver_coleccion": {
         "descripcion": "Úsala solo cuando el usuario pide ver o listar su colección. Ejemplo: "
@@ -146,7 +152,9 @@ _EJEMPLOS_INTENT = (
 )
 
 
-def _plan_determinista(mensaje: str, game_id: str | None) -> PlanLlm:
+def _plan_determinista(
+    mensaje: str, game_id: str | None, juego_en_foco_id: str | None = None
+) -> PlanLlm:
     texto = mensaje.lower()
     consulta = normalizar_nombre(mensaje)
     if any(palabra in texto for palabra in ("ignora", "instrucciones", "prompt", "sistema")):
@@ -184,12 +192,19 @@ def _plan_determinista(mensaje: str, game_id: str | None) -> PlanLlm:
                 "que tal entraria",
                 "me conviene",
                 "deberia comprar",
+                "buena compra",
+                "si lo vendo",
+                "se parece",
             )
         )
         or consulta.startswith("y ")
         or game_id
     ):
-        args = {"game_id": game_id} if game_id else {"nombre": _extraer_nombre_juego(mensaje)}
+        args = (
+            {"game_id": game_id or juego_en_foco_id}
+            if (game_id or juego_en_foco_id)
+            else {"nombre": _extraer_nombre_juego(mensaje)}
+        )
         return PlanLlm(
             intent="evaluar_compra",
             steps=[PasoPlan(id="1", tool="evaluar_compra", args=args)],
@@ -308,7 +323,7 @@ async def _plan_llm(settings: Settings, mensaje: str, resumen: str) -> PlanLlm |
             "Eres un planificador de una ludoteca. Devuelve solo un plan de tools de solo "
             "lectura. No calcules ni respondas al usuario. Usa exclusivamente este manifiesto:\n"
             f"{manifest}\nFormulaciones naturales: {_EJEMPLOS_INTENT}\n"
-            f"Colección: {resumen}\nPregunta: {mensaje}"
+            f"Contexto de colección e historial reciente: {resumen}\nPregunta: {mensaje}"
         ),
         text_format=_PlanRespuestaLlm,
     )
@@ -379,6 +394,34 @@ async def _resolver(
         umbral_directo=settings.fuzzy_umbral_directo,
         umbral_ambiguo=settings.fuzzy_umbral_ambiguo,
     )
+
+
+async def _resolver_con_traduccion(
+    repo: CatalogoRepository, nombre: str | None, game_id: str | None, settings: Settings
+) -> tuple[str, tuple[Game, ...], str | None]:
+    estado, juegos = await _resolver(repo, nombre, game_id, settings)
+    if estado != "no_encontrado" or game_id or not nombre or not settings.llm_active:
+        return estado, juegos, None
+    from openai import AsyncOpenAI
+
+    try:
+        cliente = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+        salida = await cliente.responses.parse(
+            model=settings.llm_model_fast,
+            input=(
+                "Devuelve hasta tres títulos originales de BGG que puedan corresponder a este "
+                "nombre en español. No expliques nada ni inventes juegos. Nombre: " + nombre
+            ),
+            text_format=_TitulosTraducidosLlm,
+        )
+        titulos = salida.output_parsed.titulos if salida.output_parsed else []
+    except Exception:  # noqa: BLE001
+        return estado, juegos, None
+    for titulo in titulos[:3]:
+        estado_traducido, juegos_traducidos = await _resolver(repo, titulo, None, settings)
+        if estado_traducido == "encontrado":
+            return estado_traducido, juegos_traducidos, titulo
+    return estado, juegos, None
 
 
 async def _validar_plan_con_juego(
@@ -475,7 +518,7 @@ async def _ejecutar_tool(
                 for etiqueta, plan in zip(("A", "B", "C"), planes, strict=True)
             ]
         }
-    estado, juegos_resueltos = await _resolver(
+    estado, juegos_resueltos, interpretado_como = await _resolver_con_traduccion(
         repo, args.get("nombre"), args.get("game_id"), settings
     )
     if estado != "encontrado":
@@ -488,8 +531,24 @@ async def _ejecutar_tool(
         }
     juego = juegos_resueltos[0]
     if nombre == "detalle_juego":
-        return {"estado": "encontrado", "juego": _juego_detalle(juego).model_dump(mode="json")}
+        return {
+            "estado": "encontrado",
+            "juego": _juego_detalle(juego).model_dump(mode="json"),
+            "interpretado_como": interpretado_como,
+        }
     sin_candidato = [item for item in coleccion if item.id != juego.id]
+    if any(item.id == juego.id for item in coleccion):
+        from app.api.v1.engine import _impacto_cobertura
+
+        return {
+            "estado": "encontrado",
+            "ya_en_coleccion": True,
+            "juego": _juego(juego, artefactos).model_dump(mode="json"),
+            "impacto_venta": _impacto_cobertura(
+                artefactos, coleccion, sin_candidato, perfil.metas
+            ).model_dump(mode="json"),
+            "interpretado_como": interpretado_como,
+        }
     veredicto, cercano, similitud, exacta = evaluar_redundancia(
         artefactos, juego, sin_candidato, perfil.metas
     )
@@ -508,6 +567,7 @@ async def _ejecutar_tool(
         "similitud": similitud.__dict__ if similitud else None,
         "regla_exacta": _motivo_regla_exacta(juego, cercano) if exacta and cercano else None,
         "niveles_que_cubre": [nivel.model_dump() for nivel in _niveles(juego, artefactos, huecos)],
+        "interpretado_como": interpretado_como,
     }
 
 
@@ -532,12 +592,22 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
         )
     if intent == "evaluar_compra":
         juego, similar = resultado["juego"], resultado.get("juego_mas_parecido")
-        texto = f"**{juego['nombre']}**: {resultado['veredicto'].replace('_', ' ')}."
+        interpretacion = resultado.get("interpretado_como")
+        prefijo = (
+            f"Interpreté «{interpretacion}» como «{juego['nombre']}».\n\n" if interpretacion else ""
+        )
+        if resultado.get("ya_en_coleccion"):
+            return (
+                prefijo + f"**{juego['nombre']}** ya está en tu colección. "
+                "La tarjeta muestra qué cobertura "
+                "perderías al venderlo.\n\n¿Quieres revisar otro juego para comprar?"
+            )
+        texto = prefijo + f"**{juego['nombre']}**: {resultado['veredicto'].replace('_', ' ')}."
         if similar and resultado.get("similitud"):
             similitud = resultado["similitud"]
             texto += f" Se parece a **{similar['nombre']}** por mecánicas y temática."
             texto += f" Similitud total: {similitud['total']:.2f}."
-        return texto
+        return texto + "\n\n¿Quieres que revise otro juego?"
     if intent == "que_me_falta":
         faltantes = [
             f"{eje}: {', '.join(valor['faltantes'])}"
@@ -562,7 +632,11 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
             f"(valor cubierto: {opcion['valor_cubierto']:.2f})"
             for opcion in resultado["opciones"]
         ]
-        return "Planes por número de juegos:\n\n" + "\n".join(opciones)
+        return (
+            "Planes por número de juegos:\n\n"
+            + "\n".join(opciones)
+            + "\n\n¿Quieres evaluar uno de estos juegos?"
+        )
     if intent == "que_saco_hoy":
         return "Para esta mesa: " + (
             ", ".join(juego["nombre"] for juego in resultado["juegos"])
@@ -570,7 +644,16 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
         )
     if intent == "coleccion":
         return f"Tu colección activa tiene {resultado['total']} juegos."
-    return f"**{resultado['juego']['nombre']}** está en el catálogo."
+    interpretacion = resultado.get("interpretado_como")
+    prefijo = (
+        f"Interpreté «{interpretacion}» como «{resultado['juego']['nombre']}».\n\n"
+        if interpretacion
+        else ""
+    )
+    return (
+        prefijo + f"**{resultado['juego']['nombre']}** está en el catálogo.\n\n"
+        "¿Quieres evaluar cómo encaja en tu colección?"
+    )
 
 
 def _valores(resultados: list[dict[str, Any]]) -> list[Any]:
@@ -741,6 +824,13 @@ def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> 
         hallazgos.append("La respuesta llama redundante a un juego sin respaldo de una tool.")
     if _encontrar_banderas(resultados) and "estimad" not in respuesta.lower():
         hallazgos.append("Falta indicar que hay datos estimados.")
+    for item in resultados:
+        interpretado = item.get("interpretado_como")
+        juego = item.get("juego") or {}
+        if interpretado and (
+            f"Interpreté «{interpretado}» como «{juego.get('nombre', '')}»" not in respuesta
+        ):
+            hallazgos.append("Falta explicar cómo se interpretó el título en español.")
     fuentes = _fuentes_web(resultados)
     if _origen_web(resultados) and (
         "web" not in respuesta.lower() or not any(fuente in respuesta for fuente in fuentes)
@@ -810,6 +900,11 @@ async def _narrar_llm(
 
     instrucciones = (
         "Eres el narrador de Wise Dice. Responde en español y markdown breve. "
+        "Usa como máximo ocho líneas, termina siempre con una sugerencia concreta de siguiente "
+        "pregunta y no pegues URLs. No enumeres mecánicas o categorías crudas: si hace falta, "
+        "usa familias en español. Para detalle_juego, limita el texto al resumen: la tarjeta "
+        "contiene portada, datos, precio y enlace. Si aparece interpretado_como, escribe siempre "
+        "Interpreté «X» como «Y». "
         "Solo puedes afirmar hechos presentes literalmente en los resultados de las tools. "
         "No uses conocimiento propio para describir jugabilidad, sensaciones, géneros ni "
         "características: están prohibidos términos como eurogame, estructura de turno u "
@@ -925,7 +1020,20 @@ async def responder(
         session.add(chat_session)
         await session.flush()
     coleccion_activa = await _coleccion(session, user, perfil.id)
-    resumen = ", ".join(juego.nombre for juego in coleccion_activa)
+    ultimos_runs = (
+        await session.scalars(
+            select(AgentRun)
+            .where(AgentRun.session_id == chat_session.id)
+            .order_by(AgentRun.creado_en.desc())
+            .limit(3)
+        )
+    ).all()
+    historial = "; ".join(
+        f"{run.pregunta} [{run.intent or 'sin intent'}]" for run in reversed(ultimos_runs)
+    )
+    resumen = (
+        ", ".join(juego.nombre for juego in coleccion_activa) + f". Últimos turnos: {historial}"
+    )
     plan_llm: PlanLlm | None = None
     if settings.llm_active:
         try:
@@ -934,7 +1042,9 @@ async def responder(
             plan_llm = None
     plan = _validar_plan(plan_llm, settings.llm_max_plan_steps)
     llm_used = plan is not None
-    plan = plan or _plan_determinista(solicitud.mensaje, solicitud.game_id)
+    plan = plan or _plan_determinista(
+        solicitud.mensaje, solicitud.game_id, chat_session.juego_en_foco_id
+    )
     plan = await _validar_plan_con_juego(
         plan,
         solicitud.mensaje,
@@ -1079,6 +1189,10 @@ async def responder(
         for resultado in resultados
         for candidato in resultado.get("candidatos", [])
     ]
+    for resultado in resultados:
+        juego = resultado.get("juego")
+        if isinstance(juego, dict) and isinstance(juego.get("id"), str):
+            chat_session.juego_en_foco_id = juego["id"]
     run.respuesta_final = answer
     run.estado = "completed"
     run.critic_passed = critic_passed

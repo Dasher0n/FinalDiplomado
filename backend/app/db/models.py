@@ -151,6 +151,7 @@ class ChatSession(Base):
     id: Mapped[str] = pk_column()
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     titulo: Mapped[str | None] = mapped_column(String(255), default=None)
+    juego_en_foco_id: Mapped[str | None] = mapped_column(String(32), default=None)
     creado_en: Mapped[datetime] = created_at_column()
     actualizado_en: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
