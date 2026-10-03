@@ -657,12 +657,19 @@ async def _criticar_llm(
             {
                 "role": "system",
                 "content": (
-                    "Eres el critic de Wise Dice. Revisa cifras sin fuente, mecánicas o atributos "
-                    "ausentes de los datos, juegos no incluidos en resultados y recomendaciones "
-                    "sin respaldo. Devuelve hallazgos con categoria y detalle, usando solo estas "
-                    "categorías: cifra_sin_fuente, juego_o_atributo_no_disponible o "
-                    "recomendacion_sin_respaldo. Devuelve ok=true si no hay problemas. "
-                    "No inventes hallazgos."
+                    "Eres el critic de Wise Dice. Contrasta cada afirmación de la respuesta "
+                    "con los resultados de las tools. Revisa cifras sin fuente, mecánicas o "
+                    "atributos "
+                    "ausentes, juegos no incluidos y recomendaciones sin respaldo. No uses "
+                    "conocimiento general: que un juego o atributo sea conocido no es evidencia. "
+                    "Una comparación o descripción solo está respaldada si los resultados "
+                    "contienen esa información. Una recomendación solo está respaldada si se "
+                    "limita a los juegos y razones que una tool devuelve. Si una afirmación no se "
+                    "puede vincular a los resultados, crea un hallazgo; ante la duda, recházala. "
+                    "Devuelve hallazgos "
+                    "con categoria y detalle, usando solo estas categorías: cifra_sin_fuente, "
+                    "juego_o_atributo_no_disponible o recomendacion_sin_respaldo. Devuelve ok=true "
+                    "solo si todas las afirmaciones están respaldadas. No inventes hallazgos."
                 ),
             },
             {

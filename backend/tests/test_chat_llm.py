@@ -130,6 +130,8 @@ async def test_critic_llm_devuelve_hallazgos_estructurados(monkeypatch: Any) -> 
     ]
     assert llamadas["model"] == settings.llm_model_fast
     assert llamadas["text_format"] is chat_service._CriticaRespuestaLlm
+    assert "No uses conocimiento general" in llamadas["input"][0]["content"]
+    assert "ante la duda, recházala" in llamadas["input"][0]["content"]
 
 
 def test_chat_reintenta_narrador_y_persiste_critic(
