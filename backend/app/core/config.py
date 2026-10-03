@@ -52,12 +52,6 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 
-    @field_validator("llm_model_fast")
-    @classmethod
-    def normalizar_modelo_rapido(cls, value: str) -> str:
-        """Mantiene operativa la configuración previa con un modelo inexistente."""
-        return "gpt-5.1" if value == "gpt-5.1-mini" else value
-
     @property
     def has_openai_key(self) -> bool:
         return bool(self.openai_api_key.get_secret_value().strip())

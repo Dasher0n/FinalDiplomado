@@ -438,8 +438,7 @@ async def _resolver_con_traduccion(
     for titulo in titulos[:3]:
         estado_traducido, juegos_traducidos = await _resolver(repo, titulo, None, settings)
         if estado_traducido == "encontrado":
-            interpretacion = {"buscado": nombre, "resuelto": juegos_traducidos[0].nombre}
-            return estado_traducido, juegos_traducidos, interpretacion, titulos, traza
+            return "ambiguo", juegos_traducidos, None, titulos, traza
     juegos_catalogo = await repo.todos_los_juegos()
     consultas = [normalizar_nombre(item) for item in [nombre, *titulos[:3]] if item]
     cercanos = sorted(
@@ -1236,10 +1235,14 @@ async def responder(
         re.match(r"^el nombre en ingl[eé]s es:\s*.+$", solicitud.mensaje, re.IGNORECASE)
     )
     plan_llm: PlanLlm | None = None
+    planner_error: str | None = None
+    planner_llm_used = False
     if settings.llm_active and not es_continuacion_en_ingles:
         try:
             plan_llm = await _plan_llm(settings, solicitud.mensaje, resumen)
-        except Exception:  # noqa: BLE001
+            planner_llm_used = plan_llm is not None
+        except Exception as error:  # noqa: BLE001
+            planner_error = str(error)[:300]
             plan_llm = None
     plan = _validar_plan(plan_llm, settings.llm_max_plan_steps)
     llm_used = plan is not None
@@ -1277,6 +1280,17 @@ async def responder(
     )
     await session.flush()
     await session.commit()  # El plan queda durable antes de cualquier tool.
+    if settings.llm_active and not es_continuacion_en_ingles:
+        session.add(
+            AgentStep(
+                user_id=user.id,
+                run_id=run.id,
+                agent_name="planner",
+                estado="fallback" if planner_error else "ok",
+                output={"llm_used": planner_llm_used, "modelo": settings.llm_model_fast},
+                error_mensaje=planner_error,
+            )
+        )
     resultados: list[dict[str, Any]] = []
     pasos_respuesta: list[PasoPlan] = []
     for nivel in _niveles_plan(plan.steps):
@@ -1305,6 +1319,18 @@ async def responder(
                     ),
                 ]
             )
+            traza_traduccion = resultado.get("traza_traduccion")
+            if isinstance(traza_traduccion, dict):
+                session.add(
+                    AgentStep(
+                        user_id=user.id,
+                        run_id=run.id,
+                        agent_name="translation",
+                        estado="fallback" if traza_traduccion.get("error") else "ok",
+                        output={"modelo": settings.llm_model_fast, **traza_traduccion},
+                        error_mensaje=traza_traduccion.get("error"),
+                    )
+                )
     answer = _narrar(plan.intent, resultados)
     narrator_llm_used = False
     critic_findings: list[str | dict[str, str]] = []
@@ -1315,9 +1341,17 @@ async def responder(
         try:
             answer = await _narrar_llm(settings, resultados, solicitud.mensaje)
             narrator_llm_used = True
-            trazas.append(("narrator", "ok", {"attempt": 0, "llm_used": True}))
+            trazas.append(
+                ("narrator", "ok", {"attempt": 0, "llm_used": True, "modelo": settings.llm_model})
+            )
         except Exception as error:  # noqa: BLE001
-            trazas.append(("narrator", "fallback", {"llm_used": False, "error": str(error)[:300]}))
+            trazas.append(
+                (
+                    "narrator",
+                    "fallback",
+                    {"llm_used": False, "modelo": settings.llm_model, "error": str(error)[:300]},
+                )
+            )
     else:
         trazas.append(("narrator", "fallback", {"attempt": 0, "llm_used": False}))
 
@@ -1337,7 +1371,15 @@ async def responder(
                 critic_llm_used = True
             except Exception as error:  # noqa: BLE001
                 trazas.append(
-                    ("critic", "fallback", {"llm_used": False, "error": str(error)[:300]})
+                    (
+                        "critic",
+                        "fallback",
+                        {
+                            "llm_used": False,
+                            "modelo": settings.llm_model_fast,
+                            "error": str(error)[:300],
+                        },
+                    )
                 )
         trazas.append(
             (
@@ -1346,6 +1388,7 @@ async def responder(
                 {
                     "attempt": critic_attempts,
                     "llm_used": critic_llm_used,
+                    "modelo": settings.llm_model_fast,
                     "findings": critic_findings,
                 },
             )
@@ -1381,13 +1424,24 @@ async def responder(
                 (
                     "narrator",
                     "retry",
-                    {"attempt": critic_attempts, "llm_used": True, "feedback": critic_findings},
+                    {
+                        "attempt": critic_attempts,
+                        "llm_used": True,
+                        "modelo": settings.llm_model,
+                        "feedback": critic_findings,
+                    },
                 )
             )
         except Exception as error:  # noqa: BLE001
             answer = _narrar(plan.intent, resultados)
             narrator_llm_used = False
-            trazas.append(("narrator", "fallback", {"llm_used": False, "error": str(error)[:300]}))
+            trazas.append(
+                (
+                    "narrator",
+                    "fallback",
+                    {"llm_used": False, "modelo": settings.llm_model, "error": str(error)[:300]},
+                )
+            )
 
     critic_passed = not critic_findings
     tarjetas = [
@@ -1399,7 +1453,11 @@ async def responder(
         for resultado in resultados
         for candidato in resultado.get("candidatos", [])
     ]
-    sugerir_nombre_ingles = any("sugerencias_traduccion" in resultado for resultado in resultados)
+    sugerir_nombre_ingles = any(
+        resultado.get("estado") in {"ambiguo", "no_encontrado"}
+        and resultado.get("traza_traduccion") is not None
+        for resultado in resultados
+    )
     for resultado in resultados:
         juego = resultado.get("juego")
         if isinstance(juego, dict) and isinstance(juego.get("id"), str):
@@ -1425,6 +1483,7 @@ async def responder(
                 agent_name=agent_name,
                 estado=estado,
                 output=output,
+                error_mensaje=output.get("error"),
             )
             for agent_name, estado, output in trazas
         ]

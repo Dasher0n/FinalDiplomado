@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -28,6 +28,8 @@ class Capabilities(BaseModel):
     web_search_active: bool
     api_fase: int
     endpoints_habilitados: list[str]
+    modelos_llm: dict[str, dict[str, str | bool]]
+    error_modelos_llm: str | None = None
 
 
 @router.get("/health", response_model=HealthStatus, summary="Estado del servicio")
@@ -48,10 +50,13 @@ async def health(session: DbSession) -> HealthStatus:
 
 
 @router.get("/capabilities", response_model=Capabilities, summary="Capacidades activas")
-async def capabilities() -> Capabilities:
+async def capabilities(request: Request) -> Capabilities:
+    modelos = getattr(request.app.state, "modelos_llm", {})
     return Capabilities(
         llm_active=settings.llm_active,
         web_search_active=settings.web_search_active,
-        api_fase=1,
+        api_fase=4,
         endpoints_habilitados=["GET /api/v1/health", "GET /api/v1/capabilities"],
+        modelos_llm=modelos.get("modelos", {}),
+        error_modelos_llm=modelos.get("error"),
     )

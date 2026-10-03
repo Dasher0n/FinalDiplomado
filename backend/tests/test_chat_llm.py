@@ -117,9 +117,9 @@ async def test_traduccion_simulada_usa_el_nombre_extraido_sin_cola(monkeypatch: 
         Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True),
     )
 
-    assert estado == "encontrado"
+    assert estado == "ambiguo"
     assert juegos[0].id == "400366"
-    assert interpretado == {"buscado": "Criaturas maravillosas", "resuelto": "Wondrous Creatures"}
+    assert interpretado is None
     assert titulos == ["Wondrous Creatures"]
     assert traza == {"llm_called": True, "titulos": ["Wondrous Creatures"]}
     assert "No propongas juegos por temática" in llamada["input"]
@@ -322,9 +322,9 @@ async def test_resolver_traduce_nombre_con_cliente_simulado(monkeypatch: Any) ->
         Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True),
     )
 
-    assert estado == "encontrado"
+    assert estado == "ambiguo"
     assert juegos[0].id == "1"
-    assert interpretado == {"buscado": "Alas", "resuelto": "Wingspan"}
+    assert interpretado is None
     assert sugerencias == ["Wingspan"]
     assert traza == {"llm_called": True, "titulos": ["Wingspan"]}
 
@@ -810,5 +810,8 @@ def test_fixture_catan_registra_ambiguedad_real() -> None:
     }
 
 
-def test_configuracion_normaliza_modelo_rapido_inexistente() -> None:
-    assert Settings(llm_model_fast="gpt-5.1-mini").llm_model_fast == "gpt-5.1"
+def test_configuracion_usa_modelos_verificados_por_defecto() -> None:
+    configuracion = Settings()
+
+    assert configuracion.llm_model == "gpt-5.1"
+    assert configuracion.llm_model_fast == "gpt-5.1"

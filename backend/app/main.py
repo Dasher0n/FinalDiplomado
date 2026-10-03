@@ -30,6 +30,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     )
     await init_db()
     app.state.artefactos_motor = ArtefactosMotor.cargar(settings.artefactos_dir)
+    app.state.modelos_llm = {"activo": settings.llm_active, "modelos": {}, "error": None}
+    if settings.llm_active:
+        try:
+            from openai import AsyncOpenAI
+
+            cliente = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+            disponibles = {modelo.id for modelo in (await cliente.models.list()).data}
+            app.state.modelos_llm = {
+                "activo": True,
+                "modelos": {
+                    "LLM_MODEL": {
+                        "nombre": settings.llm_model,
+                        "disponible": settings.llm_model in disponibles,
+                    },
+                    "LLM_MODEL_FAST": {
+                        "nombre": settings.llm_model_fast,
+                        "disponible": settings.llm_model_fast in disponibles,
+                    },
+                },
+                "error": None,
+            }
+        except Exception as error:  # noqa: BLE001
+            app.state.modelos_llm["error"] = str(error)[:300]
     try:
         yield
     finally:

@@ -323,6 +323,12 @@ export interface components {
             api_fase: number;
             /** Endpoints Habilitados */
             endpoints_habilitados: string[];
+            /** Modelos Llm */
+            modelos_llm: {
+                [key: string]: boolean;
+            };
+            /** Error Modelos Llm */
+            error_modelos_llm?: string | null;
         };
         /** ChatRespuesta */
         ChatRespuesta: {
