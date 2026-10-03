@@ -92,6 +92,25 @@ async def test_planner_fallback_resuelve_wyrmspan_por_nombre_extraido() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolver_marca_ambiguo_nombre_base_con_variantes() -> None:
+    juegos_catalogo = [
+        SimpleNamespace(id="13", nombre="Catan"),
+        SimpleNamespace(id="278", nombre="Catan Card Game"),
+        SimpleNamespace(id="184842", nombre="Catan Junior"),
+    ]
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return juegos_catalogo
+
+    settings = Settings(llm_enabled=False)
+    estado, candidatos = await chat_service._resolver(CatalogoPrueba(), "Catan", None, settings)
+
+    assert estado == "ambiguo"
+    assert [juego.id for juego in candidatos] == ["13", "278", "184842"]
+
+
+@pytest.mark.asyncio
 async def test_critic_llm_devuelve_hallazgos_estructurados(monkeypatch: Any) -> None:
     llamadas: dict[str, Any] = {}
     hallazgo = chat_service._HallazgoLlm(
@@ -286,3 +305,17 @@ def test_fixtures_llm_no_contienen_secretos() -> None:
         text = fixture.read_text()
         assert "Bearer" not in text
         assert "sk-" not in text
+
+
+def test_fixture_casos_reales_saneado_sin_cabeceras() -> None:
+    ruta = Path(__file__).parent / "fixtures" / "chat_casos_reales_saneados.json"
+    fixture = json.loads(ruta.read_text())
+
+    assert len(fixture["casos"]) == 6
+    assert sum(caso["llamadas_estimadas"] for caso in fixture["casos"]) == 20
+    assert all(
+        not {"headers", "authorization", "cookie", "set-cookie"}.intersection(
+            clave.lower() for clave in caso
+        )
+        for caso in fixture["casos"]
+    )

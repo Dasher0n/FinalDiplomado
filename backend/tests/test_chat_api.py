@@ -19,7 +19,7 @@ def test_chat_persists_plan_before_tools_and_returns_evaluation(api_client: Test
         {
             "id": "1",
             "tool": "evaluar_compra",
-            "args": {"nombre": "Tengo ganas de comprar Wingspan, ¿vale la pena?"},
+            "args": {"nombre": "Wingspan"},
             "depends_on": [],
             "estado": "completado",
         }

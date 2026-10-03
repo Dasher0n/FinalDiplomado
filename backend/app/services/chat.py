@@ -307,8 +307,18 @@ async def _resolver(
         if len(normalizar_nombre(juego.nombre)) > 2
         and normalizar_nombre(juego.nombre) in consulta_normalizada
     )
+    variantes = tuple(
+        juego
+        for juego in juegos
+        if normalizar_nombre(juego.nombre).startswith(f"{consulta_normalizada} ")
+    )
+    if variantes:
+        candidatos = tuple({juego.id: juego for juego in (*incluidos, *variantes)}.values())
+        return "ambiguo", candidatos[:5]
     if len(incluidos) == 1:
         return "encontrado", incluidos
+    if len(incluidos) > 1:
+        return "ambiguo", incluidos[:5]
     return buscar_local(
         nombre or "",
         juegos,

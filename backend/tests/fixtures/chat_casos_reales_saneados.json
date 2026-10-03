@@ -1,0 +1,72 @@
+{
+  "recorridos": 2,
+  "llamadas_estimadas_total": 20,
+  "casos": [
+    {
+      "pregunta": "Tengo ganas de comprar Wyrmspan, ¿vale la pena?",
+      "plan_llm": {
+        "intent": "evaluar_compra",
+        "steps": [{"id": "1", "tool": "evaluar_compra", "args": {"nombre": "Wyrmspan"}, "depends_on": []}]
+      },
+      "respuesta_final": "- **Veredicto**: *Wyrmspan* es redundante si ya tienes *Wingspan*.\n\n- **Por qué se parecen (mecánicas y temática)**  \n  - Ambos son **eurogames de peso medio** (2.833 vs 2.48) con gestión de cartas y construcción de motor.  \n  - Comparten estructura de turno y sensación de “hacer combos” a medida que tu tablero personal crece.  \n  - La **temática** gira en torno a criaturas naturales (aves vs dragones) con un enfoque más contemplativo que conflictivo.  \n  - La **interacción** es muy similar: baja, centrada en competir por espacios y cartas más que en atacarse.\n\n- **Precio (con fecha y fuente)**  \n  - *Wyrmspan*: **55.00 USD** según BoardGamePrices, precio capturado el **2026-09-24**.  \n  - *Wingspan*: **55.00 USD** según BoardGamePrices, precio capturado el **2026-09-24**.\n\nDado que comparten núcleo mecánico y sensación de partida, el sistema lo marca como redundante dentro de una colección.",
+      "critic_passed": true,
+      "critic_attempts": 1,
+      "llamadas_estimadas": 4
+    },
+    {
+      "pregunta": "¿Qué me falta?",
+      "plan_llm": {
+        "intent": "que_me_falta",
+        "steps": [{"id": "1", "tool": "que_me_falta", "args": {}, "depends_on": []}]
+      },
+      "respuesta_final": "**Huecos de la colección:** Duración: más de 120; Mecánicas: Subastas, Lápiz y papel, Destreza y velocidad; Temática: Horror, Cultura pop y humor, Deportes y carreras, Abstracto o sin tema",
+      "critic_passed": true,
+      "critic_attempts": 1,
+      "llamadas_estimadas": 6
+    },
+    {
+      "pregunta": "Quiero un plan de 3 juegos para cubrir huecos.",
+      "plan_llm": {
+        "intent": "que_compro",
+        "steps": [{"id": "1", "tool": "que_compro", "args": {"n": 3}, "depends_on": []}]
+      },
+      "respuesta_final": "### Opción recomendada: **C**\n\nDentro de las tres opciones, la **Opción C** ofrece el trío más variado y coherente por mecánicas y temática:\n\n1. **Struggle of Empires**  \n   - Peso: pesado (3.5899)  \n   - Juego de conflicto imperial y control de áreas, con enfoque estratégico y de negociación.\n\n2. **Nemesis**  \n   - Peso: pesado (3.4905)  \n   - Cooperativo/semi-cooperativo de supervivencia en nave espacial, con tensión, objetivos ocultos y gestión de riesgo.\n\n3. **Junk Art**  \n   - Peso: ligero (1.193)  \n   - Juego de destreza y construcción física, muy accesible y rápido, ideal como respiro entre partidas largas.\n\n---\n\n### ¿Por qué C frente a A y B?\n\n- **Rango de complejidad más amplio**:  \n  - C va de ligero (Junk Art) a pesado (Struggle of Empires, Nemesis).  \n  - A y B se concentran más en medio-pesado/pesado, con menos respiro.\n\n- **Variedad de experiencias de mesa**:  \n  - C combina:\n    - conflicto estratégico entre potencias (Struggle of Empires),\n    - terror y supervivencia en entorno cerrado (Nemesis),\n    - habilidad manual y risa inmediata (Junk Art).  \n  - A mezcla deducción/traidor oculto, euro duro y campaña cooperativa muy exigente.  \n  - B se centra más en conflicto político-militar y mayorías con toques de intriga.\n\n- **Temáticas bien diferenciadas**:  \n  - C cubre guerra imperial, ciencia ficción de horror y arte/torres físicas, lo que da sesiones muy distintas sin solaparse.\n\nSi quieres, puedo comparar ahora solo dos opciones (por ejemplo C vs A) centrándome en qué tipo de mesa o sesión favorece cada una.",
+      "critic_passed": true,
+      "critic_attempts": 0,
+      "llamadas_estimadas": 2
+    },
+    {
+      "pregunta": "Somos 6 y tenemos 45 minutos, ¿qué saco?",
+      "plan_llm": {
+        "intent": "que_saco_hoy",
+        "steps": [{"id": "1", "tool": "que_saco_hoy", "args": {"jugadores": 6, "minutos": 45}, "depends_on": []}]
+      },
+      "respuesta_final": "Basado en tu lista, **Codenames** es:\n\n- **Tipo de juego:** Party game de palabras y deducción.\n- **Mecánicas clave:**  \n  - Asociación de palabras (dar una pista de una palabra que conecte varias cartas).  \n  - Juego por equipos con un “jefe de espías” que conoce las identidades secretas.  \n  - Eliminación por error crítico (la carta del asesino termina la partida).\n- **Sensación de partida:**  \n  - Ritmo rápido, reglas sencillas.  \n  - Mucha conversación, risas y momentos de “¿cómo se te ocurrió esa pista?”.  \n  - Funciona bien con grupos grandes y en ambientes sociales.\n\nSi me dices qué otros juegos te gustan o el tamaño típico de tu grupo, puedo contarte cómo encaja Codenames en tu mesa y qué tipo de experiencias ofrece en comparación.",
+      "critic_passed": true,
+      "critic_attempts": 0,
+      "llamadas_estimadas": 2
+    },
+    {
+      "pregunta": "Catan",
+      "plan_llm": {
+        "intent": "detalle_juego",
+        "steps": [{"id": "1", "tool": "detalle_juego", "args": {"nombre": "Catan"}, "depends_on": []}]
+      },
+      "respuesta_final": "### Catan (1995)\n\n**Tipo de juego**  \nEurogame clásico de construcción y comercio en una isla modular de hexágonos.\n\n**Datos básicos**\n\n- **Jugadores:** 3–4  \n- **Duración:** 60–120 min  \n- **Edad recomendada editorial:** 10+ (comunidad: 8+)  \n- **Peso / complejidad:** medio (2.3)  \n- **Interacción:** directa (negociación, comercio, bloqueos)  \n\n**Mecánicas clave**\n\n- **Tirada de dados + producción aleatoria:** cada ronda se lanza dado y los hexágonos producen recursos según el número.  \n- **Tablero modular de hexágonos:** la isla cambia en cada partida (variable set-up).  \n- **Construcción de rutas y redes:** carreteras, pueblos y ciudades que se expanden por el mapa.  \n- **Comercio y negociación:** intercambio de recursos entre jugadores y con el “banco/puertos”.  \n- **Gestión de mano y motor económico:** convertir recursos en infraestructuras y cartas de desarrollo.  \n- **Puntos de victoria ocultos:** algunas cartas aportan puntos no visibles hasta el final.  \n- **Interacción agresiva (“take that” suave):** bloqueo de caminos, uso del ladrón para cortar producción.  \n\n**Tema**\n\n- **Económico / negociación:** desarrollo de una colonia, optimización de recursos y comercio.  \n- **Economía, industria y ciudades:** expansión de asentamientos y mejora de infraestructuras.\n\n**Precio (referencia)**\n\n- **Precio aproximado en EE. UU.:** 50.00 USD  \n  - Fuente: BoardGamePrices, consultado el **2026-09-24**  \n  - Enlace: <https://boardgameprices.com/item/show/949/catan?utm_source=https%3A%2F%2Fgithub.com%2FDasher0n%2FFinalDiplomado&utm_medium=cmsplugin&utm_content=getprice&utm_campaign=wpplugin>  \n\n*(Ese precio es orientativo y puede variar según tienda y momento.)*",
+      "critic_passed": true,
+      "critic_attempts": 1,
+      "llamadas_estimadas": 4
+    },
+    {
+      "pregunta": "¿Quién ganó el mundial de fútbol?",
+      "plan_llm": {
+        "intent": "fuera_de_dominio",
+        "steps": []
+      },
+      "respuesta_final": "Mi experiencia se limita al análisis y recomendación de juegos de mesa.",
+      "critic_passed": true,
+      "critic_attempts": 0,
+      "llamadas_estimadas": 2
+    }
+  ]
+}
