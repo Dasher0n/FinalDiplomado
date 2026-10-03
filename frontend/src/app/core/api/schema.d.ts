@@ -340,8 +340,22 @@ export interface components {
             tarjetas?: components["schemas"]["TarjetaChat"][];
             /** Candidatos */
             candidatos?: components["schemas"]["CandidatoChat"][];
+            /**
+             * Sugerir Nombre Ingles
+             * @default false
+             */
+            sugerir_nombre_ingles: boolean;
             /** Critic Passed */
             critic_passed: boolean;
+            /**
+             * Critic Attempts
+             * @default 0
+             */
+            critic_attempts: number;
+            /** Critic Findings */
+            critic_findings?: {
+                [key: string]: string;
+            }[];
             /** Llm Used */
             llm_used: boolean;
         };

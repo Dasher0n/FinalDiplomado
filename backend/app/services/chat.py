@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from rapidfuzz import fuzz
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -200,10 +201,12 @@ def _plan_determinista(
         or consulta.startswith("y ")
         or game_id
     ):
+        nombre = _extraer_nombre_juego(mensaje)
+        tiene_nombre = normalizar_nombre(nombre) != normalizar_nombre(mensaje)
         args = (
-            {"game_id": game_id or juego_en_foco_id}
-            if (game_id or juego_en_foco_id)
-            else {"nombre": _extraer_nombre_juego(mensaje)}
+            {"game_id": game_id}
+            if game_id
+            else ({"nombre": nombre} if tiene_nombre else {"game_id": juego_en_foco_id})
         )
         return PlanLlm(
             intent="evaluar_compra",
@@ -398,10 +401,10 @@ async def _resolver(
 
 async def _resolver_con_traduccion(
     repo: CatalogoRepository, nombre: str | None, game_id: str | None, settings: Settings
-) -> tuple[str, tuple[Game, ...], str | None]:
+) -> tuple[str, tuple[Game, ...], dict[str, str] | None, list[str]]:
     estado, juegos = await _resolver(repo, nombre, game_id, settings)
     if estado != "no_encontrado" or game_id or not nombre or not settings.llm_active:
-        return estado, juegos, None
+        return estado, juegos, None, []
     from openai import AsyncOpenAI
 
     try:
@@ -416,12 +419,29 @@ async def _resolver_con_traduccion(
         )
         titulos = salida.output_parsed.titulos if salida.output_parsed else []
     except Exception:  # noqa: BLE001
-        return estado, juegos, None
+        return estado, juegos, None, []
     for titulo in titulos[:3]:
         estado_traducido, juegos_traducidos = await _resolver(repo, titulo, None, settings)
         if estado_traducido == "encontrado":
-            return estado_traducido, juegos_traducidos, titulo
-    return estado, juegos, None
+            interpretacion = {"buscado": nombre, "resuelto": juegos_traducidos[0].nombre}
+            return estado_traducido, juegos_traducidos, interpretacion, titulos
+    juegos_catalogo = await repo.todos_los_juegos()
+    consultas = [normalizar_nombre(item) for item in [nombre, *titulos[:3]] if item]
+    cercanos = sorted(
+        (
+            (
+                max(
+                    fuzz.ratio(consulta, normalizar_nombre(juego.nombre)) for consulta in consultas
+                ),
+                juego,
+            )
+            for juego in juegos_catalogo
+        ),
+        key=lambda item: (item[0], item[1].users_rated or 0),
+        reverse=True,
+    )
+    candidatos = tuple(juego for puntaje, juego in cercanos if puntaje >= 60)[:3]
+    return ("ambiguo", candidatos, None, titulos) if candidatos else (estado, (), None, titulos)
 
 
 async def _validar_plan_con_juego(
@@ -518,9 +538,10 @@ async def _ejecutar_tool(
                 for etiqueta, plan in zip(("A", "B", "C"), planes, strict=True)
             ]
         }
-    estado, juegos_resueltos, interpretado_como = await _resolver_con_traduccion(
+    resolucion = await _resolver_con_traduccion(
         repo, args.get("nombre"), args.get("game_id"), settings
     )
+    estado, juegos_resueltos, interpretado_como, sugerencias_traduccion = resolucion
     if estado != "encontrado":
         return {
             "estado": estado,
@@ -528,6 +549,7 @@ async def _ejecutar_tool(
                 {"id": juego.id, "nombre": juego.nombre, "imagen_url": juego.image_url}
                 for juego in juegos_resueltos
             ],
+            "sugerencias_traduccion": sugerencias_traduccion,
         }
     juego = juegos_resueltos[0]
     if nombre == "detalle_juego":
@@ -594,7 +616,9 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
         juego, similar = resultado["juego"], resultado.get("juego_mas_parecido")
         interpretacion = resultado.get("interpretado_como")
         prefijo = (
-            f"Interpreté «{interpretacion}» como «{juego['nombre']}».\n\n" if interpretacion else ""
+            f"Interpreté «{interpretacion['buscado']}» como «{interpretacion['resuelto']}».\n\n"
+            if interpretacion
+            else ""
         )
         if resultado.get("ya_en_coleccion"):
             return (
@@ -646,7 +670,7 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
         return f"Tu colección activa tiene {resultado['total']} juegos."
     interpretacion = resultado.get("interpretado_como")
     prefijo = (
-        f"Interpreté «{interpretacion}» como «{resultado['juego']['nombre']}».\n\n"
+        f"Interpreté «{interpretacion['buscado']}» como «{interpretacion['resuelto']}».\n\n"
         if interpretacion
         else ""
     )
@@ -826,10 +850,12 @@ def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> 
         hallazgos.append("Falta indicar que hay datos estimados.")
     for item in resultados:
         interpretado = item.get("interpretado_como")
-        juego = item.get("juego") or {}
-        if interpretado and (
-            f"Interpreté «{interpretado}» como «{juego.get('nombre', '')}»" not in respuesta
-        ):
+        texto_interpretacion = (
+            f"Interpreté «{interpretado['buscado']}» como «{interpretado['resuelto']}»"
+            if interpretado
+            else ""
+        )
+        if texto_interpretacion and texto_interpretacion not in respuesta:
             hallazgos.append("Falta explicar cómo se interpretó el título en español.")
     fuentes = _fuentes_web(resultados)
     if _origen_web(resultados) and (
@@ -1189,6 +1215,7 @@ async def responder(
         for resultado in resultados
         for candidato in resultado.get("candidatos", [])
     ]
+    sugerir_nombre_ingles = any("sugerencias_traduccion" in resultado for resultado in resultados)
     for resultado in resultados:
         juego = resultado.get("juego")
         if isinstance(juego, dict) and isinstance(juego.get("id"), str):
@@ -1233,6 +1260,7 @@ async def responder(
         answer=answer,
         tarjetas=tarjetas,
         candidatos=candidatos,
+        sugerir_nombre_ingles=sugerir_nombre_ingles,
         critic_passed=critic_passed,
         critic_attempts=critic_attempts,
         critic_findings=run.critic_findings or [],

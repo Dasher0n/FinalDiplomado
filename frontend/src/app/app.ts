@@ -554,11 +554,12 @@ Chart.register(
                         </article>
                       }
                     }
-                    @if ((respuesta.candidatos ?? []).length) {
+                    @if ((respuesta.candidatos ?? []).length || respuesta.sugerir_nombre_ingles) {
                       <div class="mt-3 flex flex-wrap gap-2">
                         @for (candidato of respuesta.candidatos ?? []; track candidato.id) {
                           <button class="chip" (click)="enviarChat(candidato.nombre, candidato.id)">{{ candidato.nombre }}</button>
                         }
+                        <button class="chip" (click)="escribirNombreIngles()">Escribir el nombre en inglés</button>
                       </div>
                     }
                   }
@@ -571,7 +572,7 @@ Chart.register(
           }
           @if (chatError()) { <p class="chat-error">No pude responder ahora. Inténtalo de nuevo en unos momentos.</p> }
           <div class="chat-input">
-            <input #pregunta class="input w-full" [disabled]="chatEsperando()" placeholder="Ejemplo: ¿Qué le falta a mi colección?" (keyup.enter)="enviarChat(pregunta.value); pregunta.value = ''" />
+            <input id="chat-input" #pregunta class="input w-full" [disabled]="chatEsperando()" placeholder="Ejemplo: ¿Qué le falta a mi colección?" (keyup.enter)="enviarChat(pregunta.value); pregunta.value = ''" />
             <button class="primary" [disabled]="chatEsperando()" (click)="enviarChat(pregunta.value); pregunta.value = ''">Enviar</button>
           </div>
         </article>
@@ -939,6 +940,13 @@ export class App {
       this.chatError.set(true);
     } finally {
       this.chatEsperando.set(false);
+    }
+  }
+  protected escribirNombreIngles(): void {
+    const campo = document.getElementById("chat-input") as HTMLInputElement | null;
+    if (campo) {
+      campo.value = "El nombre en inglés es: ";
+      campo.focus();
     }
   }
 

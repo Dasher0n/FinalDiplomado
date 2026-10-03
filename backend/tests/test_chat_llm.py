@@ -129,6 +129,15 @@ def test_planner_determinista_usa_el_juego_en_foco_en_una_continuacion() -> None
     assert plan.steps[0].args == {"game_id": "123"}
 
 
+def test_planner_determinista_prioriza_nombre_nuevo_sobre_foco() -> None:
+    plan = chat_service._plan_determinista(
+        "¿Qué tal entraría Criaturas maravillosas en la colección?", None, "123"
+    )
+
+    assert plan.intent == "evaluar_compra"
+    assert plan.steps[0].args == {"nombre": "Criaturas maravillosas"}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("pregunta", "intent", "tool"),
@@ -224,7 +233,7 @@ async def test_resolver_traduce_nombre_con_cliente_simulado(monkeypatch: Any) ->
             self.responses = Responses()
 
     monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
-    estado, juegos, interpretado = await chat_service._resolver_con_traduccion(
+    estado, juegos, interpretado, sugerencias = await chat_service._resolver_con_traduccion(
         CatalogoPrueba(),
         "Alas",
         None,
@@ -233,7 +242,8 @@ async def test_resolver_traduce_nombre_con_cliente_simulado(monkeypatch: Any) ->
 
     assert estado == "encontrado"
     assert juegos[0].id == "1"
-    assert interpretado == "Wingspan"
+    assert interpretado == {"buscado": "Alas", "resuelto": "Wingspan"}
+    assert sugerencias == ["Wingspan"]
 
 
 @pytest.mark.asyncio
@@ -253,14 +263,51 @@ async def test_resolver_traduccion_no_resuelta(monkeypatch: Any) -> None:
             self.responses = Responses()
 
     monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
-    estado, juegos, interpretado = await chat_service._resolver_con_traduccion(
+    estado, juegos, interpretado, sugerencias = await chat_service._resolver_con_traduccion(
         CatalogoPrueba(),
         "Nombre desconocido",
         None,
         Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True),
     )
 
-    assert (estado, juegos, interpretado) == ("no_encontrado", (), None)
+    assert (estado, juegos, interpretado, sugerencias) == ("no_encontrado", (), None, ["Nada"])
+
+
+@pytest.mark.asyncio
+async def test_resolver_traduccion_devuelve_sugerencias_cercanas(monkeypatch: Any) -> None:
+    juego = SimpleNamespace(id="400366", nombre="Wondrous Creatures", users_rated=7342)
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return [juego]
+
+    class Responses:
+        async def parse(self, **_kwargs: Any) -> Any:
+            return SimpleNamespace(
+                output_parsed=chat_service._TitulosTraducidosLlm(titulos=["Wondrous Creature"])
+            )
+
+    class Cliente:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.responses = Responses()
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
+
+    async def sin_coincidencia(*_args: Any, **_kwargs: Any) -> tuple[str, tuple[Any, ...]]:
+        return "no_encontrado", ()
+
+    monkeypatch.setattr(chat_service, "_resolver", sin_coincidencia)
+    estado, juegos, interpretado, sugerencias = await chat_service._resolver_con_traduccion(
+        CatalogoPrueba(),
+        "Criaturas maravillosas",
+        None,
+        Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True),
+    )
+
+    assert estado == "ambiguo"
+    assert [item.id for item in juegos] == ["400366"]
+    assert interpretado is None
+    assert sugerencias == ["Wondrous Creature"]
 
 
 @pytest.mark.asyncio
@@ -274,11 +321,11 @@ async def test_resolver_traduccion_se_omite_sin_clave(monkeypatch: Any) -> None:
             pytest.fail("No debe consultar el LLM sin clave.")
 
     monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
-    estado, juegos, interpretado = await chat_service._resolver_con_traduccion(
+    estado, juegos, interpretado, sugerencias = await chat_service._resolver_con_traduccion(
         CatalogoPrueba(), "Nombre desconocido", None, Settings(llm_enabled=True)
     )
 
-    assert (estado, juegos, interpretado) == ("no_encontrado", (), None)
+    assert (estado, juegos, interpretado, sugerencias) == ("no_encontrado", (), None, [])
 
 
 @pytest.mark.asyncio
