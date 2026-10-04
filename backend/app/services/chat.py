@@ -533,8 +533,23 @@ def _niveles_plan(pasos: list[PasoPlan]) -> list[list[PasoPlan]]:
     return niveles
 
 
+def _resumir_error_planner(error: Exception) -> str:
+    """Conserva la entrada que falló la validación, que es la salida del modelo."""
+    errores = getattr(error, "errors", None)
+    if callable(errores):
+        try:
+            return str(errores(include_url=False))[:800]
+        except Exception:  # noqa: BLE001
+            pass
+    return str(error)[:800]
+
+
 async def _plan_llm(
-    settings: Settings, mensaje: str, resumen: str, error_validacion: str | None = None
+    settings: Settings,
+    mensaje: str,
+    resumen: str,
+    error_validacion: str | None = None,
+    intentos: list[dict[str, Any]] | None = None,
 ) -> PlanLlm | None:
     """Usa Responses.parse solo cuando la configuracion habilita explícitamente el LLM."""
     if not settings.llm_active:
@@ -547,7 +562,44 @@ async def _plan_llm(
         f"{', '.join(detalle['requeridos']) or 'ninguno'}."
         for nombre, detalle in _TOOL_MANIFEST.items()
     )
-    respuesta = await cliente.responses.parse(
+    try:
+        respuesta = await _parse_plan(
+            cliente, settings, manifest, mensaje, resumen, error_validacion
+        )
+    except Exception as error:
+        if intentos is not None:
+            intentos.append({"salida_cruda": None, "error": _resumir_error_planner(error)})
+        raise
+    parsed = respuesta.output_parsed
+    if intentos is not None:
+        intentos.append(
+            {"salida_cruda": parsed.model_dump_json() if parsed else None, "error": None}
+        )
+    if parsed is None:
+        return None
+    return PlanLlm(
+        intent=parsed.intent,
+        steps=[
+            PasoPlan(
+                id=paso.id,
+                tool=paso.tool,
+                args=paso.args.model_dump(exclude_none=True),
+                depends_on=paso.depends_on,
+            )
+            for paso in parsed.steps
+        ],
+    )
+
+
+async def _parse_plan(
+    cliente: Any,
+    settings: Settings,
+    manifest: str,
+    mensaje: str,
+    resumen: str,
+    error_validacion: str | None,
+) -> Any:
+    return await cliente.responses.parse(
         model=settings.llm_model_fast,
         input=(
             "Eres un planificador de una ludoteca. Devuelve solo un plan de tools de solo "
@@ -564,21 +616,6 @@ async def _plan_llm(
             + f"Pregunta: {mensaje}"
         ),
         text_format=_PlanRespuestaLlm,
-    )
-    parsed = respuesta.output_parsed
-    if parsed is None:
-        return None
-    return PlanLlm(
-        intent=parsed.intent,
-        steps=[
-            PasoPlan(
-                id=paso.id,
-                tool=paso.tool,
-                args=paso.args.model_dump(exclude_none=True),
-                depends_on=paso.depends_on,
-            )
-            for paso in parsed.steps
-        ],
     )
 
 
@@ -1481,9 +1518,10 @@ async def responder(
     planner_error: str | None = None
     planner_llm_used = False
     planner_reintentado = False
+    intentos_planner: list[dict[str, Any]] = []
     if settings.llm_active and not es_continuacion_en_ingles:
         try:
-            plan_llm = await _plan_llm(settings, solicitud.mensaje, resumen)
+            plan_llm = await _plan_llm(settings, solicitud.mensaje, resumen, None, intentos_planner)
             planner_llm_used = plan_llm is not None
             if (
                 plan_llm is not None
@@ -1493,13 +1531,19 @@ async def responder(
                 planner_error = (
                     "El plan debe incluir un nombre de juego válido o un game_id válido."
                 )
-                plan_llm = await _plan_llm(settings, solicitud.mensaje, resumen, planner_error)
+                if intentos_planner:
+                    intentos_planner[-1]["error"] = planner_error
+                plan_llm = await _plan_llm(
+                    settings, solicitud.mensaje, resumen, planner_error, intentos_planner
+                )
                 planner_llm_used = planner_llm_used or plan_llm is not None
         except ValueError as error:
             planner_reintentado = True
             planner_error = str(error)[:300]
             try:
-                plan_llm = await _plan_llm(settings, solicitud.mensaje, resumen, planner_error)
+                plan_llm = await _plan_llm(
+                    settings, solicitud.mensaje, resumen, planner_error, intentos_planner
+                )
                 planner_llm_used = planner_llm_used or plan_llm is not None
             except Exception as retry_error:  # noqa: BLE001
                 planner_error = str(retry_error)[:300]
@@ -1571,6 +1615,7 @@ async def responder(
                     "origen_nombre": plan.origen_nombre,
                     "nombre_final": plan.nombre_final,
                     "motivo_descarte": plan.motivo_descarte,
+                    "intentos": intentos_planner,
                 },
                 error_mensaje=planner_error,
             )

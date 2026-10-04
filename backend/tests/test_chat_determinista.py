@@ -138,3 +138,40 @@ def test_confirmacion_de_candidatos_con_listas_reales_del_caso(
     # El frontend pinta un botón por cada elemento de `candidatos`.
     assert respuesta["tarjetas"][0]["datos"]["candidatos"] == respuesta["candidatos"]
     assert CATAN_ID not in ids
+
+
+@pytest.mark.asyncio
+async def test_planner_registra_salida_cruda_y_error_de_validacion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pydantic import SecretStr
+
+    from app.core.config import Settings
+
+    resultados: list[Any] = [
+        chat_service._PlanRespuestaLlm(intent="general"),
+        ValueError("evaluar_compra requiere un nombre de juego válido"),
+    ]
+
+    class Responses:
+        async def parse(self, **_kwargs: Any) -> Any:
+            resultado = resultados.pop(0)
+            if isinstance(resultado, Exception):
+                raise resultado
+            return SimpleNamespace(output_parsed=resultado)
+
+    class Cliente:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.responses = Responses()
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
+    settings = Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True)
+    intentos: list[dict[str, Any]] = []
+
+    await chat_service._plan_llm(settings, "hola", "", None, intentos)
+    with pytest.raises(ValueError):
+        await chat_service._plan_llm(settings, "hola", "", "error previo", intentos)
+
+    assert intentos[0] == {"salida_cruda": '{"intent":"general","steps":[]}', "error": None}
+    assert intentos[1]["salida_cruda"] is None
+    assert "requiere un nombre" in intentos[1]["error"]
