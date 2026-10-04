@@ -35,6 +35,7 @@ import {
   ChatRespuesta,
 } from "./core/api/catalogo.service";
 import { primeraMayuscula } from "./core/etiquetas";
+import { LogoComponent } from "./logo/logo";
 import { renderMarkdown } from "./core/markdown";
 
 Chart.register(
@@ -56,12 +57,12 @@ Chart.defaults.color = "#4d3727";
 @Component({
   selector: "app-root",
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, LogoComponent],
   template: ` <main class="min-h-screen">
     <header class="wise-header text-[#f8f1e5]">
       <div class="mx-auto flex max-w-7xl items-center justify-between">
         <div class="brand-plate">
-          <img class="h-10 w-10" src="/wise-dice.svg" alt="Dado sabio" />
+          <app-logo class="logo-cabecera" />
           <div>
             <h1 class="brand-name">Wise Dice</h1>
             <p class="brand-tag">Tu asesor de ludoteca</p>
@@ -626,7 +627,7 @@ Chart.defaults.color = "#4d3727";
               <p class="bubble user">{{ mensaje.texto }}</p>
             } @else {
               <div class="assistant-message">
-                <img class="chat-avatar" src="/wise-dice.svg" alt="Wise Dice" />
+                <app-logo class="chat-avatar" variante="avatar" />
                 <div class="bubble answer">
                   <div
                     class="markdown"
@@ -723,7 +724,7 @@ Chart.defaults.color = "#4d3727";
           }
           @if (chatEsperando()) {
             <div class="assistant-message">
-              <img class="chat-avatar" src="/wise-dice.svg" alt="Wise Dice" />
+              <app-logo class="chat-avatar" variante="avatar" />
               <p class="bubble answer thinking">
                 <span class="thinking-die">🎲</span> Tirando los dados…
               </p>
