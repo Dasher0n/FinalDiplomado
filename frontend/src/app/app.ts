@@ -767,7 +767,11 @@ Chart.defaults.color = "#4d3727";
               }
               @if (evaluacionDetalle()) {
                 <div class="resultado-evaluacion mt-4">
-                  <b>{{ etiqueta(evaluacionDetalle()!.veredicto) }}</b>
+                  <b
+                    class="sello"
+                    [attr.data-veredicto]="evaluacionDetalle()!.veredicto"
+                    >{{ etiqueta(evaluacionDetalle()!.veredicto) }}</b
+                  >
                   <p>
                     Más parecido:
                     {{

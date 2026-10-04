@@ -51,7 +51,23 @@ table,
 .level-chip,
 .bar-label,
 .shelf-plaque {
-  font-variant-numeric: tabular-nums lining-nums;
+  position: absolute;
+  z-index: 3;
+  top: 0.55rem;
+  left: 1.4rem;
+  margin: 0;
+  padding: 0.22rem 0.7rem;
+  border: 1px solid var(--laton-700);
+  border-radius: 3px;
+  background: var(--placa-laton);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 50%),
+    0 2px 3px rgb(0 0 0 / 55%);
+  color: var(--tinta-900);
+  font-family: var(--fuente-display);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 /* Foco visible en latón para todo control */
@@ -59,6 +75,15 @@ table,
   outline: 3px solid var(--foco);
   outline-offset: 3px;
   border-radius: 4px;
+}
+
+main > section h2.font-serif::after {
+  display: block;
+  width: 5.5rem;
+  height: 3px;
+  margin-top: 0.55rem;
+  background: var(--separador-laton);
+  content: "";
 }
 
 /* Superficies de lectura: pergamino con tinta oscura */
@@ -70,7 +95,13 @@ table,
 .ficha-modal,
 .game-tooltip,
 .input {
-  color: var(--texto);
+  min-width: 8rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--laton-600);
+  border-radius: 3px;
+  background: var(--superficie-clara);
+  box-shadow: inset 0 1px 3px rgb(42 28 19 / 22%);
+  font-family: var(--fuente-lectura);
 }
 .panel,
 .chat-card,
@@ -274,22 +305,43 @@ table,
 }
 .panel,
 .chat-card {
-  border: 1px solid var(--laton-500);
-  border-radius: 1rem;
-  background: var(--superficie);
   padding: 1.25rem;
-  box-shadow: 0 7px 18px rgb(76 43 23 / 10%);
+  border: 1px solid var(--laton-500);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 0 0 4px var(--superficie),
+    inset 0 0 0 5px rgb(164 126 44 / 55%),
+    var(--sombra-hoja);
 }
 .chip,
 .primary {
-  border-radius: 999px;
-  padding: 0.5rem 0.8rem;
-  font-size: 0.85rem;
-  font-weight: 700;
+  border: 1px solid var(--laton-500);
+  background:
+    var(--grano),
+    linear-gradient(180deg, var(--nogal-700), var(--nogal-800));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 12%),
+    0 2px 3px rgb(42 28 19 / 40%);
+  color: var(--pergamino-50);
+  font-family: var(--fuente-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--nogal-600), var(--nogal-700));
+}
+.primary:disabled,
+.chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 .chip {
-  border: 1px solid var(--laton-500);
+  border: 1px solid var(--laton-600);
+  background: var(--superficie-clara);
   color: var(--laton-700);
+}
+.chip:hover {
+  background: var(--pergamino-200);
 }
 .primary {
   background: var(--nogal-700);
@@ -299,10 +351,15 @@ table,
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  border-radius: 0.6rem;
-  background: var(--superficie-clara);
   padding: 0.45rem;
+  border: 1px solid var(--pergamino-300);
+  border-left: 3px solid var(--laton-500);
+  border-radius: 3px;
+  background: var(--superficie-clara);
   text-align: left;
+}
+.result:hover {
+  background: var(--pergamino-200);
 }
 .result img {
   height: 2.8rem;
@@ -440,20 +497,28 @@ table,
   width: 100% !important;
 }
 .level-chip {
-  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  border: 1px solid var(--pergamino-300);
+  border-radius: 3px;
   background: var(--pergamino-200);
-  padding: 0.18rem 0.5rem;
   color: var(--laton-700);
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 700;
 }
 .missing-chip {
+  border-color: var(--vino-700);
   background: var(--vino-100);
   color: var(--vino-700);
 }
 .weak-chip {
+  border-color: var(--laton-600);
   background: var(--pergamino-200);
   color: var(--laton-700);
+}
+.ok-chip {
+  border-color: var(--cardenillo-700);
+  background: var(--cardenillo-100);
+  color: var(--cardenillo-700);
 }
 .bubble {
   border-radius: 0.8rem;
@@ -495,29 +560,63 @@ table,
 }
 .resultado-evaluacion {
   margin-top: 1rem;
-  border: 1px solid var(--pergamino-300);
-  border-radius: 0.65rem;
   padding: 0.8rem;
-  background: var(--superficie);
+  border: 1px solid var(--pergamino-300);
+  border-left: 3px solid var(--laton-500);
+  border-radius: 3px;
+  background: var(--superficie-clara);
+}
+
+/* Sellos de lacre para el veredicto */
+.sello {
+  --sello: var(--laton-400);
+  --sello-brillo: var(--laton-200);
+  --sello-texto: var(--tinta-900);
+  position: relative;
+  display: inline-block;
+  margin: 0.2rem 0;
+  padding: 0.35rem 1.1rem;
+  border-radius: 48% 52% 50% 46% / 55% 48% 52% 45%;
+  background: radial-gradient(circle at 32% 28%, var(--sello-brillo), var(--sello));
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 16%),
+    inset 0 0 0 4px rgb(0 0 0 / 18%),
+    0 2px 3px rgb(0 0 0 / 45%);
+  color: var(--sello-texto);
+  font-family: var(--fuente-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.sello[data-veredicto="aporta"] {
+  --sello: var(--cardenillo-700);
+  --sello-brillo: #3b8a6d;
+  --sello-texto: var(--pergamino-50);
+}
+.sello[data-veredicto="redundante"] {
+  --sello: var(--vino-700);
+  --sello-brillo: #a33a49;
+  --sello-texto: var(--pergamino-50);
 }
 
 .bookcase {
   position: relative;
   padding: 1.5rem 1.1rem 2rem;
-  border: 18px solid #4a2b1e;
+  border: 18px solid var(--nogal-700);
   border-bottom-width: 26px;
   border-radius: 5px;
   background: linear-gradient(
     90deg,
-    #321c14 0 3%,
-    #57301f 3% 6%,
-    #2a1711 6% 94%,
-    #57301f 94% 97%,
-    #321c14 97%
+    var(--nogal-800) 0 3%,
+    var(--nogal-600) 3% 6%,
+    var(--nogal-950) 6% 94%,
+    var(--nogal-600) 94% 97%,
+    var(--nogal-800) 97%
   );
   box-shadow:
     inset 0 0 32px rgb(0 0 0 / 60%),
-    0 18px 28px rgb(62 39 25 / 28%);
+    0 0 0 1px var(--laton-600),
+    0 18px 28px rgb(0 0 0 / 55%);
 }
 .bookcase-grid {
   display: grid;
@@ -627,14 +726,14 @@ table,
   width: 200px;
   gap: 0.2rem;
   padding: 0.7rem;
-  color: var(--tinta-900);
-  font-size: 0.76rem;
-  line-height: 1.2;
-  pointer-events: none;
   border: 1px solid var(--laton-500);
-  border-radius: 6px;
-  background: var(--pergamino-50);
-  box-shadow: 0 8px 20px rgb(0 0 0 / 42%);
+  border-radius: 3px;
+  background: var(--grano-pergamino), var(--superficie);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 55%);
+  color: var(--tinta-900);
+  font-size: 0.8rem;
+  line-height: 1.25;
+  pointer-events: none;
   transform: translate(-50%, -100%);
 }
 
@@ -652,8 +751,8 @@ table,
   flex-wrap: wrap;
   gap: 0.75rem;
   margin-top: 0.75rem;
-  color: var(--texto-suave-sobre-nogal);
-  font-size: 0.78rem;
+  color: var(--texto-suave);
+  font-size: 0.82rem;
 }
 .ideal-marker::before,
 .dimmed-marker::before {
@@ -669,7 +768,7 @@ table,
   box-shadow: 0 0 8px var(--laton-200);
 }
 .dimmed-marker::before {
-  background: #705f53;
+  background: var(--nogal-600);
 }
 .assistant-message {
   display: flex;
@@ -708,6 +807,23 @@ table,
 .markdown p { margin: 0.4rem 0; }
 .chat-error { margin: 16px 0; color: var(--vino-700); font-weight: 700; }
 .game-summary-card { overflow: hidden; }
+.ficha-modal {
+  border: 1px solid var(--laton-500);
+  border-radius: 4px !important;
+  box-shadow:
+    inset 0 0 0 4px var(--superficie),
+    inset 0 0 0 5px rgb(164 126 44 / 55%),
+    0 0 0 6px var(--nogal-800),
+    0 0 0 7px var(--laton-600),
+    0 24px 60px rgb(0 0 0 / 70%);
+}
+.ficha-modal > button {
+  color: var(--tinta-700);
+  line-height: 1;
+}
+.ficha-modal > button:hover {
+  color: var(--vino-700);
+}
 .thinking-die { display: inline-block; margin-right: 0.35rem; }
 @media (prefers-reduced-motion: no-preference) {
   .thinking-die { animation: die-roll 0.9s linear infinite; }
@@ -774,7 +890,7 @@ table,
     padding-bottom: 0.5rem;
   }
   main {
-    padding-bottom: 3.6rem;
+    padding-bottom: 4.6rem;
   }
   .bookcase {
     margin-right: -1.5rem;
