@@ -477,10 +477,10 @@ Chart.defaults.color = "#4d3727";
             </section>
           }
           @if (plan()) {
-            <div class="bento-leyenda chip-legend">
-              <span class="level-chip missing-chip">Nivel faltante</span
-              ><span class="level-chip weak-chip">Nivel débil</span>
-            </div>
+            <ul class="bento-leyenda aporte-leyenda" aria-label="Leyenda">
+              <li class="nivel-chip nivel-hueco">Cubre un hueco</li>
+              <li class="nivel-chip nivel-refuerzo">Refuerza un nivel débil</li>
+            </ul>
             @for (opcion of plan()!.opciones; track opcion.etiqueta) {
               <section
                 class="panel bento-plan"
@@ -496,9 +496,6 @@ Chart.defaults.color = "#4d3727";
                     {{ opcion.valor_pendiente | number: "1.2-2" }}</span
                   >
                 </div>
-                <p class="transiciones">
-                  {{ transiciones(opcion.impacto) }}
-                </p>
                 <div class="plan-juegos mt-3">
                   @for (juego of opcion.juegos; track juego.id) {
                     <article class="recommendation">
@@ -540,11 +537,13 @@ Chart.defaults.color = "#4d3727";
                               track nivel.eje + nivel.nivel
                             ) {
                               <span
-                                class="level-chip"
-                                [class.missing-chip]="
+                                class="nivel-chip"
+                                [class.nivel-hueco]="
                                   nivel.estado === 'faltante'
                                 "
-                                [class.weak-chip]="nivel.estado === 'debil'"
+                                [class.nivel-refuerzo]="
+                                  nivel.estado === 'debil'
+                                "
                                 >{{ nivel.eje }}: {{ nivel.nivel }}</span
                               >
                             }
@@ -564,9 +563,6 @@ Chart.defaults.color = "#4d3727";
                               </p>
                             }
                           }
-                          <p class="transiciones">
-                            {{ transiciones(juego.impacto) }}
-                          </p>
                         </div>
                       </div>
                     </article>

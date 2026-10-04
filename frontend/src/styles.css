@@ -1515,3 +1515,30 @@ main > section h2.font-serif::after {
     gap: 0.25rem;
   }
 }
+
+/* ================= Ajustes de Cobertura y ficha ================= */
+.deficit-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 640px) {
+  .deficit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .deficit-grid > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+@media (min-width: 900px) {
+  .deficit-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .deficit-grid > :last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+  .deficit-grid > :last-child:nth-child(3n + 1) {
+    grid-column: 1 / -1;
+  }
+  .deficit-grid > :last-child:nth-child(3n + 2) {
+    grid-column: span 2;
+  }
+}
