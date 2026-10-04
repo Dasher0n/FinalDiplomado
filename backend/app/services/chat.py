@@ -313,7 +313,7 @@ def _extraer_nombre_juego(mensaje: str) -> str | None:
     """Separa el título de juego de la formulación de la pregunta."""
     patrones = (
         r"^.*?\bcomprar\s+(?P<nombre>.+?),\s*[¿¡]?\s*vale\s+la\s+pena[?!.]*$",
-        r"^(?P<nombre>.+?)\s+(?:(?:ser[ií]a\s+)?una|es)\s+buena\s+compra[?!.]*$",
+        r"^(?P<nombre>.+?)\s+(?:(?:ser[ií]a\s+)?(?:una\s+)?|es\s+)buena\s+compra[?!.]*$",
         r"^(?P<nombre>.+?)\s+vale\s+la\s+pena[?!.]*$",
         r"^vale\s+la\s+pena\s+(?P<nombre>.+?)[?!.]*$",
         r"^(?:qu[eé]|c[oó]mo)\s+tal\s+(?:entrar[ií]a\s+)?(?P<nombre>.+?)(?:\s+en\s+la\s+colecci[oó]n)?[?!.]*$",
@@ -358,6 +358,28 @@ async def _aplicar_cadena_respaldo_juego(
     intent_pendiente: str | None,
     boton_game_id: str | None = None,
 ) -> PlanLlm:
+    """Aplica la cadena y conserva la procedencia si una segunda pasada llega al mismo juego."""
+    resultado = await _cadena_respaldo_juego(
+        plan, mensaje, repo, juego_en_foco_id, intent_pendiente, boton_game_id
+    )
+    if plan.nombre_final is not None and resultado.nombre_final == plan.nombre_final:
+        return resultado.model_copy(
+            update={
+                "origen_nombre": plan.origen_nombre,
+                "motivo_descarte": plan.motivo_descarte,
+            }
+        )
+    return resultado
+
+
+async def _cadena_respaldo_juego(
+    plan: PlanLlm,
+    mensaje: str,
+    repo: CatalogoRepository,
+    juego_en_foco_id: str | None,
+    intent_pendiente: str | None,
+    boton_game_id: str | None = None,
+) -> PlanLlm:
     """Ancla los títulos antes de permitir cualquier tool que reciba un juego."""
     juego_en_foco = await repo.obtener_juego(juego_en_foco_id) if juego_en_foco_id else None
     paso_juego = next(
@@ -386,6 +408,8 @@ async def _aplicar_cadena_respaldo_juego(
     nombre_planner = nombre_valido(paso_juego.args.get("nombre")) if paso_juego else None
     if paso_juego and paso_juego.args.get("nombre") is not None and nombre_planner is None:
         motivo_descarte = "invalido"
+    if nombre_planner and not _nombre_anclado(nombre_planner, mensaje, juego_en_foco):
+        motivo_descarte = motivo_descarte or "no_anclado"
     if (
         nombre_planner
         and fuzz.partial_ratio(normalizar_nombre(nombre_planner), normalizar_nombre(mensaje)) >= 90
@@ -419,6 +443,27 @@ async def _aplicar_cadena_respaldo_juego(
         origen_nombre=origen,
         nombre_final=nombre,
         motivo_descarte=motivo_descarte,
+    )
+
+
+def _marcar_origen_determinista(plan: PlanLlm, plan_llm: PlanLlm | None) -> PlanLlm:
+    """Registra que el nombre salió del regex y por qué se descartó el nombre del planner."""
+    paso = next((p for p in plan.steps if p.tool in {"detalle_juego", "evaluar_compra"}), None)
+    nombre = nombre_valido(paso.args.get("nombre")) if paso else None
+    if nombre is None:
+        return plan
+    motivo = None
+    paso_llm = (
+        next((p for p in plan_llm.steps if p.tool in {"detalle_juego", "evaluar_compra"}), None)
+        if plan_llm
+        else None
+    )
+    if paso_llm is not None:
+        bruto = paso_llm.args.get("nombre")
+        if bruto is not None and nombre_valido(bruto) is None:
+            motivo = "invalido"
+    return plan.model_copy(
+        update={"origen_nombre": "regex", "nombre_final": nombre, "motivo_descarte": motivo}
     )
 
 
@@ -949,6 +994,8 @@ def _sugerencia_final(intent: str, resultados: list[dict[str, Any]]) -> str:
 
 
 def _con_sugerencia_final(respuesta: str, intent: str, resultados: list[dict[str, Any]]) -> str:
+    if intent == "general" and not resultados:
+        return respuesta  # La aclaración es una pregunta y no admite sugerencia final.
     lineas = [
         linea
         for linea in respuesta.splitlines()
@@ -1468,14 +1515,14 @@ async def responder(
             plan_llm = None
     plan = _validar_plan(plan_llm, settings.llm_max_plan_steps)
     llm_used = plan is not None
-    plan = plan or _plan_determinista(
-        solicitud.mensaje,
-        solicitud.game_id,
-        chat_session.juego_en_foco_id,
-        chat_session.intent_pendiente,
-    )
-    if planner_reintentado and plan.origen_nombre == "planner":
-        plan = plan.model_copy(update={"origen_nombre": "planner_reintento"})
+    if plan is None:
+        plan = _plan_determinista(
+            solicitud.mensaje,
+            solicitud.game_id,
+            chat_session.juego_en_foco_id,
+            chat_session.intent_pendiente,
+        )
+        plan = _marcar_origen_determinista(plan, plan_llm)
     plan = await _aplicar_cadena_respaldo_juego(
         plan,
         solicitud.mensaje,
@@ -1484,6 +1531,8 @@ async def responder(
         chat_session.intent_pendiente,
         solicitud.game_id,
     )
+    if planner_reintentado and plan.origen_nombre == "planner":
+        plan = plan.model_copy(update={"origen_nombre": "planner_reintento"})
     if _validar_plan(plan, settings.llm_max_plan_steps) is None:
         plan = PlanLlm(intent="general")
     plan = await _validar_plan_con_juego(
