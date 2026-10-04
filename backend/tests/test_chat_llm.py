@@ -583,6 +583,45 @@ async def test_planner_fallback_resuelve_wyrmspan_por_nombre_extraido() -> None:
 
 
 @pytest.mark.asyncio
+async def test_titulo_exacto_gana_a_las_expansiones_por_prefijo() -> None:
+    base = SimpleNamespace(id="9209", nombre="Ticket to Ride", users_rated=99391)
+    europa = SimpleNamespace(id="14996", nombre="Ticket to Ride: Europe", users_rated=86454)
+    nordico = SimpleNamespace(
+        id="31627", nombre="Ticket to Ride: Nordic Countries", users_rated=15263
+    )
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return [europa, nordico, base]
+
+    estado, juegos = await chat_service._resolver(
+        CatalogoPrueba(), "Ticket to Ride", None, Settings(llm_enabled=False)
+    )
+
+    assert (estado, [item.id for item in juegos]) == ("encontrado", ["9209"])
+
+
+@pytest.mark.asyncio
+async def test_homonimos_exactos_siguen_la_regla_de_popularidad() -> None:
+    uno = SimpleNamespace(id="1", nombre="Alquimia", users_rated=1000)
+    dos = SimpleNamespace(id="2", nombre="Alquimia", users_rated=900)
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return [uno, dos]
+
+    estado, juegos = await chat_service._resolver(
+        CatalogoPrueba(), "Alquimia", None, Settings(llm_enabled=False)
+    )
+    assert (estado, [item.id for item in juegos]) == ("ambiguo", ["1", "2"])
+    dos.users_rated = 100
+    estado, juegos = await chat_service._resolver(
+        CatalogoPrueba(), "Alquimia", None, Settings(llm_enabled=False)
+    )
+    assert (estado, [item.id for item in juegos]) == ("encontrado", ["1"])
+
+
+@pytest.mark.asyncio
 async def test_resolver_acepta_titulo_antes_de_dos_puntos() -> None:
     juego = SimpleNamespace(
         id="418059", nombre="SETI: Search for Extraterrestrial Intelligence", users_rated=5000
@@ -893,7 +932,8 @@ def test_formatear_resultados_para_narrador() -> None:
 async def test_resolver_devuelve_ambiguo_sin_juego_dominante() -> None:
     juegos_catalogo = [
         SimpleNamespace(id="1", nombre="Nova", users_rated=400),
-        SimpleNamespace(id="2", nombre="Nova: Expansion", users_rated=300),
+        SimpleNamespace(id="2", nombre="Nova", users_rated=300),
+        SimpleNamespace(id="3", nombre="Nova: Expansion", users_rated=900),
     ]
 
     class CatalogoPrueba:

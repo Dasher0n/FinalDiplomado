@@ -11,11 +11,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.config import Settings
 from app.db.base import Base
 from app.db.models import Game
 from app.db.seed import seed_database
 from app.db.session import get_session
 from app.main import create_app
+from app.repositories.catalogo import CatalogoRepository
 from app.services import chat as chat_service
 from app.services.sugerencias import (
     JUEGOS_CURADOS,
@@ -87,6 +89,31 @@ def test_cada_juego_curado_existe_se_resuelve_directo_y_se_evalua(
     assert respuesta["intent"] == "evaluar_compra"
     assert datos["estado"] == "encontrado" and datos["juego"]["id"] == curado.id
     assert datos.get("interpretado_como") is None and datos.get("traza_traduccion") is None
+
+
+@pytest.mark.parametrize(
+    ("nombre", "esperado"),
+    [
+        ("Ticket to Ride", "9209"),
+        ("Codenames", "178900"),
+        ("Catan", "13"),
+        ("SETI", "418059"),
+        ("Seti", "418059"),
+    ],
+)
+def test_el_titulo_exacto_gana_a_las_expansiones_con_el_mismo_prefijo(
+    catalogo_real: tuple[TestClient, Any], nombre: str, esperado: str
+) -> None:
+    _, sessionmaker = catalogo_real
+
+    async def resolver() -> tuple[str, list[str]]:
+        async with sessionmaker() as session:
+            estado, juegos = await chat_service._resolver(
+                CatalogoRepository(session), nombre, None, Settings()
+            )
+            return estado, [juego.id for juego in juegos]
+
+    assert asyncio.run(resolver()) == ("encontrado", [esperado])
 
 
 def test_las_plantillas_son_de_intenciones_que_el_planner_ya_soporta() -> None:

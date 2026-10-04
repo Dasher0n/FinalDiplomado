@@ -715,14 +715,29 @@ async def _resolver(
         if (titulo_corto_normalizado := normalizar_nombre(juego.nombre.split(":", maxsplit=1)[0]))
         and titulo_corto_normalizado == consulta_normalizada
     )
-    candidatos_directos = tuple({juego.id: juego for juego in (*exactos, *titulos_cortos)}.values())
-    if len(candidatos_directos) == 1:
-        return "encontrado", candidatos_directos
-    if candidatos_directos:
-        ordenados = tuple(
-            sorted(candidatos_directos, key=lambda juego: juego.users_rated or 0, reverse=True)
-        )
-        if (ordenados[0].users_rated or 0) >= 5 * (ordenados[1].users_rated or 0):
+
+    def votos(juego: Game) -> int:
+        return getattr(juego, "users_rated", None) or 0
+
+    if exactos:
+        # El título completo exacto gana a las coincidencias solo por prefijo antes de ":",
+        # salvo que un prefijo tenga al menos cinco veces sus votos (SETI frente a "Seti").
+        ordenados_exactos = tuple(sorted(exactos, key=votos, reverse=True))
+        if len(ordenados_exactos) > 1 and votos(ordenados_exactos[0]) < 5 * votos(
+            ordenados_exactos[1]
+        ):
+            return "ambiguo", ordenados_exactos[:5]
+        mejor_exacto = ordenados_exactos[0]
+        por_prefijo = [juego for juego in titulos_cortos if juego.id != mejor_exacto.id]
+        dominante = max(por_prefijo, key=votos, default=None)
+        if dominante is not None and votos(dominante) >= 5 * votos(mejor_exacto):
+            return "encontrado", (dominante,)
+        return "encontrado", (mejor_exacto,)
+    if titulos_cortos:
+        if len(titulos_cortos) == 1:
+            return "encontrado", titulos_cortos
+        ordenados = tuple(sorted(titulos_cortos, key=votos, reverse=True))
+        if votos(ordenados[0]) >= 5 * votos(ordenados[1]):
             return "encontrado", (ordenados[0],)
         return "ambiguo", ordenados[:5]
     return "no_encontrado", ()
