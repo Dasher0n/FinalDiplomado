@@ -382,6 +382,8 @@ async def _aplicar_cadena_respaldo_juego(
                 )
             motivo_descarte = "id_no_aceptado"
     nombre_planner = nombre_valido(paso_juego.args.get("nombre")) if paso_juego else None
+    if paso_juego and paso_juego.args.get("nombre") is not None and nombre_planner is None:
+        motivo_descarte = "invalido"
     if (
         nombre_planner
         and fuzz.partial_ratio(normalizar_nombre(nombre_planner), normalizar_nombre(mensaje)) >= 90
@@ -408,7 +410,7 @@ async def _aplicar_cadena_respaldo_juego(
             motivo_descarte=motivo_descarte,
         )
     else:
-        return PlanLlm(intent="general", motivo_descarte=motivo_descarte or "invalido")
+        return PlanLlm(intent="general", motivo_descarte=motivo_descarte or "no_anclado")
     return PlanLlm(
         intent=intent,
         steps=[PasoPlan(id="1", tool=tool, args={"nombre": nombre})],

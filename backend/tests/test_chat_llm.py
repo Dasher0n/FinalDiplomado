@@ -246,6 +246,78 @@ async def test_cadena_respaldo_descarta_game_id_no_anclado() -> None:
 
 
 @pytest.mark.asyncio
+async def test_game_id_no_anclado_se_ignora_y_usa_nombre() -> None:
+    juegos = {
+        "13": SimpleNamespace(id="13", nombre="Catan"),
+        "418059": SimpleNamespace(id="418059", nombre="SETI"),
+    }
+
+    class CatalogoPrueba:
+        async def obtener_juego(self, game_id: str) -> Any:
+            return juegos.get(game_id)
+
+    plan = chat_service.PlanLlm(
+        intent="evaluar_compra",
+        steps=[
+            chat_service.PasoPlan(
+                id="1", tool="evaluar_compra", args={"game_id": "13", "nombre": "SETI"}
+            )
+        ],
+    )
+    resuelto = await chat_service._aplicar_cadena_respaldo_juego(
+        plan, "¿Vale la pena SETI?", CatalogoPrueba(), None, None
+    )
+
+    assert resuelto.steps[0].args == {"nombre": "SETI"}
+    assert resuelto.motivo_descarte == "id_no_aceptado"
+
+
+@pytest.mark.asyncio
+async def test_game_id_de_boton_se_acepta() -> None:
+    catan = SimpleNamespace(id="13", nombre="Catan")
+
+    class CatalogoPrueba:
+        async def obtener_juego(self, _game_id: str) -> Any:
+            return catan
+
+    plan = chat_service.PlanLlm(
+        intent="detalle_juego",
+        steps=[chat_service.PasoPlan(id="1", tool="detalle_juego", args={"game_id": "13"})],
+    )
+    resuelto = await chat_service._aplicar_cadena_respaldo_juego(
+        plan, "Catan", CatalogoPrueba(), None, None, "13"
+    )
+
+    assert resuelto.origen_nombre == "boton"
+    assert resuelto.nombre_final == "Catan"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("game_id", ["abc", "999"])
+async def test_game_id_no_numerico_o_inexistente_se_descarta(game_id: str) -> None:
+    class CatalogoPrueba:
+        async def obtener_juego(self, _game_id: str) -> None:
+            return None
+
+    plan = chat_service.PlanLlm(
+        intent="detalle_juego",
+        steps=[chat_service.PasoPlan(id="1", tool="detalle_juego", args={"game_id": game_id})],
+    )
+    resuelto = await chat_service._aplicar_cadena_respaldo_juego(
+        plan, "¿sería una buena compra?", CatalogoPrueba(), None, None
+    )
+
+    assert resuelto.intent == "general"
+    assert resuelto.motivo_descarte == "id_no_aceptado"
+
+
+@pytest.mark.asyncio
+async def test_herramienta_rechaza_nombre_e_id_vacios() -> None:
+    with pytest.raises(ValueError, match="requiere un nombre"):
+        await chat_service._ejecutar_tool("detalle_juego", {}, None, "u", None, None, Settings())
+
+
+@pytest.mark.asyncio
 async def test_nombre_inventado_no_se_resuelve_por_coincidencia_aproximada() -> None:
     class CatalogoPrueba:
         async def todos_los_juegos(self) -> list[Any]:
