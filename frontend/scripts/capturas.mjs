@@ -152,6 +152,24 @@ try {
         .locator(".ficha-modal > button")
         .click()
         .catch(() => {});
+      // Ficha de Wavelength con la simulación de venta abierta (está en la colección de cafe)
+      await pagina.fill('input[placeholder="Ejemplo: Wyrmspan"]', "Wavelength");
+      await pagina.waitForSelector(".result");
+      await pagina
+        .locator(".result", { hasText: /Wavelength\s*2019/ })
+        .first()
+        .click();
+      await pagina.waitForSelector(".ficha-modal");
+      await pagina
+        .locator(".ficha-modal button", { hasText: "Simular venta" })
+        .click();
+      await pagina.waitForSelector(".venta-conclusion");
+      await foto(pagina, "ficha-wavelength-venta-1440");
+      await pagina.keyboard.press("Escape");
+      await pagina
+        .locator(".ficha-modal > button")
+        .click()
+        .catch(() => {});
       // Cobertura con plan
       await nav(pagina, "Cobertura");
       await pagina.waitForSelector("#radar-cobertura");

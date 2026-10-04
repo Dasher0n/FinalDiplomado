@@ -38,9 +38,12 @@ import { primeraMayuscula } from "./core/etiquetas";
 import {
   Aporte,
   AporteColeccionComponent,
+  BloqueVenta,
   EstadoNivel,
+  LEYENDA_VENTA,
   SelloVeredictoComponent,
   construirAporte,
+  construirVenta,
 } from "./aporte/aporte";
 import { LogoComponent } from "./logo/logo";
 import { renderMarkdown } from "./core/markdown";
@@ -857,25 +860,18 @@ Chart.defaults.color = "#4d3727";
                   }
                 </div>
               }
-              @if (ventaDetalle()) {
+              @if (ventaBloque(); as venta) {
                 <div class="resultado-evaluacion mt-4">
-                  <b>Impacto de venderlo</b>
-                  <div class="mt-3 impacto-lista">
-                    @for (
-                      eje of impactoEjes(ventaDetalle()!.impacto);
-                      track eje.nombre
-                    ) {
-                      <div
-                        class="impacto-fila"
-                        [class.sin-cambio]="!eje.cambio"
-                      >
-                        <span>{{ eje.nombre }}</span
-                        ><i></i><b>{{ eje.antes }} → {{ eje.despues }}</b>
-                      </div>
-                    }
-                    <p class="transiciones">
-                      {{ transiciones(ventaDetalle()!.impacto) }}
-                    </p>
+                  <app-aporte-coleccion
+                    titulo="Qué pasaría si lo vendes"
+                    [aporte]="venta.aporte"
+                    [leyenda]="leyendaVenta"
+                  />
+                  <div class="venta-conclusion">
+                    <app-sello-veredicto
+                      [veredicto]="venta.sello"
+                      [texto]="venta.conclusion"
+                    />
                   </div>
                 </div>
               }
@@ -971,6 +967,8 @@ export class App {
   private chatSessionId: string | undefined;
   protected readonly evaluacionDetalle = signal<EvaluarRespuesta | null>(null);
   protected readonly ventaDetalle = signal<VentaImpactoRespuesta | null>(null);
+  protected readonly ventaBloque = signal<BloqueVenta | null>(null);
+  protected readonly leyendaVenta = LEYENDA_VENTA;
   protected readonly tooltip = signal<{
     nombre: string;
     rango: string;
@@ -1056,6 +1054,7 @@ export class App {
   protected async verDetalle(id: string): Promise<void> {
     this.evaluacionDetalle.set(null);
     this.ventaDetalle.set(null);
+    this.ventaBloque.set(null);
     this.seleccionado.set(
       this.juegos().find((juego) => juego.id === id) ??
         (await firstValueFrom(this.api.detalle(id))),
@@ -1131,14 +1130,38 @@ export class App {
   }
 
   protected async simularVenta(): Promise<void> {
-    if (this.seleccionado())
-      this.ventaDetalle.set(
-        await firstValueFrom(
-          this.api.impactoVenta(this.seleccionado()!.id, this.perfilActivo()),
+    const juego = this.seleccionado();
+    if (!juego) return;
+    const perfil = this.perfilActivo();
+    const [venta, cobertura] = await Promise.all([
+      firstValueFrom(this.api.impactoVenta(juego.id, perfil)),
+      firstValueFrom(this.api.cobertura(perfil)),
+    ]);
+    this.ventaDetalle.set(venta);
+    this.ventaBloque.set(
+      construirVenta(
+        this.nivelesDelJuego(juego),
+        venta.impacto.cambios_nivel,
+        Object.fromEntries(
+          Object.entries(cobertura.ejes).map(([eje, datos]) => [
+            eje,
+            datos.meta_por_nivel,
+          ]),
         ),
-      );
+      ),
+    );
   }
 
+  private nivelesDelJuego(juego: JuegoDetalle): [string, string[]][] {
+    return [
+      ["Jugadores", (juego.nivel_jugadores ?? []) as string[]],
+      ["Duración", juego.nivel_duracion ? [juego.nivel_duracion] : []],
+      ["Peso", juego.nivel_peso ? [juego.nivel_peso] : []],
+      ["Interacción", juego.nivel_interaccion ? [juego.nivel_interaccion] : []],
+      ["Mecánicas", (juego.familias_mecanicas ?? []) as string[]],
+      ["Temática", (juego.familias_tematicas ?? []) as string[]],
+    ];
+  }
   protected async enviarChat(mensaje: string, gameId?: string): Promise<void> {
     if (!mensaje.trim()) return;
     this.chatError.set(false);
@@ -1356,14 +1379,7 @@ export class App {
         nivel.estado,
       ]),
     );
-    const ejes: [string, string[]][] = [
-      ["Jugadores", (juego.nivel_jugadores ?? []) as string[]],
-      ["Duración", juego.nivel_duracion ? [juego.nivel_duracion] : []],
-      ["Peso", juego.nivel_peso ? [juego.nivel_peso] : []],
-      ["Interacción", juego.nivel_interaccion ? [juego.nivel_interaccion] : []],
-      ["Mecánicas", (juego.familias_mecanicas ?? []) as string[]],
-      ["Temática", (juego.familias_tematicas ?? []) as string[]],
-    ];
+    const ejes = this.nivelesDelJuego(juego);
     return construirAporte(
       ejes.flatMap(([eje, niveles]) =>
         niveles.map((nivel) => {

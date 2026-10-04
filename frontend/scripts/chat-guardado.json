@@ -1,110 +1,107 @@
 {
- "run_id": "captura",
- "session_id": "captura",
- "intent": "evaluar_compra",
- "plan": [
-  {
-   "id": "1",
-   "tool": "evaluar_compra",
-   "args": {
-    "nombre": "SETI"
-   },
-   "depends_on": [],
-   "estado": "completado"
-  }
- ],
- "answer": "✅ **SETI: Search for Extraterrestrial Intelligence** aporta a tu colección.\n\nCubre huecos de tu colección: Duración: más de 120 minutos y Peso: pesado. El más parecido de tu colección es King of Tokyo, con 33% de similitud (distinto).\n\nPrecio de referencia: USD 79.99 (BoardGamePrices, 24 sep 2026).\n\n💡 ¿Quieres ver qué le falta a tu colección?",
- "tarjetas": [
-  {
-   "tipo": "evaluar_compra",
-   "datos": {
-    "estado": "encontrado",
-    "veredicto": "aporta",
-    "similitud_etiqueta": "distinto",
-    "faltantes_que_cubre": [
-     "Duración: más de 120 minutos",
-     "Peso: pesado"
-    ],
-    "debiles_que_refuerza": [],
-    "ya_cubiertos": [
-     "Interacción: directa",
-     "Jugadores: 2",
-     "Jugadores: 3 a 4",
-     "Mecánicas: Control de área",
-     "Mecánicas: Gestión de mano",
-     "Mecánicas: Motor y progresión",
-     "Mecánicas: Movimiento y carreras",
-     "Temática: Ciencia ficción y espacio"
-    ],
-    "precio_texto": "USD 79.99 (BoardGamePrices, 24 sep 2026)",
-    "juego": {
-     "id": "418059",
-     "nombre": "SETI: Search for Extraterrestrial Intelligence",
-     "promedio": 8.41,
-     "precio_usd": "79.99",
-     "precio_confiable": true,
-     "fecha_precio": "2026-09-24T23:11:25Z",
-     "peso": 3.8394,
-     "nivel_peso": "pesado",
-     "peso_estimado": false,
-     "peso_pocos_votos": false,
-     "duracion_estimada": false,
-     "jugadores_estimados": false,
-     "niveles_que_cubre": [
-      {
-       "eje": "Duración",
-       "nivel": "más de 120",
-       "estado": "faltante"
+  "run_id": "captura",
+  "session_id": "captura",
+  "intent": "evaluar_compra",
+  "plan": [
+    {
+      "id": "1",
+      "tool": "evaluar_compra",
+      "args": {
+        "nombre": "SETI"
       },
-      {
-       "eje": "Peso",
-       "nivel": "pesado",
-       "estado": "faltante"
+      "depends_on": [],
+      "estado": "completado"
+    }
+  ],
+  "answer": "✅ **SETI: Search for Extraterrestrial Intelligence** aporta a tu colección.\n\nCubre huecos de tu colección: Duración: más de 120 minutos y Peso: pesado. El más parecido de tu colección es King of Tokyo, con 33% de similitud (distinto).\n\nPrecio de referencia: USD 79.99 (BoardGamePrices, 24 sep 2026).\n\n💡 ¿Quieres ver qué le falta a tu colección?",
+  "tarjetas": [
+    {
+      "tipo": "evaluar_compra",
+      "datos": {
+        "estado": "encontrado",
+        "veredicto": "aporta",
+        "similitud_etiqueta": "distinto",
+        "faltantes_que_cubre": ["Duración: más de 120 minutos", "Peso: pesado"],
+        "debiles_que_refuerza": [],
+        "ya_cubiertos": [
+          "Interacción: directa",
+          "Jugadores: 2",
+          "Jugadores: 3 a 4",
+          "Mecánicas: Control de área",
+          "Mecánicas: Gestión de mano",
+          "Mecánicas: Motor y progresión",
+          "Mecánicas: Movimiento y carreras",
+          "Temática: Ciencia ficción y espacio"
+        ],
+        "precio_texto": "USD 79.99 (BoardGamePrices, 24 sep 2026)",
+        "juego": {
+          "id": "418059",
+          "nombre": "SETI: Search for Extraterrestrial Intelligence",
+          "promedio": 8.41,
+          "precio_usd": "79.99",
+          "precio_confiable": true,
+          "fecha_precio": "2026-09-24T23:11:25Z",
+          "peso": 3.8394,
+          "nivel_peso": "pesado",
+          "peso_estimado": false,
+          "peso_pocos_votos": false,
+          "duracion_estimada": false,
+          "jugadores_estimados": false,
+          "niveles_que_cubre": [
+            {
+              "eje": "Duración",
+              "nivel": "más de 120",
+              "estado": "faltante"
+            },
+            {
+              "eje": "Peso",
+              "nivel": "pesado",
+              "estado": "faltante"
+            }
+          ]
+        },
+        "juego_mas_parecido": {
+          "id": "70323",
+          "nombre": "King of Tokyo",
+          "promedio": 7.11,
+          "precio_usd": "41.99",
+          "precio_confiable": true,
+          "fecha_precio": "2026-09-24T23:13:25Z",
+          "peso": 1.4843,
+          "nivel_peso": "ligero",
+          "peso_estimado": false,
+          "peso_pocos_votos": false,
+          "duracion_estimada": false,
+          "jugadores_estimados": false,
+          "niveles_que_cubre": []
+        },
+        "similitud": {
+          "mecanicas": 0.0,
+          "ocasion": 0.8814331767964392,
+          "interaccion": 1.0,
+          "tematica": 0.2733093347947643,
+          "total": 0.3338015848578115
+        },
+        "regla_exacta": null,
+        "niveles_que_cubre": [
+          {
+            "eje": "Duración",
+            "nivel": "más de 120",
+            "estado": "faltante"
+          },
+          {
+            "eje": "Peso",
+            "nivel": "pesado",
+            "estado": "faltante"
+          }
+        ]
       }
-     ]
-    },
-    "juego_mas_parecido": {
-     "id": "70323",
-     "nombre": "King of Tokyo",
-     "promedio": 7.11,
-     "precio_usd": "41.99",
-     "precio_confiable": true,
-     "fecha_precio": "2026-09-24T23:13:25Z",
-     "peso": 1.4843,
-     "nivel_peso": "ligero",
-     "peso_estimado": false,
-     "peso_pocos_votos": false,
-     "duracion_estimada": false,
-     "jugadores_estimados": false,
-     "niveles_que_cubre": []
-    },
-    "similitud": {
-     "mecanicas": 0.0,
-     "ocasion": 0.8814331767964392,
-     "interaccion": 1.0,
-     "tematica": 0.2733093347947643,
-     "total": 0.3338015848578115
-    },
-    "regla_exacta": null,
-    "niveles_que_cubre": [
-     {
-      "eje": "Duración",
-      "nivel": "más de 120",
-      "estado": "faltante"
-     },
-     {
-      "eje": "Peso",
-      "nivel": "pesado",
-      "estado": "faltante"
-     }
-    ]
-   }
-  }
- ],
- "candidatos": [],
- "sugerir_nombre_ingles": false,
- "critic_passed": true,
- "critic_attempts": 0,
- "critic_findings": [],
- "llm_used": true
+    }
+  ],
+  "candidatos": [],
+  "sugerir_nombre_ingles": false,
+  "critic_passed": true,
+  "critic_attempts": 0,
+  "critic_findings": [],
+  "llm_used": true
 }

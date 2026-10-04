@@ -1348,6 +1348,49 @@ main > section h2.font-serif::after {
   display: flow-root;
 }
 
+.nivel-perdida {
+  border-color: var(--vino-700);
+  background: var(--vino-100);
+  color: var(--vino-700);
+}
+
+.nivel-perdida::before {
+  content: "\2212";
+}
+
+.nivel-debil {
+  border-color: var(--laton-600);
+  background: #f3e2ac;
+  color: var(--laton-700);
+}
+
+.nivel-debil::before {
+  content: "\2193";
+}
+
+.venta-conclusion {
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--pergamino-300);
+}
+
+.venta-conclusion .veredicto-texto {
+  font-family: var(--fuente-lectura);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.sello[data-veredicto="venta-ok"] {
+  --sello-img: var(--sello-aporta);
+  --sello-icono: var(--icono-aporta);
+}
+
+.sello[data-veredicto="venta-perdida"] {
+  --sello-img: var(--sello-redundante);
+  --sello-icono: var(--icono-perdida);
+}
+
 /* ===== Chat ===== */
 
 .chat-cabecera {
