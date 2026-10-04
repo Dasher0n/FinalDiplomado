@@ -1,0 +1,2440 @@
+"""Orquestador persistente y determinista del asistente de ludoteca."""
+
+from __future__ import annotations
+
+import json
+import re
+from datetime import UTC, datetime
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from rapidfuzz import fuzz
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.v1.catalogo import _juego_detalle
+from app.api.v1.engine import _artefactos, _coleccion, _juego, _niveles
+from app.core.config import Settings
+from app.db.models import (
+    AgentRun,
+    AgentStep,
+    ChatMessage,
+    ChatSession,
+    ConfirmedAlias,
+    Game,
+    ToolCall,
+)
+from app.engine.motor import (
+    cobertura,
+    evaluar_redundancia,
+    niveles_de_juego,
+    normalizar_nombre,
+    opciones_compra,
+    que_saco_hoy,
+)
+from app.profiles import juego_excluido_del_plan
+from app.repositories.catalogo import CatalogoRepository
+from app.schemas.chat import CandidatoChat, ChatRespuesta, PasoPlan, TarjetaChat
+
+_TOOLS: set[str] = {
+    "ver_coleccion",
+    "detalle_juego",
+    "evaluar_compra",
+    "que_me_falta",
+    "que_compro",
+    "que_saco_hoy",
+}
+_FUNCIONES_NO_DISPONIBLES = {
+    "comparar",
+    "filtrar",
+    "modo precio",
+    "capturar precio",
+    "tarjeta para compartir",
+}
+_INTENTS = {
+    "evaluar_compra",
+    "que_me_falta",
+    "que_compro",
+    "que_saco_hoy",
+    "detalle_juego",
+    "coleccion",
+    "reglas",
+    "fuera_de_dominio",
+    "general",
+}
+_REFERENCIAS_GENERICAS = {
+    "juego",
+    "el juego",
+    "este juego",
+    "ese juego",
+    "este",
+    "ese",
+    "esto",
+    "eso",
+    "el",
+    "lo",
+}
+_NOMBRES_NULOS = {"null", "none", "nil", "undefined", "n/a", "na", "desconocido"}
+
+
+def nombre_valido(valor: object) -> str | None:
+    """Limpia un título y descarta valores nulos, genéricos o demasiado cortos."""
+    if not isinstance(valor, str):
+        return None
+    nombre = valor.strip(" \t\r\n\"'«»“”¿?¡!.,:")
+    sin_relleno = re.sub(r"[\s\"'«»“”¿?¡!.,:]", "", nombre)
+    if not sin_relleno:
+        return None
+    minusculas = nombre.casefold()
+    if minusculas in _NOMBRES_NULOS or minusculas in _REFERENCIAS_GENERICAS:
+        return None
+    if len(normalizar_nombre(nombre)) < 2:
+        return None
+    return nombre
+
+
+class PlanLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    intent: str
+    steps: list[PasoPlan] = Field(default_factory=list)
+    origen_nombre: str = "ninguno"
+    nombre_final: str | None = None
+    motivo_descarte: str | None = None
+
+
+_ToolLlm = Literal[
+    "ver_coleccion",
+    "detalle_juego",
+    "evaluar_compra",
+    "que_me_falta",
+    "que_compro",
+    "que_saco_hoy",
+]
+_IntentLlm = Literal[
+    "evaluar_compra",
+    "que_me_falta",
+    "que_compro",
+    "que_saco_hoy",
+    "detalle_juego",
+    "coleccion",
+    "reglas",
+    "fuera_de_dominio",
+    "general",
+]
+
+
+class _ArgsPlanLlm(BaseModel):
+    """Argumentos cerrados para impedir que el plan invente parametros de tools."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str | None = None
+    game_id: str | None = None
+    n: int | None = None
+    average_min: float | None = None
+    users_rated_min: int | None = None
+    ejes_ignorados: list[str] | None = None
+    jugadores: int | None = None
+    minutos: float | None = None
+    edad_minima: int | None = None
+
+
+class _PasoPlanLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    tool: _ToolLlm
+    args: _ArgsPlanLlm = Field(default_factory=_ArgsPlanLlm)
+    depends_on: list[str] = Field(default_factory=list)
+
+
+class _PlanRespuestaLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    intent: _IntentLlm
+    steps: list[_PasoPlanLlm] = Field(default_factory=list)
+
+
+class _HallazgoLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    categoria: Literal[
+        "cifra_sin_fuente",
+        "juego_o_atributo_no_disponible",
+        "recomendacion_sin_respaldo",
+    ]
+    detalle: str
+
+
+class _CriticaRespuestaLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    hallazgos: list[_HallazgoLlm] = Field(default_factory=list)
+
+
+class _TitulosTraducidosLlm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    traducciones_literales: list[str] = Field(default_factory=list, max_length=5)
+    identificaciones: list[str] = Field(default_factory=list, max_length=3)
+    titulos: list[str] = Field(default_factory=list, max_length=3)
+
+    @field_validator("traducciones_literales", "identificaciones", "titulos")
+    @classmethod
+    def limpiar_titulos(cls, valores: list[str]) -> list[str]:
+        return [titulo for valor in valores if (titulo := nombre_valido(valor)) is not None]
+
+
+_TOOL_MANIFEST = {
+    "ver_coleccion": {
+        "descripcion": "Úsala solo cuando el usuario pide ver o listar su colección. Ejemplo: "
+        "'¿qué juegos tengo?'.",
+        "requeridos": [],
+    },
+    "detalle_juego": {
+        "descripcion": "Úsala para pedir la ficha de un juego ya poseído o una consulta neutra. "
+        "Ejemplo: 'cuéntame de Catan'.",
+        "requeridos": ["nombre o game_id"],
+    },
+    "evaluar_compra": {
+        "descripcion": "Úsala si un juego encaja, conviene o es redundante con la colección. "
+        "Ejemplo: '¿me conviene Wyrmspan?'.",
+        "requeridos": ["nombre o game_id"],
+    },
+    "que_me_falta": {
+        "descripcion": "Úsala para preguntar qué experiencias faltan o son débiles. "
+        "Ejemplo: '¿qué me falta?'.",
+        "requeridos": [],
+    },
+    "que_compro": {
+        "descripcion": "Úsala para pedir planes de compra por número de juegos. "
+        "Ejemplo: 'dame un plan de 3 juegos'.",
+        "requeridos": ["n"],
+    },
+    "que_saco_hoy": {
+        "descripcion": "Úsala para elegir qué sacar hoy según jugadores y duración. "
+        "Ejemplo: 'somos 6 y tenemos 45 minutos'.",
+        "requeridos": ["jugadores", "minutos"],
+    },
+}
+_EJEMPLOS_INTENT = (
+    "Evaluar compra: '¿qué tal entraría X?', '¿me conviene X?', '¿vale la pena X?', "
+    "'¿debería comprar X?' o '¿y X?'. Cobertura: '¿qué me falta?'. "
+    "Plan: 'dame un plan de 3 juegos'. Mesa: 'somos 6 y tenemos 45 minutos'. "
+    "Colección: '¿qué juegos tengo?'. Ficha: 'cuéntame de X'."
+)
+
+
+def _plan_determinista(
+    mensaje: str,
+    game_id: str | None,
+    juego_en_foco_id: str | None = None,
+    intent_pendiente: str | None = None,
+) -> PlanLlm:
+    texto = mensaje.lower()
+    consulta = normalizar_nombre(mensaje)
+    titulo_en_ingles = re.match(r"^el nombre en ingl[eé]s es:\s*(.+)$", mensaje, re.IGNORECASE)
+    if titulo_en_ingles and intent_pendiente in {"evaluar_compra", "detalle_juego"}:
+        nombre = nombre_valido(titulo_en_ingles.group(1))
+        if nombre:
+            return PlanLlm(
+                intent=intent_pendiente,
+                steps=[PasoPlan(id="1", tool=intent_pendiente, args={"nombre": nombre})],
+            )
+    if intent_pendiente in {"evaluar_compra", "detalle_juego"} and re.fullmatch(
+        r"[\w\s:,'-]{2,80}", mensaje, re.UNICODE
+    ):
+        nombre = nombre_valido(mensaje)
+        if nombre:
+            return PlanLlm(
+                intent=intent_pendiente,
+                steps=[PasoPlan(id="1", tool=intent_pendiente, args={"nombre": nombre})],
+            )
+    if any(palabra in texto for palabra in ("ignora", "instrucciones", "prompt", "sistema")):
+        return PlanLlm(intent="fuera_de_dominio")
+    if any(palabra in texto for palabra in ("regla", "reglamento", "como se juega")):
+        return PlanLlm(intent="reglas")
+
+    pide_plan = any(palabra in consulta for palabra in ("que compro", "recomienda", "plan de")) or (
+        "comprar" in consulta and any(palabra in consulta for palabra in ("hueco", "juego"))
+    )
+    if pide_plan:
+        numero = re.search(r"\b(\d{1,2})\b", texto)
+        n = max(1, min(20, int(numero.group(1)))) if numero else 5
+        return PlanLlm(
+            intent="que_compro", steps=[PasoPlan(id="1", tool="que_compro", args={"n": n})]
+        )
+    if any(palabra in consulta for palabra in ("falta", "faltan", "cobertura", "hueco")):
+        return PlanLlm(intent="que_me_falta", steps=[PasoPlan(id="1", tool="que_me_falta")])
+    if any(palabra in consulta for palabra in ("saco", "jugamos", "somos", "minuto")):
+        numeros = [int(valor) for valor in re.findall(r"\b\d{1,3}\b", texto)]
+        args: dict[str, Any] = {
+            "jugadores": numeros[0] if numeros else 4,
+            "minutos": numeros[1] if len(numeros) > 1 else 60,
+        }
+        return PlanLlm(
+            intent="que_saco_hoy", steps=[PasoPlan(id="1", tool="que_saco_hoy", args=args)]
+        )
+    if (
+        any(
+            palabra in consulta
+            for palabra in (
+                "vale la pena",
+                "evalu",
+                "redund",
+                "que tal entraria",
+                "me conviene",
+                "deberia comprar",
+                "buena compra",
+                "si lo vendo",
+                "se parece",
+            )
+        )
+        or consulta.startswith("y ")
+        or game_id
+    ):
+        nombre = _extraer_nombre_juego(mensaje)
+        tiene_nombre = nombre is not None and normalizar_nombre(nombre) != normalizar_nombre(
+            mensaje
+        )
+        args = (
+            {"game_id": game_id}
+            if game_id
+            else ({"nombre": nombre} if tiene_nombre else {"game_id": juego_en_foco_id})
+        )
+        return PlanLlm(
+            intent="evaluar_compra",
+            steps=[PasoPlan(id="1", tool="evaluar_compra", args=args)],
+        )
+    if any(palabra in consulta for palabra in ("coleccion", "tengo")) and not game_id:
+        return PlanLlm(intent="coleccion", steps=[PasoPlan(id="1", tool="ver_coleccion")])
+    pregunta_general = re.match(r"^(quien|quienes|cuando|donde|por que)\b", consulta)
+    if pregunta_general and len(consulta.split()) >= 4:
+        return PlanLlm(intent="fuera_de_dominio")
+    nombre = _extraer_nombre_juego(mensaje)
+    if not game_id and nombre is None:
+        return PlanLlm(intent="general")
+    args = {"game_id": game_id} if game_id else {"nombre": nombre}
+    return PlanLlm(
+        intent="detalle_juego",
+        steps=[PasoPlan(id="1", tool="detalle_juego", args=args)],
+    )
+
+
+def _solo_nombre(mensaje: str) -> str | None:
+    """El mensaje es únicamente un nombre, sin otra intención ni pregunta."""
+    texto = mensaje.strip()
+    if "?" in texto or "¿" in texto:
+        return None
+    nombre = nombre_valido(texto)
+    if nombre is None or normalizar_nombre(nombre) != normalizar_nombre(texto):
+        return None
+    if _extraer_nombre_juego(mensaje) != nombre:
+        return None  # Una fórmula como "háblame de X" es otra intención.
+    return nombre if _plan_determinista(mensaje, None).intent == "detalle_juego" else None
+
+
+def _extraer_nombre_juego(mensaje: str) -> str | None:
+    """Separa el título de juego de la formulación de la pregunta."""
+    patrones = (
+        r"^.*?\bcomprar\s+(?P<nombre>.+?),\s*[¿¡]?\s*vale\s+la\s+pena[?!.]*$",
+        r"^(?P<nombre>.+?)\s+(?:(?:ser[ií]a\s+)?(?:una\s+)?|es\s+)buena\s+compra[?!.]*$",
+        r"^(?P<nombre>.+?)\s+vale\s+la\s+pena[?!.]*$",
+        r"^vale\s+la\s+pena\s+(?P<nombre>.+?)[?!.]*$",
+        r"^(?:qu[eé]|c[oó]mo)\s+tal\s+(?:entrar[ií]a\s+)?(?P<nombre>.+?)(?:\s+en\s+la\s+colecci[oó]n)?[?!.]*$",
+        r"^c[oó]mo\s+entrar[ií]a\s+(?P<nombre>.+?)[?!.]*$",
+        r"^(?:deber[ií]a\s+comprar|me\s+conviene|conviene\s+comprar)\s+(?P<nombre>.+?)[?!.]*$",
+        r"^(?:h[aá]blame\s+de|detalle\s+de|info\s+de)\s+(?P<nombre>.+?)[?!.]*$",
+        r"^y\s+(?P<nombre>.+?)[?!.]*$",
+    )
+    texto = mensaje.strip(" \t\r\n¿¡")
+    if re.fullmatch(r"(?:ser[ií]a\s+)?(?:una\s+)?buena\s+compra[?!.]*", texto, re.IGNORECASE):
+        return None
+    if re.fullmatch(r"y\s+(?:este|ese|esto|eso)\s+vale\s+la\s+pena[?!.]*", texto, re.IGNORECASE):
+        return None
+    for patron in patrones:
+        coincidencia = re.fullmatch(patron, texto, re.IGNORECASE)
+        if coincidencia:
+            nombre = nombre_valido(coincidencia.group("nombre"))
+            if nombre:
+                return nombre
+    if re.fullmatch(r"[\w\s:'\-«»“”]{2,80}", texto, re.UNICODE):
+        return nombre_valido(texto)
+    return None
+
+
+def _nombre_anclado(nombre: str, mensaje: str, juego_en_foco: Game | None) -> bool:
+    consulta = normalizar_nombre(nombre)
+    if not consulta:
+        return False
+    if fuzz.partial_ratio(consulta, normalizar_nombre(mensaje)) >= 90:
+        return True
+    return juego_en_foco is not None and consulta in {
+        normalizar_nombre(juego_en_foco.nombre),
+        normalizar_nombre(juego_en_foco.nombre.split(":", maxsplit=1)[0]),
+    }
+
+
+async def _aplicar_cadena_respaldo_juego(
+    plan: PlanLlm,
+    mensaje: str,
+    repo: CatalogoRepository,
+    juego_en_foco_id: str | None,
+    intent_pendiente: str | None,
+    boton_game_id: str | None = None,
+) -> PlanLlm:
+    """Aplica la cadena y conserva la procedencia si una segunda pasada llega al mismo juego."""
+    resultado = await _cadena_respaldo_juego(
+        plan, mensaje, repo, juego_en_foco_id, intent_pendiente, boton_game_id
+    )
+    if plan.nombre_final is not None and resultado.nombre_final == plan.nombre_final:
+        return resultado.model_copy(
+            update={
+                "origen_nombre": plan.origen_nombre,
+                "motivo_descarte": plan.motivo_descarte,
+            }
+        )
+    return resultado
+
+
+async def _cadena_respaldo_juego(
+    plan: PlanLlm,
+    mensaje: str,
+    repo: CatalogoRepository,
+    juego_en_foco_id: str | None,
+    intent_pendiente: str | None,
+    boton_game_id: str | None = None,
+) -> PlanLlm:
+    """Ancla los títulos antes de permitir cualquier tool que reciba un juego."""
+    juego_en_foco = await repo.obtener_juego(juego_en_foco_id) if juego_en_foco_id else None
+    paso_juego = next(
+        (paso for paso in plan.steps if paso.tool in {"detalle_juego", "evaluar_compra"}), None
+    )
+    nombre_regex = _extraer_nombre_juego(mensaje)
+    if paso_juego is None and plan.intent not in {"general", "detalle_juego", "evaluar_compra"}:
+        return plan
+    if paso_juego is None and nombre_regex is None:
+        return plan
+    tool = paso_juego.tool if paso_juego else "detalle_juego"
+    intent = plan.intent if paso_juego else "detalle_juego"
+    game_id = paso_juego.args.get("game_id") if paso_juego else None
+    motivo_descarte = None
+    if game_id is not None:
+        if not isinstance(game_id, str) or not game_id.isdecimal():
+            motivo_descarte = "id_no_aceptado"
+        else:
+            juego = await repo.obtener_juego(game_id)
+            if juego and game_id in {boton_game_id, juego_en_foco_id}:
+                origen = "boton" if game_id == boton_game_id else "foco"
+                return plan.model_copy(
+                    update={"origen_nombre": origen, "nombre_final": juego.nombre}
+                )
+            motivo_descarte = "id_no_aceptado"
+    nombre_planner = nombre_valido(paso_juego.args.get("nombre")) if paso_juego else None
+    if paso_juego and paso_juego.args.get("nombre") is not None and nombre_planner is None:
+        motivo_descarte = "invalido"
+    if nombre_planner and not _nombre_anclado(nombre_planner, mensaje, juego_en_foco):
+        motivo_descarte = motivo_descarte or "no_anclado"
+    if (
+        nombre_planner
+        and fuzz.partial_ratio(normalizar_nombre(nombre_planner), normalizar_nombre(mensaje)) >= 90
+    ):
+        nombre, origen = nombre_planner, "planner"
+    elif nombre_regex:
+        nombre, origen = nombre_regex, "regex"
+    elif nombre_planner and _nombre_anclado(nombre_planner, mensaje, juego_en_foco):
+        nombre, origen = nombre_planner, "foco"
+    elif intent_pendiente in {"evaluar_compra", "detalle_juego"} and juego_en_foco:
+        return PlanLlm(
+            intent=intent_pendiente,
+            steps=[PasoPlan(id="1", tool=intent_pendiente, args={"game_id": juego_en_foco.id})],
+            origen_nombre="pendiente",
+            nombre_final=juego_en_foco.nombre,
+            motivo_descarte=motivo_descarte,
+        )
+    elif juego_en_foco:
+        return PlanLlm(
+            intent=tool,
+            steps=[PasoPlan(id="1", tool=tool, args={"game_id": juego_en_foco.id})],
+            origen_nombre="foco",
+            nombre_final=juego_en_foco.nombre,
+            motivo_descarte=motivo_descarte,
+        )
+    else:
+        return PlanLlm(intent="general", motivo_descarte=motivo_descarte or "no_anclado")
+    return PlanLlm(
+        intent=intent,
+        steps=[PasoPlan(id="1", tool=tool, args={"nombre": nombre})],
+        origen_nombre=origen,
+        nombre_final=nombre,
+        motivo_descarte=motivo_descarte,
+    )
+
+
+def _marcar_origen_determinista(plan: PlanLlm, plan_llm: PlanLlm | None) -> PlanLlm:
+    """Registra que el nombre salió del regex y por qué se descartó el nombre del planner."""
+    paso = next((p for p in plan.steps if p.tool in {"detalle_juego", "evaluar_compra"}), None)
+    nombre = nombre_valido(paso.args.get("nombre")) if paso else None
+    if nombre is None:
+        return plan
+    motivo = None
+    paso_llm = (
+        next((p for p in plan_llm.steps if p.tool in {"detalle_juego", "evaluar_compra"}), None)
+        if plan_llm
+        else None
+    )
+    if paso_llm is not None:
+        bruto = paso_llm.args.get("nombre")
+        if bruto is not None and nombre_valido(bruto) is None:
+            motivo = "invalido"
+    return plan.model_copy(
+        update={"origen_nombre": "regex", "nombre_final": nombre, "motivo_descarte": motivo}
+    )
+
+
+def _validar_plan(plan: PlanLlm | None, max_pasos: int) -> PlanLlm | None:
+    if plan is None:
+        return None
+    if plan.intent not in _INTENTS or len(plan.steps) > max_pasos:
+        return None
+    ids = {paso.id for paso in plan.steps}
+    if len(ids) != len(plan.steps):
+        return None
+    for paso in plan.steps:
+        if paso.tool not in _TOOLS or any(
+            dependencia not in ids for dependencia in paso.depends_on
+        ):
+            return None
+        if (
+            paso.tool in {"detalle_juego", "evaluar_compra"}
+            and paso.args.get("game_id") is None
+            and nombre_valido(paso.args.get("nombre")) is None
+        ):
+            return None
+        if paso.tool == "que_compro" and not isinstance(paso.args.get("n"), int):
+            return None
+        if paso.tool == "que_saco_hoy" and not all(
+            isinstance(paso.args.get(argumento), (int, float))
+            for argumento in ("jugadores", "minutos")
+        ):
+            return None
+    if plan.intent in {"evaluar_compra", "detalle_juego"} and not any(
+        paso.tool == plan.intent for paso in plan.steps
+    ):
+        return None
+    dependencias = {paso.id: set(paso.depends_on) for paso in plan.steps}
+    visitados: set[str] = set()
+    activos: set[str] = set()
+
+    def tiene_ciclo(paso_id: str) -> bool:
+        if paso_id in activos:
+            return True
+        if paso_id in visitados:
+            return False
+        activos.add(paso_id)
+        if any(tiene_ciclo(dependencia) for dependencia in dependencias[paso_id]):
+            return True
+        activos.remove(paso_id)
+        visitados.add(paso_id)
+        return False
+
+    if any(tiene_ciclo(paso.id) for paso in plan.steps):
+        return None
+    return plan
+
+
+def _causa_plan_invalido(plan: PlanLlm, max_pasos: int) -> str:
+    """Explica al planner el motivo real por el que su plan no se aceptó."""
+    if plan.intent not in _INTENTS:
+        return f"intent '{plan.intent[:60]}' no es válido; usa uno de: {sorted(_INTENTS)}."
+    if len(plan.steps) > max_pasos:
+        return f"el plan tiene más de {max_pasos} pasos."
+    for paso in plan.steps:
+        if paso.tool not in _TOOLS:
+            return f"la tool '{paso.tool}' no existe en el manifiesto."
+        if (
+            paso.tool in {"detalle_juego", "evaluar_compra"}
+            and paso.args.get("game_id") is None
+            and nombre_valido(paso.args.get("nombre")) is None
+        ):
+            return (
+                f"{paso.tool} requiere nombre o game_id. Si la persona no cita un título y no "
+                "hay juego en foco, usa intent general con steps vacío."
+            )
+    if plan.intent in {"evaluar_compra", "detalle_juego"} and not any(
+        paso.tool == plan.intent for paso in plan.steps
+    ):
+        return f"el intent {plan.intent} requiere un paso con la tool {plan.intent}."
+    return "el plan no cumple las reglas del manifiesto."
+
+
+def _niveles_plan(pasos: list[PasoPlan]) -> list[list[PasoPlan]]:
+    pendientes = {paso.id: paso for paso in pasos}
+    terminados: set[str] = set()
+    niveles: list[list[PasoPlan]] = []
+    while pendientes:
+        nivel = [
+            paso
+            for paso in pendientes.values()
+            if all(dependencia in terminados for dependencia in paso.depends_on)
+        ]
+        if not nivel:
+            raise ValueError("El plan contiene dependencias no resolubles.")
+        niveles.append(nivel)
+        for paso in nivel:
+            terminados.add(paso.id)
+            pendientes.pop(paso.id)
+    return niveles
+
+
+def _resumir_error_planner(error: Exception) -> str:
+    """Conserva la entrada que falló la validación, que es la salida del modelo."""
+    errores = getattr(error, "errors", None)
+    if callable(errores):
+        try:
+            return str(errores(include_url=False))[:800]
+        except Exception:  # noqa: BLE001
+            pass
+    return str(error)[:800]
+
+
+async def _plan_llm(
+    settings: Settings,
+    mensaje: str,
+    resumen: str,
+    error_validacion: str | None = None,
+    intentos: list[dict[str, Any]] | None = None,
+    foco: str | None = None,
+) -> PlanLlm | None:
+    """Usa Responses.parse solo cuando la configuracion habilita explícitamente el LLM."""
+    if not settings.llm_active:
+        return None
+    from openai import AsyncOpenAI
+
+    cliente = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+    manifest = "\n".join(
+        f"- {nombre}: {detalle['descripcion']} Argumentos requeridos: "
+        f"{', '.join(detalle['requeridos']) or 'ninguno'}."
+        for nombre, detalle in _TOOL_MANIFEST.items()
+    )
+    try:
+        respuesta = await _parse_plan(
+            cliente, settings, manifest, mensaje, resumen, error_validacion, foco
+        )
+    except Exception as error:
+        if intentos is not None:
+            intentos.append({"salida_cruda": None, "error": _resumir_error_planner(error)})
+        if isinstance(error, ValidationError):
+            raise ValueError(_causa_validacion_esquema(error)) from error
+        raise
+    parsed = respuesta.output_parsed
+    if intentos is not None:
+        intentos.append(
+            {"salida_cruda": parsed.model_dump_json() if parsed else None, "error": None}
+        )
+    if parsed is None:
+        return None
+    return PlanLlm(
+        intent=parsed.intent,
+        steps=[
+            PasoPlan(
+                id=paso.id,
+                tool=paso.tool,
+                args=paso.args.model_dump(exclude_none=True),
+                depends_on=paso.depends_on,
+            )
+            for paso in parsed.steps
+        ],
+    )
+
+
+def _causa_validacion_esquema(error: ValidationError) -> str:
+    detalles = "; ".join(
+        f"{'.'.join(str(parte) for parte in item['loc'])}: {item['msg']}"
+        for item in error.errors(include_url=False)
+    )
+    return f"La salida no cumple el esquema ({detalles})"[:300]
+
+
+async def _parse_plan(
+    cliente: Any,
+    settings: Settings,
+    manifest: str,
+    mensaje: str,
+    resumen: str,
+    error_validacion: str | None,
+    foco: str | None,
+) -> Any:
+    return await cliente.responses.parse(
+        model=settings.llm_model_fast,
+        input=(
+            "Eres un planificador de una ludoteca. Devuelve solo un plan de tools de solo "
+            "lectura. No calcules ni respondas al usuario. Usa exclusivamente este manifiesto:\n"
+            f"{manifest}\nFormulaciones naturales: {_EJEMPLOS_INTENT}\n"
+            "Para un juego, el argumento nombre debe conservar exactamente el título citado por "
+            "la persona, sin traducirlo ni sustituirlo por otro título. "
+            "El intent debe ser uno de los valores permitidos, nunca una descripción. "
+            "Si la persona dice 'ese' o 'este', usa el game_id del juego en foco; si cita un "
+            "título, cópialo exacto en nombre; si no cita título y no hay juego en foco, usa "
+            "intent general con steps vacío.\n"
+            f"Juego en foco: {foco or 'ninguno'}\n"
+            f"Contexto de colección e historial reciente: {resumen}\n"
+            + (
+                f"El intento anterior no fue válido: {error_validacion}. Corrige el plan.\n"
+                if error_validacion
+                else ""
+            )
+            + f"Pregunta: {mensaje}"
+        ),
+        text_format=_PlanRespuestaLlm,
+    )
+
+
+async def _resolver(
+    repo: CatalogoRepository, nombre: str | None, game_id: str | None, settings: Settings
+) -> tuple[str, tuple[Game, ...]]:
+    if game_id:
+        juego = await repo.obtener_juego(game_id)
+        return ("encontrado", (juego,)) if juego else ("no_encontrado", ())
+    nombre = nombre_valido(nombre)
+    if nombre is None:
+        return "no_encontrado", ()
+    juegos = await repo.todos_los_juegos()
+    consulta_normalizada = normalizar_nombre(nombre)
+    exactos = tuple(
+        juego
+        for juego in juegos
+        if (titulo_normalizado := normalizar_nombre(juego.nombre))
+        and titulo_normalizado == consulta_normalizada
+    )
+    titulos_cortos = tuple(
+        juego
+        for juego in juegos
+        if (titulo_corto_normalizado := normalizar_nombre(juego.nombre.split(":", maxsplit=1)[0]))
+        and titulo_corto_normalizado == consulta_normalizada
+    )
+
+    def votos(juego: Game) -> int:
+        return getattr(juego, "users_rated", None) or 0
+
+    if exactos:
+        # El título completo exacto gana a las coincidencias solo por prefijo antes de ":",
+        # salvo que un prefijo tenga al menos cinco veces sus votos (SETI frente a "Seti").
+        ordenados_exactos = tuple(sorted(exactos, key=votos, reverse=True))
+        if len(ordenados_exactos) > 1 and votos(ordenados_exactos[0]) < 5 * votos(
+            ordenados_exactos[1]
+        ):
+            return "ambiguo", ordenados_exactos[:5]
+        mejor_exacto = ordenados_exactos[0]
+        por_prefijo = [juego for juego in titulos_cortos if juego.id != mejor_exacto.id]
+        dominante = max(por_prefijo, key=votos, default=None)
+        if dominante is not None and votos(dominante) >= 5 * votos(mejor_exacto):
+            return "encontrado", (dominante,)
+        return "encontrado", (mejor_exacto,)
+    if titulos_cortos:
+        if len(titulos_cortos) == 1:
+            return "encontrado", titulos_cortos
+        ordenados = tuple(sorted(titulos_cortos, key=votos, reverse=True))
+        if votos(ordenados[0]) >= 5 * votos(ordenados[1]):
+            return "encontrado", (ordenados[0],)
+        return "ambiguo", ordenados[:5]
+    return "no_encontrado", ()
+
+
+async def _resolver_con_traduccion(
+    repo: CatalogoRepository, nombre: str | None, game_id: str | None, settings: Settings
+) -> tuple[str, tuple[Game, ...], dict[str, str] | None, list[str], dict[str, Any] | None]:
+    estado, juegos = await _resolver(repo, nombre, game_id, settings)
+    nombre = nombre_valido(nombre)
+    if estado != "no_encontrado" or game_id or nombre is None or not settings.llm_active:
+        return estado, juegos, None, [], None
+    from openai import AsyncOpenAI
+
+    try:
+        cliente = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+        salida = await cliente.responses.parse(
+            model=settings.llm_model_fast,
+            input=(
+                "Un usuario hispanohablante busca un juego de mesa llamado «"
+                + nombre
+                + "». Devuelve hasta 5 traducciones literales al inglés, incluidas variantes del "
+                "adjetivo (por ejemplo wondrous, marvelous, wonderful, amazing), y hasta 3 juegos "
+                "de mesa que creas que son, en ese orden. No expliques nada."
+            ),
+            text_format=_TitulosTraducidosLlm,
+        )
+        literales = salida.output_parsed.traducciones_literales[:5] if salida.output_parsed else []
+        identificaciones = (
+            (salida.output_parsed.identificaciones or salida.output_parsed.titulos)[:3]
+            if salida.output_parsed
+            else []
+        )
+        titulos = list(dict.fromkeys([*literales, *identificaciones]))
+    except Exception as error:  # noqa: BLE001
+        return (
+            estado,
+            juegos,
+            None,
+            [],
+            {
+                "llm_called": True,
+                "traducciones_literales": [],
+                "identificaciones": [],
+                "error": str(error)[:300],
+            },
+        )
+    juegos_catalogo = await repo.todos_los_juegos()
+    coincidencias: list[dict[str, Any]] = []
+    encontrados: list[tuple[bool, float, int, Game]] = []
+    for orden, titulo_original in enumerate(titulos):
+        titulo = nombre_valido(titulo_original)
+        consulta = normalizar_nombre(titulo) if titulo else ""
+        if not consulta:
+            continue
+        # Un solo candidato por título propuesto: su mejor coincidencia con WRatio >= 90.
+        mejor = max(
+            (
+                (fuzz.WRatio(consulta, normalizar_nombre(juego.nombre)), juego)
+                for juego in juegos_catalogo
+            ),
+            default=None,
+            key=lambda item: (item[0], item[1].users_rated or 0),
+        )
+        coincidencia = mejor[1] if mejor and mejor[0] >= 90 else None
+        coincidencias.append(
+            {"propuesta": titulo, "coincidencias": [coincidencia.id] if coincidencia else []}
+        )
+        if coincidencia and mejor:
+            exacta = _sin_articulo(consulta) == _sin_articulo(
+                normalizar_nombre(coincidencia.nombre)
+            )
+            encontrados.append((exacta, 100.0 if exacta else mejor[0], orden, coincidencia))
+    # Exacta normalizada primero, luego mayor puntaje y, al empatar, el orden de la lista.
+    encontrados.sort(key=lambda item: (not item[0], -item[1], item[2]))
+    candidatos = list({item[3].id: item[3] for item in encontrados}.values())[:3]
+    traza = {
+        "llm_called": True,
+        "traducciones_literales": literales,
+        "identificaciones": identificaciones,
+        "coincidencias": coincidencias,
+    }
+    return (
+        ("ambiguo", tuple(candidatos), None, titulos, traza)
+        if candidatos
+        else (estado, (), None, titulos, traza)
+    )
+
+
+async def _validar_plan_con_juego(
+    plan: PlanLlm,
+    mensaje: str,
+    repo: CatalogoRepository,
+    coleccion: list[Game],
+    settings: Settings,
+) -> PlanLlm:
+    if any(paso.tool in {"evaluar_compra", "detalle_juego"} for paso in plan.steps):
+        return plan
+    nombre = _extraer_nombre_juego(mensaje)
+    if nombre is None:
+        return plan
+    estado, juegos = await _resolver(repo, nombre, None, settings)
+    if estado != "encontrado":
+        return plan
+    juego = juegos[0]
+    consulta_normalizada = normalizar_nombre(nombre)
+    titulo_normalizado = normalizar_nombre(juego.nombre.split(":", maxsplit=1)[0])
+    if consulta_normalizada not in {normalizar_nombre(juego.nombre), titulo_normalizado}:
+        return plan
+    en_coleccion = any(item.id == juego.id for item in coleccion)
+    tool = "detalle_juego" if en_coleccion else "evaluar_compra"
+    intent = "detalle_juego" if en_coleccion else "evaluar_compra"
+    return PlanLlm(intent=intent, steps=[PasoPlan(id="1", tool=tool, args={"game_id": juego.id})])
+
+
+def _sin_articulo(normalizado: str) -> str:
+    """Ignora el artículo inicial (the, a, an, el, la, los, las) al comparar títulos."""
+    return re.sub(r"^(?:the|a|an|el|la|los|las)\s+", "", normalizado)
+
+
+async def _buscar_alias(
+    session: AsyncSession, user_id: str, perfil_id: str, nombre: str
+) -> ConfirmedAlias | None:
+    return await session.scalar(
+        select(ConfirmedAlias).where(
+            ConfirmedAlias.user_id == user_id,
+            ConfirmedAlias.profile_id == perfil_id,
+            ConfirmedAlias.alias_normalizado == normalizar_nombre(nombre),
+        )
+    )
+
+
+async def _guardar_alias(
+    session: AsyncSession, user_id: str, perfil_id: str, nombre: str, game_id: str, origen: str
+) -> bool:
+    clave = normalizar_nombre(nombre)
+    if not clave:
+        return False
+    existente = await _buscar_alias(session, user_id, perfil_id, nombre)
+    if existente is not None:
+        existente.game_id, existente.origen = game_id, origen
+    else:
+        session.add(
+            ConfirmedAlias(
+                user_id=user_id,
+                profile_id=perfil_id,
+                alias_normalizado=clave,
+                game_id=game_id,
+                origen=origen,
+            )
+        )
+    return True
+
+
+async def _consulta_pendiente(
+    session: AsyncSession, session_id: str
+) -> tuple[str, set[str]] | None:
+    """Nombre buscado y candidatos de la última consulta de la sesión que quedó sin resolver."""
+    run = await session.scalar(
+        select(AgentRun)
+        .where(AgentRun.session_id == session_id)
+        .order_by(AgentRun.creado_en.desc())
+        .limit(1)
+    )
+    if run is None:
+        return None
+    llamadas = (await session.scalars(select(ToolCall).where(ToolCall.run_id == run.id))).all()
+    for llamada in llamadas:
+        resultado = llamada.resultado or {}
+        nombre = nombre_valido(llamada.argumentos.get("nombre"))
+        if nombre and resultado.get("estado") in {"ambiguo", "no_encontrado"}:
+            return nombre, {candidato["id"] for candidato in resultado.get("candidatos", [])}
+    return None
+
+
+_MESES = {
+    "Jan": "ene",
+    "Feb": "feb",
+    "Mar": "mar",
+    "Apr": "abr",
+    "May": "may",
+    "Jun": "jun",
+    "Jul": "jul",
+    "Aug": "ago",
+    "Sep": "sep",
+    "Oct": "oct",
+    "Nov": "nov",
+    "Dec": "dic",
+}
+
+
+def _experiencia(juego: Game) -> dict[str, Any]:
+    """Datos del juego para describir qué experiencia ofrece: familias, peso, duración y más."""
+    duracion = juego.nivel_duracion
+    return {
+        key: valor
+        for key, valor in {
+            "familias_mecanicas": list(juego.familias_mec or []),
+            "familias_tematicas": list(juego.familias_tema or []),
+            "nivel_peso": juego.nivel_peso,
+            "nivel_duracion": f"{duracion} minutos" if duracion else None,
+            "nivel_jugadores": list(juego.nivel_jugadores or []),
+            "nivel_interaccion": juego.nivel_interaccion,
+        }.items()
+        if valor
+    }
+
+
+def _etiqueta_nivel(eje: str, nivel: str) -> str:
+    """Nivel legible; la duración lleva su unidad."""
+    unidad = " minutos" if eje == "Duración" and "minutos" not in nivel else ""
+    return f"{eje}: {nivel}{unidad}"
+
+
+def _fecha_corta(fecha: datetime) -> str:
+    texto = fecha.strftime("%-d %b %Y").replace(".", "")
+    for origen, destino in _MESES.items():
+        texto = texto.replace(origen, destino)
+    return texto
+
+
+def _texto_precio(juego: Game) -> str:
+    """Precio de referencia con fuente y fecha, o la indicación de que no es confiable."""
+    if juego.precio_usd is None or not juego.precio_confiable:
+        return "sin precio confiable"
+    fecha = f", {_fecha_corta(juego.fecha_precio)}" if juego.fecha_precio else ""
+    return f"USD {float(juego.precio_usd):.2f} (BoardGamePrices{fecha})"
+
+
+def _etiqueta_similitud(
+    total: float, veredicto: str, umbral_redundante: float, umbral_parecido: float
+) -> str:
+    """Etiqueta con los umbrales del motor. Solo el veredicto puede llamar redundante."""
+    if total >= umbral_redundante:
+        return "redundante" if veredicto == "redundante" else "muy parecido"
+    return "parecido" if total >= umbral_parecido else "distinto"
+
+
+def _nota_interpretacion(interpretado: dict[str, str]) -> str:
+    # No indica que viene de un alias: otras personas del mismo café no deben ver esa señal.
+    return f"Interpreté «{interpretado['buscado']}» como «{interpretado['resuelto']}»."
+
+
+async def _ejecutar_tool(
+    nombre: str,
+    args: dict[str, Any],
+    session: AsyncSession,
+    user_id: str,
+    perfil: Any,
+    request: Any,
+    settings: Settings,
+) -> dict[str, Any]:
+    if nombre in {"detalle_juego", "evaluar_compra"} and (
+        nombre_valido(args.get("nombre")) is None
+        and not (isinstance(args.get("game_id"), str) and args["game_id"].strip())
+    ):
+        raise ValueError("La herramienta requiere un nombre o identificador de juego válido.")
+    artefactos = _artefactos(request)
+    repo = CatalogoRepository(session)
+    coleccion = await _coleccion(session, type("Usuario", (), {"id": user_id})(), perfil.id)
+    if nombre == "ver_coleccion":
+        return {
+            "juegos": [_juego_detalle(juego).model_dump(mode="json") for juego in coleccion],
+            "total": len(coleccion),
+        }
+    if nombre == "que_me_falta":
+        resultado = cobertura(artefactos, coleccion, perfil.metas)
+        return {
+            "ejes": {
+                eje: {
+                    "faltantes": list(valor.faltantes),
+                    "debiles": valor.debiles,
+                    "cubiertos": list(valor.cubiertos),
+                }
+                for eje, valor in resultado.ejes.items()
+            }
+        }
+    if nombre == "que_saco_hoy":
+        jugadores, minutos = int(args.get("jugadores", 4)), float(args.get("minutos", 60))
+        juegos = que_saco_hoy(coleccion, jugadores, minutos, args.get("edad_minima"))
+        return {
+            "juegos": [
+                {
+                    **_juego(juego, artefactos).model_dump(mode="json"),
+                    "nivel_ajuste": "ideal" if ideal else "funciona",
+                }
+                for juego, ideal in juegos
+            ]
+        }
+    if nombre == "que_compro":
+        candidatos = [
+            juego
+            for juego in await repo.todos_los_juegos()
+            if not juego_excluido_del_plan(perfil.id, juego.nombre, juego.mechanics or [])
+        ]
+        planes = opciones_compra(
+            artefactos,
+            coleccion,
+            candidatos,
+            n=int(args.get("n", 5)),
+            modo="juego",
+            average_min=float(args.get("average_min", 0)),
+            users_rated_min=int(args.get("users_rated_min", settings.users_rated_min)),
+            metas=perfil.metas,
+        )
+        return {
+            "opciones": [
+                {
+                    "etiqueta": etiqueta,
+                    "juegos": [
+                        _juego(juego, artefactos).model_dump(mode="json") for juego in plan.juegos
+                    ],
+                    "valor_cubierto": plan.valor_cubierto,
+                    "valor_pendiente": plan.valor_pendiente,
+                }
+                for etiqueta, plan in zip(("A", "B", "C"), planes, strict=True)
+            ]
+        }
+    # Un alias confirmado antes se resuelve directo, sin identificación por LLM.
+    origen_resolucion = None
+    alias = (
+        await _buscar_alias(session, user_id, perfil.id, args["nombre"])
+        if not args.get("game_id") and nombre_valido(args.get("nombre"))
+        else None
+    )
+    juego_alias = await repo.obtener_juego(alias.game_id) if alias else None
+    if juego_alias is not None:
+        escrito = nombre_valido(args["nombre"]) or ""
+        interpretado = (
+            None
+            if normalizar_nombre(escrito) == normalizar_nombre(juego_alias.nombre)
+            else {"buscado": escrito, "resuelto": juego_alias.nombre, "origen": "alias"}
+        )
+        resolucion: Any = ("encontrado", (juego_alias,), interpretado, [], None)
+        origen_resolucion = "alias"
+    else:
+        resolucion = await _resolver_con_traduccion(
+            repo, args.get("nombre"), args.get("game_id"), settings
+        )
+    estado, juegos_resueltos, interpretado_como, sugerencias_traduccion, traza_traduccion = (
+        resolucion
+    )
+    if estado != "encontrado":
+        return {
+            "estado": estado,
+            "candidatos": [
+                {"id": juego.id, "nombre": juego.nombre, "imagen_url": juego.image_url}
+                for juego in juegos_resueltos
+            ],
+            "sugerencias_traduccion": sugerencias_traduccion,
+            "traza_traduccion": traza_traduccion,
+        }
+    juego = juegos_resueltos[0]
+    if nombre == "detalle_juego":
+        return {
+            "estado": "encontrado",
+            "juego": _juego_detalle(juego).model_dump(mode="json"),
+            "ya_en_coleccion": any(item.id == juego.id for item in coleccion),
+            "precio_texto": _texto_precio(juego),
+            "niveles_del_juego": [
+                _etiqueta_nivel(eje, nivel)
+                for eje, nivel in sorted(niveles_de_juego(juego, artefactos.tipos))
+            ],
+            "origen_resolucion": origen_resolucion,
+            "interpretado_como": interpretado_como,
+            "sugerencias_traduccion": sugerencias_traduccion,
+            "traza_traduccion": traza_traduccion,
+        }
+    sin_candidato = [item for item in coleccion if item.id != juego.id]
+    if any(item.id == juego.id for item in coleccion):
+        from app.api.v1.engine import _impacto_cobertura
+
+        return {
+            "estado": "encontrado",
+            "ya_en_coleccion": True,
+            "juego": _juego(juego, artefactos).model_dump(mode="json"),
+            "precio_texto": _texto_precio(juego),
+            "origen_resolucion": origen_resolucion,
+            "impacto_venta": _impacto_cobertura(
+                artefactos, coleccion, sin_candidato, perfil.metas
+            ).model_dump(mode="json"),
+            "interpretado_como": interpretado_como,
+            "sugerencias_traduccion": sugerencias_traduccion,
+            "traza_traduccion": traza_traduccion,
+        }
+    veredicto, cercano, similitud, exacta = evaluar_redundancia(
+        artefactos, juego, sin_candidato, perfil.metas
+    )
+    huecos = {
+        (eje, nivel): "faltante"
+        for eje, eje_cobertura in cobertura(artefactos, sin_candidato, perfil.metas).ejes.items()
+        for nivel in eje_cobertura.faltantes
+    }
+    cubre = niveles_de_juego(juego, artefactos.tipos)
+    ejes_sin_candidato = cobertura(artefactos, sin_candidato, perfil.metas).ejes
+
+    def niveles_en(estado_nivel: str) -> list[str]:
+        return [
+            _etiqueta_nivel(eje, nivel)
+            for eje, nivel in sorted(cubre)
+            if eje in ejes_sin_candidato and nivel in getattr(ejes_sin_candidato[eje], estado_nivel)
+        ]
+
+    return {
+        "estado": "encontrado",
+        "veredicto": veredicto,
+        "similitud_etiqueta": _etiqueta_similitud(
+            similitud.total, veredicto, artefactos.umbral_redundante, artefactos.umbral_parecido
+        )
+        if similitud
+        else None,
+        "faltantes_que_cubre": niveles_en("faltantes"),
+        "debiles_que_refuerza": niveles_en("debiles"),
+        "ya_cubiertos": niveles_en("cubiertos"),
+        "experiencia_del_juego": _experiencia(juego),
+        "precio_texto": _texto_precio(juego),
+        "origen_resolucion": origen_resolucion,
+        "juego": _juego(juego, artefactos, huecos).model_dump(mode="json"),
+        "juego_mas_parecido": _juego(cercano, artefactos).model_dump(mode="json")
+        if cercano
+        else None,
+        "similitud": similitud.__dict__ if similitud else None,
+        "regla_exacta": _motivo_regla_exacta(juego, cercano) if exacta and cercano else None,
+        "niveles_que_cubre": [nivel.model_dump() for nivel in _niveles(juego, artefactos, huecos)],
+        "interpretado_como": interpretado_como,
+        "sugerencias_traduccion": sugerencias_traduccion,
+        "traza_traduccion": traza_traduccion,
+    }
+
+
+def _motivo_regla_exacta(juego: Game, parecido: Game) -> str:
+    if set(juego.product_line or []) & set(parecido.product_line or []):
+        return "misma_linea_de_producto"
+    return "reimplementa"
+
+
+_AVISO_INGLES = "Entiendo mejor los nombres en inglés; si tu juego no aparece, escríbelo en inglés."
+
+
+def _es_respuesta_determinista(intent: str, resultados: list[dict[str, Any]]) -> bool:
+    if intent == "general" and not resultados:
+        return True
+    return bool(resultados) and resultados[0].get("estado") in {"ambiguo", "no_encontrado"}
+
+
+def _lista_natural(items: list[str], maximo: int = 3) -> str:
+    items = items[:maximo]
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " y " + items[-1]
+
+
+def _encabezado_evaluacion(resultado: dict[str, Any]) -> str:
+    """Veredicto determinista: lo escribe el backend, no el narrador."""
+    juego, similar = resultado["juego"], resultado.get("juego_mas_parecido")
+    cubre_huecos = bool(resultado.get("faltantes_que_cubre"))
+    refuerza = bool(resultado.get("debiles_que_refuerza"))
+    veredicto = resultado.get("veredicto")
+    if veredicto == "parecido_pero_cubre_hueco":
+        # El motor cuenta como hueco un nivel faltante o débil: el texto debe decir cuál.
+        complemento = (
+            "cubre huecos"
+            if cubre_huecos
+            else "refuerza tu colección"
+            if refuerza
+            else "aporta algo a tu colección"
+        )
+        frase = f"se parece a un juego tuyo, pero {complemento}"
+    elif veredicto == "redundante":
+        frase = "es redundante con tu colección"
+    elif veredicto == "parecido":
+        frase = "se parece a lo que ya tienes"
+    else:
+        frase = (
+            "aporta a tu colección"
+            if cubre_huecos or refuerza
+            else "es distinto de lo que ya tienes"
+        )
+    texto = f"**{juego['nombre']}** {frase}."
+    if resultado.get("regla_exacta") == "misma_linea_de_producto" and similar:
+        texto += f" Comparte línea de producto con **{similar['nombre']}**."
+    elif resultado.get("regla_exacta") == "reimplementa" and similar:
+        texto += f" Reimplementa **{similar['nombre']}**."
+    return texto
+
+
+def _oraciones_aporte(resultado: dict[str, Any]) -> str:
+    """Oración determinista de aporte: huecos que cubre y niveles débiles que refuerza."""
+    faltantes = resultado.get("faltantes_que_cubre") or []
+    debiles = resultado.get("debiles_que_refuerza") or []
+    oraciones: list[str] = []
+    if faltantes:
+        titulo = "Cubre un hueco" if len(faltantes) == 1 else "Cubre huecos"
+        oraciones.append(f"{titulo}: {_lista_natural(faltantes, 4)}.")
+    if debiles:
+        titulo = "Refuerza un nivel débil" if len(debiles) == 1 else "Refuerza niveles débiles"
+        oraciones.append(f"{titulo}: {_lista_natural(debiles, 4)}.")
+    return " ".join(oraciones) or "No cubre huecos nuevos; se ubica en zonas que ya tienes."
+
+
+def _oracion_parecido(resultado: dict[str, Any]) -> str:
+    similar, similitud = resultado.get("juego_mas_parecido"), resultado.get("similitud")
+    if not (similar and similitud):
+        return ""
+    return f"Se parece en un {round(similitud['total'] * 100)}% a {similar['nombre']}."
+
+
+def _descripcion_experiencia(resultado: dict[str, Any]) -> str:
+    """Respaldo determinista de la oración del narrador: qué experiencia ofrece el juego."""
+    datos = resultado.get("experiencia_del_juego") or {}
+    partes: list[str] = []
+    if datos.get("nivel_peso"):
+        partes.append(f"de peso {datos['nivel_peso']}")
+    if datos.get("nivel_duracion"):
+        partes.append(f"de {datos['nivel_duracion']}")
+    texto = "Es un juego " + ", ".join(partes) if partes else "Es un juego"
+    mecanicas = datos.get("familias_mecanicas") or []
+    if mecanicas:
+        texto += f" con mecánicas de {_lista_natural(mecanicas, 3)}"
+    tematica = datos.get("familias_tematicas") or []
+    if tematica:
+        texto += f" y temática de {_lista_natural(tematica, 2)}"
+    return texto + "."
+
+
+def _cuerpo_evaluacion(resultado: dict[str, Any]) -> str:
+    """Plantilla de respaldo: aporte y parecido deterministas más la descripción del juego."""
+    partes = [_oraciones_aporte(resultado), _oracion_parecido(resultado)]
+    return " ".join(parte for parte in partes if parte) + " " + _descripcion_experiencia(resultado)
+
+
+def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
+    if intent == "reglas":
+        return "Las consultas de reglas llegarán en una versión próxima."
+    if intent == "fuera_de_dominio":
+        return "Mi experiencia se limita al análisis y recomendación de juegos de mesa."
+    if intent == "general" and not resultados:
+        return "¿De qué juego me hablas? Escríbeme su nombre."
+    resultado = resultados[0] if resultados else {}
+    if resultado.get("estado") == "ambiguo":
+        return "**¿Te refieres a…?**\n\n" + _AVISO_INGLES
+    if resultado.get("estado") == "no_encontrado":
+        return "**No encontré ese juego**\n\n" + _AVISO_INGLES
+    if intent == "evaluar_compra":
+        interpretacion = resultado.get("interpretado_como")
+        prefijo = f"{_nota_interpretacion(interpretacion)}\n\n" if interpretacion else ""
+        if resultado.get("ya_en_coleccion"):
+            return (
+                prefijo + f"**{resultado['juego']['nombre']}** ya está en tu colección.\n\n"
+                "- 📦 La tarjeta muestra el impacto de simular su venta.\n"
+                "- 🧩 Así puedes revisar la cobertura que perderías.\n\n"
+                "💡 ¿Quieres simular la venta de otro juego?"
+            )
+        return prefijo + _encabezado_evaluacion(resultado) + "\n\n" + _cuerpo_evaluacion(resultado)
+    if intent == "que_me_falta":
+        faltantes = [
+            f"{eje}: {', '.join(valor['faltantes'])}"
+            for eje, valor in resultado["ejes"].items()
+            if valor["faltantes"]
+        ]
+        debiles = [
+            f"{eje}: {', '.join(valor['debiles'])}"
+            for eje, valor in resultado["ejes"].items()
+            if valor["debiles"]
+        ]
+        return (
+            "**Huecos de la colección**\n\n**Faltantes:** "
+            + ("; ".join(faltantes) or "ninguno.")
+            + "\n\n**Débiles:** "
+            + ("; ".join(debiles) or "ninguno.")
+        )
+    if intent == "que_compro":
+        opciones = [
+            f"**{opcion['etiqueta']}**: "
+            f"{', '.join(juego['nombre'] for juego in opcion['juegos']) or 'sin candidatos'} "
+            f"(valor cubierto: {opcion['valor_cubierto']:.2f})"
+            for opcion in resultado["opciones"]
+        ]
+        return (
+            "Planes por número de juegos:\n\n"
+            + "\n".join(opciones)
+            + "\n\n¿Quieres evaluar uno de estos juegos?"
+        )
+    if intent == "que_saco_hoy":
+        return "Para esta mesa: " + (
+            ", ".join(juego["nombre"] for juego in resultado["juegos"])
+            or "no hay juegos que pasen los filtros."
+        )
+    if intent == "coleccion":
+        return f"Tu colección activa tiene {resultado['total']} juegos."
+    interpretacion = resultado.get("interpretado_como")
+    prefijo = f"{_nota_interpretacion(interpretacion)}\n\n" if interpretacion else ""
+    en_coleccion = resultado.get("ya_en_coleccion")
+    estado = "📦 ya está en tu colección" if en_coleccion else "está disponible en el catálogo"
+    return (
+        prefijo + f"**{resultado['juego']['nombre']}** {estado}.\n\n"
+        "- 🎲 Consulta los datos principales en la tarjeta.\n\n"
+        "💡 ¿Quieres evaluar otro juego?"
+    )
+
+
+def _sugerencia_final(intent: str, resultados: list[dict[str, Any]]) -> str:
+    resultado = resultados[0] if resultados else {}
+    if resultado.get("ya_en_coleccion"):
+        return "💡 ¿Quieres simular qué pasaría si lo vendes?"
+    return {
+        "evaluar_compra": "💡 ¿Quieres ver qué le falta a tu colección?",
+        "que_me_falta": "💡 ¿Armamos un plan de 3 juegos para cubrir esos huecos?",
+        "que_compro": "💡 ¿Quieres evaluar otro juego?",
+        "que_saco_hoy": "💡 ¿Quieres probar otra mesa?",
+        "detalle_juego": "💡 ¿Quieres evaluar otro juego?",
+        "coleccion": "💡 ¿Quieres ver qué le falta a tu colección?",
+    }.get(intent, "💡 ¿Quieres evaluar otro juego?")
+
+
+def _con_sugerencia_final(respuesta: str, intent: str, resultados: list[dict[str, Any]]) -> str:
+    if intent == "general" and not resultados:
+        return respuesta  # La aclaración es una pregunta y no admite sugerencia final.
+    lineas = [
+        linea
+        for linea in respuesta.splitlines()
+        if not linea.lstrip().startswith("💡") and "?" not in linea and "¿" not in linea
+    ]
+    return "\n".join(lineas).rstrip() + "\n\n" + _sugerencia_final(intent, resultados)
+
+
+def _con_encabezado(respuesta: str, intent: str, resultados: list[dict[str, Any]]) -> str:
+    """Antepone el veredicto determinista al texto del narrador en una evaluación."""
+    resultado = resultados[0] if resultados else {}
+    if (
+        intent != "evaluar_compra"
+        or resultado.get("estado") != "encontrado"
+        or resultado.get("ya_en_coleccion")
+        or "juego" not in resultado
+    ):
+        return respuesta
+    deterministas = " ".join(
+        parte for parte in (_oraciones_aporte(resultado), _oracion_parecido(resultado)) if parte
+    )
+    return _encabezado_evaluacion(resultado) + "\n\n" + deterministas + " " + respuesta
+
+
+def _agregar_precio(respuesta: str, resultados: list[dict[str, Any]]) -> str:
+    """Inserta la línea determinista de precio antes de la sugerencia final.
+
+    Va después de la crítica: si el narrador menciona un precio, el crítico lo ve sin la fuente
+    que agrega el backend y lo rechaza.
+    """
+    precio = resultados[0].get("precio_texto") if resultados else None
+    if not precio:
+        return respuesta
+    linea = f"Precio de referencia: {precio}."
+    cuerpo, separador, sugerencia = respuesta.rpartition("\n\n💡")
+    return f"{cuerpo}\n\n{linea}{separador}{sugerencia}" if separador else f"{respuesta}\n\n{linea}"
+
+
+def _sanear_narrador(texto: str) -> str:
+    """El narrador escribe prosa: sin markdown ni guiones largos o medios."""
+    texto = re.sub(r"\*+|__", "", texto)
+    texto = texto.replace(" \u2014 ", ", ").replace(" \u2013 ", ", ")
+    return texto.replace("\u2014", ",").replace("\u2013", ",")
+
+
+def _sanear_negritas(respuesta: str) -> str:
+    """Evita que una línea con markdown incompleto afecte el resto de la respuesta."""
+    return "\n".join(
+        linea.replace("**", "") if linea.count("**") % 2 else linea
+        for linea in respuesta.splitlines()
+    )
+
+
+def _emoji_resultado(intent: str, resultados: list[dict[str, Any]]) -> str:
+    resultado = resultados[0] if resultados else {}
+    if resultado.get("estado") in {"no_encontrado", "ambiguo"}:
+        return "🎲"
+    if resultado.get("ya_en_coleccion"):
+        return "📦"
+    if resultado.get("veredicto") == "redundante":
+        return "⚠️"
+    if resultado.get("veredicto") == "parecido":
+        return "🔁"
+    if resultado.get("veredicto") in {"aporta", "parecido_pero_cubre_hueco", "complementario"}:
+        return "✅"
+    return {"que_me_falta": "🧩", "que_compro": "🛒"}.get(intent, "🎲")
+
+
+def _presentar_respuesta(respuesta: str, intent: str, resultados: list[dict[str, Any]]) -> str:
+    respuesta = _sanear_negritas(respuesta).strip()
+    presentada = (
+        f"{_emoji_resultado(intent, resultados)} {respuesta}"
+        if respuesta
+        else _emoji_resultado(intent, resultados)
+    )
+    interpretado = resultados[0].get("interpretado_como") if resultados else None
+    if interpretado and interpretado.get("origen") == "alias":
+        nota = _nota_interpretacion(interpretado)
+        if nota not in presentada:
+            presentada = f"{nota}\n\n{presentada}"
+    return presentada
+
+
+_ETIQUETAS_CLAVES = {
+    "estado": "Estado",
+    "veredicto": "Evaluación del motor",
+    "similitud_etiqueta": "Qué tan parecido",
+    "faltantes_que_cubre": "Huecos que cubre",
+    "debiles_que_refuerza": "Niveles que refuerza",
+    "ya_cubiertos": "Ya cubiertos",
+    "niveles_del_juego": "Niveles del juego",
+    "juego": "Juego",
+    "juego_mas_parecido": "Juego más parecido",
+    "similitud": "Similitud",
+    "total": "Total",
+    "mecanicas": "Mecánicas",
+    "ocasion": "Ocasión",
+    "interaccion": "Interacción",
+    "tematica": "Temática",
+    "regla_exacta": "Regla exacta",
+    "ya_en_coleccion": "Ya está en la colección",
+    "nombre": "Nombre",
+    "peso": "Peso",
+    "promedio": "Promedio",
+    "experiencia_del_juego": "Experiencia del juego",
+    "familias_mecanicas": "Familias de mecánicas",
+    "familias_tematicas": "Familias temáticas",
+    "nivel_peso": "Nivel de peso",
+    "nivel_duracion": "Nivel de duración",
+    "nivel_interaccion": "Nivel de interacción",
+    "nivel_jugadores": "Nivel de jugadores",
+    "peso_estimado": "Peso estimado",
+    "peso_pocos_votos": "Peso con pocos votos",
+    "duracion_estimada": "Duración estimada",
+    "jugadores_estimados": "Jugadores estimados",
+    "interpretado_como": "Interpretación del título",
+    "buscado": "Buscado",
+    "resuelto": "Resuelto",
+    "candidatos": "Candidatos",
+}
+_VALORES_LEGIBLES = {
+    "parecido_pero_cubre_hueco": "parecido, pero cubre un hueco",
+    "misma_linea_de_producto": "misma línea de producto",
+    "no_encontrado": "no encontrado",
+}
+
+
+def _vista_legible(resultados: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Vista para el narrador y el crítico LLM: claves y valores en español, sin guiones bajos."""
+
+    def convertir(valor: Any) -> Any:
+        if isinstance(valor, dict):
+            return {
+                _ETIQUETAS_CLAVES.get(clave)
+                or (lambda texto: texto[:1].upper() + texto[1:])(
+                    clave.replace("_", " ")
+                ): convertir(item)
+                for clave, item in valor.items()
+            }
+        if isinstance(valor, list):
+            return [convertir(item) for item in valor]
+        if isinstance(valor, str):
+            return _VALORES_LEGIBLES.get(valor, valor.replace("_", " "))
+        return valor
+
+    return [convertir(resultado) for resultado in _formatear_resultados_narrador(resultados)]
+
+
+_CLAVES_FUERA_DEL_NARRADOR = {
+    "imagen_url",
+    "thumbnail",
+    "fuentes",
+    "evidencia",
+    "traza_traduccion",
+    "origen_resolucion",
+    "precio_usd",
+    "fecha_precio",
+    "precio_confiable",
+    "n_ofertas_us_stock",
+    "url_bgp",
+    "bgp_url",
+    "precio_texto",
+    "niveles_que_cubre",
+}
+
+
+def _formatear_resultados_narrador(resultados: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Copia para el narrador: sin precios, similitud en porcentaje y niveles explícitos."""
+
+    def recorrer(valor: Any, clave: str | None = None, es_similitud: bool = False) -> Any:
+        if isinstance(valor, dict):
+            if clave == "interpretado_como" and valor.get("origen") == "alias":
+                return None  # La nota de alias la agrega el backend.
+            return {
+                nombre: recorrer(item, nombre, es_similitud or nombre == "similitud")
+                for nombre, item in valor.items()
+                if nombre not in _CLAVES_FUERA_DEL_NARRADOR and not nombre.endswith("_url")
+            }
+        if isinstance(valor, list):
+            return [recorrer(item, clave, es_similitud) for item in valor]
+        if clave == "peso" and isinstance(valor, (int, float)):
+            return f"{valor:.1f}"
+        if (
+            es_similitud
+            and clave in {"total", "mecanicas", "ocasion", "interaccion", "tematica"}
+            and isinstance(valor, (int, float))
+        ):
+            return f"{round(valor * 100)}%"
+        return valor
+
+    copia = [recorrer(resultado) for resultado in resultados]
+    for resultado in copia:
+        if resultado.get("interpretado_como") is None:
+            resultado.pop("interpretado_como", None)
+    return copia
+
+
+def _valores(resultados: list[dict[str, Any]]) -> list[Any]:
+    valores: list[Any] = []
+
+    def recorrer(valor: Any) -> None:
+        if isinstance(valor, dict):
+            for item in valor.values():
+                recorrer(item)
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer(item)
+        else:
+            valores.append(valor)
+
+    for resultado in resultados:
+        recorrer(resultado)
+    return valores
+
+
+def _encontrar_banderas(resultados: list[dict[str, Any]]) -> bool:
+    banderas = {
+        "weight_imputado",
+        "weight_pocos_votos",
+        "duracion_imputada",
+        "jugadores_imputados",
+    }
+
+    def recorrer(valor: Any) -> bool:
+        if isinstance(valor, dict):
+            return any(clave in banderas and item is True for clave, item in valor.items()) or any(
+                recorrer(item) for item in valor.values()
+            )
+        if isinstance(valor, list):
+            return any(recorrer(item) for item in valor)
+        return False
+
+    return any(recorrer(resultado) for resultado in resultados)
+
+
+def _fuentes_web(resultados: list[dict[str, Any]]) -> set[str]:
+    fuentes: set[str] = set()
+
+    def recorrer(valor: Any) -> None:
+        if isinstance(valor, dict):
+            for clave, item in valor.items():
+                if clave in {"fuentes", "url", "source_url"}:
+                    recorrer_fuente(item)
+                recorrer(item)
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer(item)
+
+    def recorrer_fuente(valor: Any) -> None:
+        if isinstance(valor, str) and valor.startswith(("https://", "http://")):
+            fuentes.add(valor)
+        elif isinstance(valor, dict):
+            for item in valor.values():
+                recorrer_fuente(item)
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer_fuente(item)
+
+    for resultado in resultados:
+        recorrer(resultado)
+    return fuentes
+
+
+def _origen_web(resultados: list[dict[str, Any]]) -> bool:
+    return any(valor == "web" for valor in _valores(resultados))
+
+
+def _numeros_permitidos(resultados: list[dict[str, Any]]) -> list[float]:
+    permitidos: list[float] = []
+
+    def registrar(valor: Any) -> None:
+        if isinstance(valor, bool):
+            return
+        if isinstance(valor, (int, float)):
+            permitidos.append(float(valor))
+        elif isinstance(valor, str):
+            for numero in re.findall(r"(?<![\w.])-?\d+(?:[.,]\d+)?", valor):
+                permitidos.append(float(numero.replace(",", ".")))
+
+    def recorrer(valor: Any) -> None:
+        if isinstance(valor, dict):
+            for clave, item in valor.items():
+                registrar(clave)
+                recorrer(item)
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer(item)
+        else:
+            registrar(valor)
+
+    for resultado in resultados:
+        recorrer(resultado)
+    return permitidos
+
+
+def _precio_tiene_fuente(respuesta: str) -> bool:
+    texto = respuesta.lower()
+    if "precio que capturaste" in texto:
+        return True
+    tiene_fecha = re.search(r"\b20\d{2}-\d{2}-\d{2}\b|\b\d{1,2}\s+[a-záéíóú]+\s+20\d{2}\b", texto)
+    return "boardgameprices" in texto and bool(tiene_fecha)
+
+
+def _valores_de_clave(resultados: list[dict[str, Any]], clave: str) -> set[str]:
+    valores: set[str] = set()
+
+    def recorrer(valor: Any) -> None:
+        if isinstance(valor, dict):
+            for nombre, item in valor.items():
+                if nombre == clave and isinstance(item, str):
+                    valores.add(item.lower())
+                recorrer(item)
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer(item)
+
+    for resultado in resultados:
+        recorrer(resultado)
+    return valores
+
+
+def _criticar_niveles(respuesta: str, resultados: list[dict[str, Any]]) -> list[str]:
+    hallazgos: list[str] = []
+    patrones = {
+        "peso": (
+            r"\bpeso(?:\s*/\s*complejidad)?\s*(?:es|:)?\s*(ligero|medio|pesado)",
+            "nivel_peso",
+        ),
+        "interacción": (
+            r"\binteracci[oó]n\s*(?:es|:)?\s*(directa|indirecta|ninguna)",
+            "nivel_interaccion",
+        ),
+        "duración": (
+            r"\bduraci[oó]n\s*(?:es|:)?\s*(corta|media|larga)",
+            "nivel_duracion",
+        ),
+    }
+    texto = respuesta.lower()
+    for etiqueta, (patron, clave) in patrones.items():
+        permitidos = _valores_de_clave(resultados, clave)
+        if not permitidos:
+            continue
+        for valor in re.findall(patron, texto):
+            if valor not in permitidos:
+                hallazgos.append(f"El nivel de {etiqueta} {valor} no aparece en los resultados.")
+                break
+    return hallazgos
+
+
+_PALABRAS_DE_VEREDICTO = re.compile(
+    r"\b(?:veredicto|propongo|te\s+recomiendo|recomiendo|te\s+sugiero|vale\s+la\s+pena)\b",
+    re.IGNORECASE,
+)
+
+
+def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> list[str]:
+    """Aplica las reglas de transparencia antes de gastar una llamada del critic."""
+    hallazgos: list[str] = []
+    if re.search(r"`[^`]+`", respuesta):
+        hallazgos.append(
+            "La respuesta no puede mencionar nombres internos entre comillas invertidas."
+        )
+    if any(funcion in respuesta.lower() for funcion in _FUNCIONES_NO_DISPONIBLES):
+        hallazgos.append(
+            "La respuesta menciona una función que no existe en el manifiesto de tools."
+        )
+    if re.search(r"\b[\wáéíóúñ]+_[\wáéíóúñ]+\b", respuesta, re.IGNORECASE):
+        hallazgos.append("La respuesta no puede mostrar identificadores internos con guion bajo.")
+    preguntas = [linea for linea in respuesta.splitlines() if "?" in linea or "¿" in linea]
+    if any(not linea.lstrip().startswith("💡") for linea in preguntas):
+        hallazgos.append(
+            "Solo la sugerencia final determinista puede hacer una pregunta de seguimiento."
+        )
+    for linea in respuesta.splitlines():
+        if linea.lstrip().startswith(("💡", "Precio de referencia")):
+            continue
+        if _PALABRAS_DE_VEREDICTO.search(linea):
+            hallazgos.append(
+                "El narrador no puede escribir veredictos ni recomendaciones: los agrega el "
+                "sistema."
+            )
+            break
+    if "redundante" in respuesta.lower() and not any(
+        item.get("veredicto") == "redundante" for item in resultados
+    ):
+        hallazgos.append("La respuesta llama redundante a un juego sin respaldo de una tool.")
+    if _encontrar_banderas(resultados) and "estimad" not in respuesta.lower():
+        hallazgos.append("Falta indicar que hay datos estimados.")
+    for item in resultados:
+        interpretado = item.get("interpretado_como")
+        texto_interpretacion = (
+            f"Interpreté «{interpretado['buscado']}» como «{interpretado['resuelto']}»"
+            if interpretado
+            else ""
+        )
+        if texto_interpretacion and texto_interpretacion not in respuesta:
+            hallazgos.append("Falta explicar cómo se interpretó el título en español.")
+    fuentes = _fuentes_web(resultados)
+    if _origen_web(resultados) and (
+        "web" not in respuesta.lower() or not any(fuente in respuesta for fuente in fuentes)
+    ):
+        hallazgos.append("Falta indicar el origen web y citar una fuente.")
+    menciona_precio = re.search(r"(?:\$\s*\d|\b\d+(?:[.,]\d+)?\s*(?:usd|dólares))", respuesta, re.I)
+    if menciona_precio and not _precio_tiene_fuente(respuesta):
+        hallazgos.append(
+            "Todo precio debe incluir BoardGamePrices con fecha o indicar que lo capturaste."
+        )
+    if any(item.get("estado") in {"ambiguo", "no_encontrado"} for item in resultados) and any(
+        palabra in respuesta.lower()
+        for palabra in ("veredicto", "similitud", "redundante", "aporta")
+    ):
+        hallazgos.append(
+            "No se puede presentar una evaluación para un resultado ambiguo o no encontrado."
+        )
+    for item in resultados:
+        if item.get("regla_exacta") and not any(
+            frase in respuesta.lower()
+            for frase in ("reimplement", "línea de producto", "linea de producto")
+        ):
+            hallazgos.append(
+                "Falta explicar la regla exacta por reimplementación o línea de producto."
+            )
+        if "opciones" in item:
+            for opcion in item["opciones"]:
+                etiqueta = opcion["etiqueta"]
+                if etiqueta not in respuesta or not re.search(
+                    rf"{re.escape(etiqueta)}[^\n]*valor cubierto", respuesta, re.I
+                ):
+                    hallazgos.append(f"El plan debe presentar {etiqueta} con su valor cubierto.")
+                    break
+            recomendada = re.search(r"opci[oó]n\s+([ABC])\s+recomendad", respuesta, re.I)
+            if recomendada and recomendada.group(1).upper() != "A":
+                hallazgos.append("Solo la opción A puede llamarse recomendada.")
+        if "ejes" in item and (
+            "faltantes" not in respuesta.lower() or "débiles" not in respuesta.lower()
+        ):
+            hallazgos.append("La respuesta de cobertura debe incluir faltantes y débiles.")
+    hallazgos.extend(_criticar_niveles(respuesta, resultados))
+
+    permitidos = _numeros_permitidos(resultados)
+    for numero in re.findall(r"(?<![\w.])-?\d+(?:[.,]\d+)?%?", respuesta):
+        valor = float(numero.rstrip("%").replace(",", "."))
+        candidatos = [valor] if not numero.endswith("%") else [valor, valor / 100]
+        if not any(
+            any(
+                abs(candidato - permitido) <= max(0.01, abs(permitido) * 0.015)
+                for permitido in permitidos
+            )
+            for candidato in candidatos
+        ):
+            hallazgos.append(f"La cifra {numero} no aparece en los resultados de las tools.")
+            break
+    return hallazgos
+
+
+async def _narrar_llm(
+    settings: Settings,
+    resultados: list[dict[str, Any]],
+    pregunta: str = "",
+    retroalimentacion: list[str | dict[str, str]] | None = None,
+) -> str:
+    """Redacta exclusivamente sobre los resultados serializados de las tools."""
+    from openai import AsyncOpenAI
+
+    instrucciones = (
+        "Eres el narrador de Wise Dice. Responde en español, sin emojis. "
+        "Nunca escribas veredictos, recomendaciones ni próximos pasos (veredicto, propongo, "
+        "te recomiendo, vale la pena): el sistema los agrega. Para evaluar_compra no escribas "
+        "encabezado ni cierre: el sistema ya escribe el aporte a la colección y el parecido. "
+        "Escribe una sola oración en prosa que describa qué experiencia ofrece el juego, usando "
+        "solo Experiencia del juego (familias de mecánicas, familias temáticas, peso e "
+        "interacción, con los mismos términos que aparecen allí). No menciones la duración ni "
+        "el número de jugadores. Sin números, sin veredicto, sin juicios sobre la colección y "
+        "sin mencionar huecos, similitud ni precio. No uses calificativos propios. "
+        "En los demás intents escribe de dos a cuatro oraciones "
+        "en prosa, sin línea final de acción. No uses emojis ni markdown: nada de asteriscos, "
+        "negritas, cursivas ni guiones largos. No pegues URLs. No enumeres mecánicas o categorías "
+        "crudas: si hace falta, "
+        "usa familias en español. Para detalle_juego, limita el texto al resumen: la tarjeta "
+        "contiene portada, datos, precio y enlace. Si aparece Interpretación del título, "
+        "escribe siempre Interpreté «X» como «Y». "
+        "Solo puedes afirmar hechos presentes literalmente en los resultados de las tools. "
+        "No uses conocimiento propio para describir jugabilidad, sensaciones, géneros ni "
+        "características: están prohibidos términos como eurogame, estructura de turno u "
+        "objetivos ocultos si no aparecen en los resultados. No inventes cifras, atributos, "
+        "fuentes ni recomendaciones. Si hay Regla exacta (reimplementa o misma línea de producto), "
+        "menciónala. La Similitud llega ya como porcentaje y con una "
+        "etiqueta en Qué tan parecido: usa solo ese porcentaje y esa etiqueta, sin "
+        "calificativos propios como mucho, poco o casi. Sobre niveles de cobertura, afirma solo "
+        "los que estén en "
+        "Huecos que cubre, Niveles que refuerza, Ya cubiertos o Niveles del juego, con el "
+        "nombre con que aparecen; un nivel faltante es un hueco de la colección, no una "
+        "característica del juego. Nunca llames afinidad o match a la similitud. En un "
+        "plan de compra, presenta A, B y C con su valor cubierto, y solo puedes llamar "
+        "recomendada a la opción A. En que_me_falta incluye faltantes y débiles. Nunca menciones "
+        "funciones que no estén en el manifiesto de tools, nombres internos entre comillas "
+        "invertidas, ni precio ni presupuesto: el sistema agrega el precio en una línea "
+        "aparte. Si los resultados no responden la pregunta, dilo en una línea y haz una sola "
+        "pregunta concreta."
+    )
+    if retroalimentacion:
+        hallazgos = [
+            hallazgo
+            if isinstance(hallazgo, str)
+            else f"{hallazgo.get('categoria', 'hallazgo')}: {hallazgo.get('detalle', '')}"
+            for hallazgo in retroalimentacion
+        ]
+        instrucciones += " Corrige estos incumplimientos: " + " ".join(hallazgos)
+    cliente = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+    respuesta = await cliente.responses.create(
+        model=settings.llm_model,
+        input=[
+            {"role": "system", "content": instrucciones},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "pregunta": pregunta,
+                        "resultados_tools": _vista_legible(resultados),
+                    },
+                    ensure_ascii=False,
+                    default=str,
+                ),
+            },
+        ],
+        temperature=settings.llm_temperature,
+        max_output_tokens=1200,
+    )
+    texto = (respuesta.output_text or "").strip()
+    if not texto:
+        raise ValueError("El narrador LLM devolvió una respuesta vacía.")
+    return texto
+
+
+async def _criticar_llm(
+    settings: Settings, respuesta: str, resultados: list[dict[str, Any]], pregunta: str = ""
+) -> list[dict[str, str]]:
+    """Segunda barrera: detecta solo afirmaciones sin respaldo de las tools."""
+    from openai import AsyncOpenAI
+
+    cliente = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+    salida = await cliente.responses.parse(
+        model=settings.llm_model_fast,
+        input=[
+            {
+                "role": "system",
+                "content": (
+                    "Eres el critic de Wise Dice. Contrasta cada afirmación de la respuesta "
+                    "con los resultados de las tools. La vista de resultados que recibes es la "
+                    "fuente de verdad: los porcentajes y las etiquetas (Qué tan parecido) ya "
+                    "vienen calculados por el motor, así que repetirlos no es una cifra sin "
+                    "fuente. Huecos que cubre, Niveles que refuerza y Ya cubiertos son niveles "
+                    "que tiene el juego evaluado frente a la colección: huecos que cubre, niveles "
+                    "débiles que refuerza y niveles que ya estaban cubiertos; decirlo está "
+                    "respaldado. Revisa cifras sin fuente, mecánicas o "
+                    "atributos "
+                    "ausentes, juegos no incluidos y recomendaciones sin respaldo. No uses "
+                    "conocimiento general: que un juego o atributo sea conocido no es evidencia. "
+                    "Una comparación o descripción solo está respaldada si los resultados "
+                    "contienen esa información. Una recomendación solo está respaldada si se "
+                    "limita a los juegos y razones que una tool devuelve. Si una afirmación no se "
+                    "puede vincular a los resultados, crea un hallazgo; ante la duda, recházala. "
+                    "Marca cualquier afirmación descriptiva sobre un juego que no figure en los "
+                    "resultados de las tools, incluida jugabilidad, sensaciones o características. "
+                    "Marca también si la respuesta no contesta la pregunta del usuario. "
+                    "Devuelve hallazgos "
+                    "con categoria y detalle, usando solo estas categorías: cifra_sin_fuente, "
+                    "juego_o_atributo_no_disponible o recomendacion_sin_respaldo. Devuelve ok=true "
+                    "solo si todas las afirmaciones están respaldadas. No inventes hallazgos."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "pregunta": pregunta,
+                        "resultados_tools": _vista_legible(resultados),
+                        "respuesta": respuesta,
+                    },
+                    ensure_ascii=False,
+                    default=str,
+                ),
+            },
+        ],
+        text_format=_CriticaRespuestaLlm,
+    )
+    critica = salida.output_parsed
+    if critica is None:
+        raise ValueError("El critic LLM devolvió una respuesta vacía.")
+    hallazgos = [hallazgo.model_dump() for hallazgo in critica.hallazgos]
+    if critica.ok:
+        return []
+    return hallazgos or [
+        {
+            "categoria": "recomendacion_sin_respaldo",
+            "detalle": "El critic LLM rechazó la respuesta sin más detalle.",
+        }
+    ]
+
+
+async def responder(
+    session: AsyncSession,
+    request: Any,
+    user: Any,
+    perfil: Any,
+    solicitud: Any,
+    settings: Settings,
+    usuario_id: str = "",
+) -> ChatRespuesta:
+    chat_session = (
+        await session.get(ChatSession, solicitud.session_id) if solicitud.session_id else None
+    )
+    if chat_session is not None and chat_session.usuario_id != (usuario_id or None):
+        chat_session = None  # La sesión de otra persona no se continúa: empieza una nueva.
+    if chat_session is None:
+        chat_session = ChatSession(
+            user_id=user.id, titulo=solicitud.mensaje[:120], usuario_id=usuario_id or None
+        )
+        session.add(chat_session)
+        await session.flush()
+    coleccion_activa = await _coleccion(session, user, perfil.id)
+    ultimos_runs = (
+        await session.scalars(
+            select(AgentRun)
+            .where(AgentRun.session_id == chat_session.id)
+            .order_by(AgentRun.creado_en.desc())
+            .limit(3)
+        )
+    ).all()
+    historial = "; ".join(
+        f"{run.pregunta} [{run.intent or 'sin intent'}]" for run in reversed(ultimos_runs)
+    )
+    resumen = (
+        ", ".join(juego.nombre for juego in coleccion_activa) + f". Últimos turnos: {historial}"
+    )
+    pendiente = (
+        await _consulta_pendiente(session, chat_session.id) if solicitud.session_id else None
+    )
+    es_continuacion_en_ingles = bool(
+        re.match(r"^el nombre en ingl[eé]s es:\s*.+$", solicitud.mensaje, re.IGNORECASE)
+    )
+    continuacion_nombre: str | None = None
+    if (
+        pendiente
+        and not solicitud.game_id
+        and not es_continuacion_en_ingles
+        and chat_session.intent_pendiente in {"evaluar_compra", "detalle_juego"}
+    ):
+        candidato_nombre = _solo_nombre(solicitud.mensaje)
+        if candidato_nombre:
+            estado_nombre, _juegos = await _resolver(
+                CatalogoRepository(session), candidato_nombre, None, settings
+            )
+            if estado_nombre == "encontrado":
+                continuacion_nombre = candidato_nombre
+    omitir_planner = es_continuacion_en_ingles or continuacion_nombre is not None
+    plan_llm: PlanLlm | None = None
+    planner_error: str | None = None
+    planner_llm_used = False
+    planner_reintentado = False
+    intentos_planner: list[dict[str, Any]] = []
+    if settings.llm_active and not omitir_planner:
+        juego_foco = (
+            await CatalogoRepository(session).obtener_juego(chat_session.juego_en_foco_id)
+            if chat_session.juego_en_foco_id
+            else None
+        )
+        foco_texto = f"{juego_foco.nombre} (id {juego_foco.id})" if juego_foco else None
+        causa: str | None = None
+        for intento in range(2):  # Un intento y, a lo sumo, un reintento con la causa real.
+            planner_reintentado = intento == 1
+            try:
+                plan_llm = await _plan_llm(
+                    settings, solicitud.mensaje, resumen, causa, intentos_planner, foco_texto
+                )
+                planner_llm_used = planner_llm_used or plan_llm is not None
+                causa = None
+                if plan_llm is not None and (
+                    _validar_plan(plan_llm, settings.llm_max_plan_steps) is None
+                ):
+                    causa = _causa_plan_invalido(plan_llm, settings.llm_max_plan_steps)
+                    if intentos_planner:
+                        intentos_planner[-1]["error"] = causa
+            except ValueError as error:
+                plan_llm = None
+                causa = str(error)[:300]
+            except Exception as error:  # noqa: BLE001
+                planner_error = str(error)[:300]
+                plan_llm = None
+                break
+            if causa is None:
+                break
+            planner_error = causa
+        if causa is None and planner_error is not None and plan_llm is not None:
+            planner_error = None
+    plan = _validar_plan(plan_llm, settings.llm_max_plan_steps)
+    llm_used = plan is not None
+    if plan is None:
+        plan = _plan_determinista(
+            solicitud.mensaje,
+            solicitud.game_id,
+            chat_session.juego_en_foco_id,
+            chat_session.intent_pendiente,
+        )
+        plan = _marcar_origen_determinista(plan, plan_llm)
+        if continuacion_nombre and chat_session.intent_pendiente:
+            plan = PlanLlm(
+                intent=chat_session.intent_pendiente,
+                steps=[
+                    PasoPlan(
+                        id="1",
+                        tool=chat_session.intent_pendiente,
+                        args={"nombre": continuacion_nombre},
+                    )
+                ],
+                origen_nombre="pendiente",
+                nombre_final=continuacion_nombre,
+            )
+    plan = await _aplicar_cadena_respaldo_juego(
+        plan,
+        solicitud.mensaje,
+        CatalogoRepository(session),
+        chat_session.juego_en_foco_id,
+        chat_session.intent_pendiente,
+        solicitud.game_id,
+    )
+    if planner_reintentado and plan.origen_nombre == "planner":
+        plan = plan.model_copy(update={"origen_nombre": "planner_reintento"})
+    if _validar_plan(plan, settings.llm_max_plan_steps) is None:
+        plan = PlanLlm(intent="general")
+    plan = await _validar_plan_con_juego(
+        plan,
+        solicitud.mensaje,
+        CatalogoRepository(session),
+        coleccion_activa,
+        settings,
+    )
+    run = AgentRun(
+        user_id=user.id,
+        session_id=chat_session.id,
+        pregunta=solicitud.mensaje,
+        intent=plan.intent,
+        plan={"steps": [paso.model_dump() for paso in plan.steps]},
+        modelo=settings.llm_model_fast if llm_used else None,
+    )
+    session.add_all(
+        [
+            run,
+            ChatMessage(
+                user_id=user.id,
+                session_id=chat_session.id,
+                role="user",
+                contenido=solicitud.mensaje,
+            ),
+        ]
+    )
+    await session.flush()
+    await session.commit()  # El plan queda durable antes de cualquier tool.
+    if settings.llm_active and not omitir_planner:
+        session.add(
+            AgentStep(
+                user_id=user.id,
+                run_id=run.id,
+                agent_name="planner",
+                estado="fallback" if planner_error else "ok",
+                output={
+                    "llm_used": planner_llm_used,
+                    "modelo": settings.llm_model_fast,
+                    "reintentado": planner_reintentado,
+                    "origen_nombre": plan.origen_nombre,
+                    "nombre_final": plan.nombre_final,
+                    "motivo_descarte": plan.motivo_descarte,
+                    "intentos": intentos_planner,
+                },
+                error_mensaje=planner_error,
+            )
+        )
+    resultados: list[dict[str, Any]] = []
+    pasos_respuesta: list[PasoPlan] = []
+    # Punto de control único antes de ejecutar cualquier tool de juego.
+    plan = await _aplicar_cadena_respaldo_juego(
+        plan,
+        solicitud.mensaje,
+        CatalogoRepository(session),
+        chat_session.juego_en_foco_id,
+        chat_session.intent_pendiente,
+        solicitud.game_id,
+    )
+    if plan.intent == "general":
+        run.intent = plan.intent
+        run.plan = {"steps": []}
+        await session.commit()
+    for nivel in _niveles_plan(plan.steps):
+        for paso in nivel:
+            resultado = await _ejecutar_tool(
+                paso.tool, paso.args, session, user.id, perfil, request, settings
+            )
+            resultados.append(resultado)
+            pasos_respuesta.append(paso.model_copy(update={"estado": "completado"}))
+            session.add_all(
+                [
+                    AgentStep(
+                        user_id=user.id,
+                        run_id=run.id,
+                        agent_name="tool",
+                        step_id=paso.id,
+                        output=resultado,
+                    ),
+                    ToolCall(
+                        user_id=user.id,
+                        run_id=run.id,
+                        step_id=paso.id,
+                        tool_name=paso.tool,
+                        argumentos=paso.args,
+                        resultado=resultado,
+                    ),
+                ]
+            )
+            traza_traduccion = resultado.get("traza_traduccion")
+            if isinstance(traza_traduccion, dict):
+                session.add(
+                    AgentStep(
+                        user_id=user.id,
+                        run_id=run.id,
+                        agent_name="translation",
+                        estado="fallback" if traza_traduccion.get("error") else "ok",
+                        output={"modelo": settings.llm_model_fast, **traza_traduccion},
+                        error_mensaje=traza_traduccion.get("error"),
+                    )
+                )
+    primero = resultados[0] if resultados else {}
+    juego_resuelto = primero.get("juego") if isinstance(primero.get("juego"), dict) else None
+    if pendiente and juego_resuelto and primero.get("estado") == "encontrado":
+        nombre_pendiente, ids_candidatos = pendiente
+        origen_alias = None
+        if solicitud.game_id and solicitud.game_id == juego_resuelto["id"]:
+            origen_alias = "candidato" if solicitud.game_id in ids_candidatos else None
+        elif es_continuacion_en_ingles or continuacion_nombre:
+            origen_alias = "ingles"
+        if origen_alias and await _guardar_alias(
+            session, user.id, perfil.id, nombre_pendiente, juego_resuelto["id"], origen_alias
+        ):
+            session.add(
+                AgentStep(
+                    user_id=user.id,
+                    run_id=run.id,
+                    agent_name="alias",
+                    output={
+                        "alias_normalizado": normalizar_nombre(nombre_pendiente),
+                        "game_id": juego_resuelto["id"],
+                        "origen": origen_alias,
+                    },
+                )
+            )
+    for resultado in resultados:
+        if resultado.get("origen_resolucion") == "alias":
+            session.add(
+                AgentStep(
+                    user_id=user.id,
+                    run_id=run.id,
+                    agent_name="resolution",
+                    output={"origen_resolucion": "alias", "llm_called": False},
+                )
+            )
+    answer = _narrar(plan.intent, resultados)
+    narrator_llm_used = False
+    critic_findings: list[str | dict[str, str]] = []
+    critic_attempts = 0
+    trazas: list[tuple[str, str, dict[str, Any]]] = []
+    narrativa_llm_permitida = plan.intent not in {"reglas", "fuera_de_dominio", "general"}
+    # Aclaración y confirmación de candidatos son texto determinista: sin narrador ni crítico.
+    determinista = _es_respuesta_determinista(plan.intent, resultados)
+    if determinista:
+        narrativa_llm_permitida = False
+    if settings.llm_active and narrativa_llm_permitida:
+        try:
+            answer = await _narrar_llm(settings, resultados, solicitud.mensaje)
+            narrator_llm_used = True
+            trazas.append(
+                (
+                    "narrator",
+                    "ok",
+                    {
+                        "attempt": 0,
+                        "llm_used": True,
+                        "modelo": settings.llm_model,
+                        "borrador": answer,
+                    },
+                )
+            )
+        except Exception as error:  # noqa: BLE001
+            trazas.append(
+                (
+                    "narrator",
+                    "fallback",
+                    {"llm_used": False, "modelo": settings.llm_model, "error": str(error)[:300]},
+                )
+            )
+    elif determinista:
+        trazas.append(("narrator", "omitido", {"llm_used": False, "motivo": "determinista"}))
+        trazas.append(("critic", "omitido", {"llm_used": False, "motivo": "determinista"}))
+        answer = _presentar_respuesta(answer, plan.intent, resultados)
+    else:
+        trazas.append(("narrator", "fallback", {"attempt": 0, "llm_used": False}))
+
+    while not determinista:
+        if narrator_llm_used:
+            texto = _con_encabezado(_sanear_narrador(answer), plan.intent, resultados)
+        else:
+            texto = answer
+        vista_critica = _presentar_respuesta(
+            _con_sugerencia_final(texto, plan.intent, resultados), plan.intent, resultados
+        )
+        answer = _agregar_precio(vista_critica, resultados)
+        deterministic_findings = _criticar_determinista(vista_critica, resultados)
+        critic_findings.clear()
+        critic_findings.extend(deterministic_findings)
+        critic_llm_used = False
+        if not deterministic_findings and settings.llm_active and narrativa_llm_permitida:
+            try:
+                critic_findings.extend(
+                    await _criticar_llm(settings, vista_critica, resultados, solicitud.mensaje)
+                )
+                critic_llm_used = True
+            except Exception as error:  # noqa: BLE001
+                trazas.append(
+                    (
+                        "critic",
+                        "fallback",
+                        {
+                            "llm_used": False,
+                            "modelo": settings.llm_model_fast,
+                            "error": str(error)[:300],
+                        },
+                    )
+                )
+        trazas.append(
+            (
+                "critic",
+                "ok" if not critic_findings else "rejected",
+                {
+                    "attempt": critic_attempts,
+                    "llm_used": critic_llm_used,
+                    "modelo": settings.llm_model_fast,
+                    "findings": list(critic_findings),
+                    "borrador": vista_critica,
+                },
+            )
+        )
+        if not critic_findings:
+            break
+        if not narrator_llm_used:
+            break
+        if critic_attempts >= settings.critic_max_retries:
+            answer = _narrar(plan.intent, resultados)
+            vista_critica = _presentar_respuesta(
+                _con_sugerencia_final(answer, plan.intent, resultados), plan.intent, resultados
+            )
+            answer = _agregar_precio(vista_critica, resultados)
+            narrator_llm_used = False
+            critic_findings.clear()
+            critic_findings.extend(_criticar_determinista(vista_critica, resultados))
+            trazas.append(
+                (
+                    "narrator",
+                    "fallback",
+                    {
+                        "attempt": critic_attempts,
+                        "llm_used": False,
+                        "reason": "critic_retries_exhausted",
+                    },
+                )
+            )
+            break
+        critic_attempts += 1
+        try:
+            answer = await _narrar_llm(settings, resultados, solicitud.mensaje, critic_findings)
+            trazas.append(
+                (
+                    "narrator",
+                    "retry",
+                    {
+                        "attempt": critic_attempts,
+                        "llm_used": True,
+                        "modelo": settings.llm_model,
+                        "feedback": critic_findings,
+                        "borrador": answer,
+                    },
+                )
+            )
+        except Exception as error:  # noqa: BLE001
+            answer = _narrar(plan.intent, resultados)
+            narrator_llm_used = False
+            trazas.append(
+                (
+                    "narrator",
+                    "fallback",
+                    {"llm_used": False, "modelo": settings.llm_model, "error": str(error)[:300]},
+                )
+            )
+
+    critic_passed = None if determinista else not critic_findings
+    tarjetas = [
+        TarjetaChat(tipo=paso.tool, datos=resultado)
+        for paso, resultado in zip(plan.steps, resultados, strict=True)
+    ]
+    candidatos = [
+        CandidatoChat(**candidato)
+        for resultado in resultados
+        for candidato in resultado.get("candidatos", [])
+    ]
+    sugerir_nombre_ingles = any(
+        resultado.get("estado") in {"ambiguo", "no_encontrado"}
+        and resultado.get("traza_traduccion") is not None
+        for resultado in resultados
+    )
+    for resultado in resultados:
+        juego = resultado.get("juego")
+        if isinstance(juego, dict) and isinstance(juego.get("id"), str):
+            chat_session.juego_en_foco_id = juego["id"]
+    if any(resultado.get("estado") in {"ambiguo", "no_encontrado"} for resultado in resultados):
+        chat_session.intent_pendiente = plan.intent
+    else:
+        chat_session.intent_pendiente = None  # Otra pregunta descarta la pendiente.
+    run.respuesta_final = answer
+    run.estado = "completed"
+    run.critic_passed = critic_passed
+    run.critic_attempts = critic_attempts
+    run.critic_findings = [
+        {"mensaje": finding} if isinstance(finding, str) else finding for finding in critic_findings
+    ] or None
+    run.modelo = settings.llm_model if narrator_llm_used else None
+    run.terminado_en = datetime.now(UTC)
+    session.add_all(
+        [
+            AgentStep(
+                user_id=user.id,
+                run_id=run.id,
+                agent_name=agent_name,
+                estado=estado,
+                output=output,
+                error_mensaje=output.get("error"),
+            )
+            for agent_name, estado, output in trazas
+        ]
+    )
+    session.add(
+        ChatMessage(
+            user_id=user.id,
+            session_id=chat_session.id,
+            role="assistant",
+            contenido=answer,
+            agent_run_id=run.id,
+            meta={"tarjetas": [tarjeta.model_dump() for tarjeta in tarjetas]},
+        )
+    )
+    await session.commit()
+    return ChatRespuesta(
+        run_id=run.id,
+        session_id=chat_session.id,
+        intent=plan.intent,
+        plan=pasos_respuesta,
+        answer=answer,
+        tarjetas=tarjetas,
+        candidatos=candidatos,
+        sugerir_nombre_ingles=sugerir_nombre_ingles,
+        critic_passed=critic_passed,
+        critic_attempts=critic_attempts,
+        critic_findings=run.critic_findings or [],
+        llm_used=narrator_llm_used or llm_used,
+    )
+
+
+async def listar_runs(session: AsyncSession, user_id: str, usuario_id: str) -> list[AgentRun]:
+    return list(
+        (
+            await session.scalars(
+                select(AgentRun)
+                .join(ChatSession, ChatSession.id == AgentRun.session_id)
+                .where(AgentRun.user_id == user_id, ChatSession.usuario_id == usuario_id)
+                .order_by(AgentRun.creado_en.desc())
+            )
+        ).all()
+    )

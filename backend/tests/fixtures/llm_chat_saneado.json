@@ -1,0 +1,15 @@
+{
+  "planner": {
+    "intent": "evaluar_compra",
+    "steps": [
+      {
+        "id": "1",
+        "tool": "evaluar_compra",
+        "args": {"nombre": "Wingspan"},
+        "depends_on": []
+      }
+    ]
+  },
+  "narrador_inicial": "**Wingspan**: aporta. Similitud total: 99.0.",
+  "narrador_corregido": "**Wingspan**: aporta a la colección."
+}

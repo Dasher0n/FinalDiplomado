@@ -40,7 +40,7 @@ Lee `docs/requerimiento_sommelier_juegos.md` completo antes de empezar y trabaja
 - Las pruebas **nunca** tocan la red: usan fixtures grabados.
 - Llamadas reales a la API de OpenAI desde el código de la app: **solo** en la Fase 0 (una llamada de búsqueda web) y al grabar fixtures o al correr el guion de demo. **Antes de cada tanda pides aprobación** y dices cuántas llamadas harás. Máximo 20 llamadas reales por fase.
 - Nunca escribas bucles, reintentos sin límite ni procesos en segundo plano que llamen a APIs pagadas.
-- **Prohibido** volver a descargar datos de BoardGameGeek o BoardGamePrices de forma masiva. Peticiones de verificación a BGG: máximo 3, solo en la Fase 0. Prohibido evadir Cloudflare u otras protecciones.
+- **Prohibido** volver a descargar datos de BoardGameGeek o BoardGamePrices de forma masiva. **Prohibida cualquier petición a BoardGameGeek** (ni verificación ni búsqueda). Prohibido evadir Cloudflare u otras protecciones.
 
 ## Forma de trabajar
 
@@ -50,3 +50,10 @@ Lee `docs/requerimiento_sommelier_juegos.md` completo antes de empezar y trabaja
 - Todo en español: código comentado, mensajes de commit, textos de la UI, documentación.
 - **Nunca uses el guion largo (em dash)** en código, comentarios, textos ni documentos.
 - Cambios pequeños y revisables. Nada de refactorizaciones que no pida la fase actual.
+
+## Ahorro de contexto
+
+- Corre comandos con salida recortada: `make test 2>&1 | tail -15`, `make lint 2>&1 | tail -15`, `docker compose up --build -d 2>&1 | tail -5`. Solo si algo falla, mira más líneas del error.
+- Nunca leas archivos grandes completos (artefactos/, catalogo.csv, package-lock.json, uv.lock, fixtures). Para datos del catálogo usa consultas puntuales que impriman pocas filas.
+- Lee solo los archivos que vas a modificar, y solo la parte necesaria.
+- No repitas en tus respuestas el contenido de archivos ni diffs completos; resume.

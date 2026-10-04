@@ -1,0 +1,92 @@
+{
+ "detalle_catan": {
+  "estado": "encontrado",
+  "juego": {
+   "id": "13",
+   "nombre": "Catan",
+   "anio": 1995,
+   "imagen_url": "https://cf.geekdo-images.com/0XODRpReiZBFUffEcqT5-Q__itemrep/img/6Jf5G-bSvdOIMUSwxsJfZXl29B8=/fit-in/246x300/filters:strip_icc()/pic9156909.png",
+   "miniatura_url": "https://cf.geekdo-images.com/0XODRpReiZBFUffEcqT5-Q__micro/img/keHt-m-x5uEWTnKXNKEVgAmLklw=/fit-in/64x64/filters:strip_icc()/pic9156909.png",
+   "jugadores_minimos": 3.0,
+   "jugadores_maximos": 4.0,
+   "duracion_minima": 60.0,
+   "duracion_maxima": 120.0,
+   "promedio": 7.09,
+   "precio": {
+    "precio_usd": "50.00",
+    "precio_confiable": true,
+    "fecha_precio": "2026-09-24T23:13:52Z",
+    "ofertas_us_con_stock": 16.0,
+    "url_bgp": "https://boardgameprices.com/item/show/949/catan?utm_source=https%3A%2F%2Fgithub.com%2FDasher0n%2FFinalDiplomado&utm_medium=cmsplugin&utm_content=getprice&utm_campaign=wpplugin"
+   },
+   "edad_minima": 10.0,
+   "edad_comunitaria": 8.0,
+   "peso": 2.3,
+   "mecanicas": [
+    "Chaining",
+    "Dice Rolling",
+    "Hand Management",
+    "Hexagon Grid",
+    "Hidden Victory Points",
+    "Income",
+    "Market",
+    "Modular Board",
+    "Negotiation",
+    "Network and Route Building",
+    "Race",
+    "Random Production",
+    "Take That",
+    "Trading",
+    "Variable Set-up"
+   ],
+   "categorias": [
+    "Economic",
+    "Negotiation"
+   ],
+   "disenadores": [
+    "Klaus Teuber"
+   ],
+   "familias_mecanicas": [
+    "Dados y riesgo",
+    "Económico y mercado",
+    "Gestión de mano",
+    "Motor y progresión",
+    "Negociación y diplomacia"
+   ],
+   "familias_tematicas": [
+    "Economía, industria y ciudades"
+   ],
+   "nivel_jugadores": [
+    "3 a 4"
+   ],
+   "nivel_duracion": "61 a 120",
+   "nivel_peso": "medio",
+   "nivel_interaccion": "directa",
+   "origen": "bgg_ranking",
+   "confianza": "alta",
+   "fuentes": [],
+   "evidencia": [],
+   "peso_estimado": false,
+   "peso_pocos_votos": false,
+   "duracion_estimada": false,
+   "jugadores_estimados": false
+  },
+  "ya_en_coleccion": false,
+  "precio_texto": "USD 50.00 (BoardGamePrices, 24 sep 2026)",
+  "niveles_del_juego": [
+   "Duración: 61 a 120",
+   "Interacción: directa",
+   "Jugadores: 3 a 4",
+   "Mecánicas: Dados y riesgo",
+   "Mecánicas: Económico y mercado",
+   "Mecánicas: Gestión de mano",
+   "Mecánicas: Motor y progresión",
+   "Mecánicas: Negociación y diplomacia",
+   "Peso: medio",
+   "Temática: Economía, industria y ciudades"
+  ],
+  "origen_resolucion": null,
+  "interpretado_como": null,
+  "sugerencias_traduccion": []
+ }
+}

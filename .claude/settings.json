@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(make test *)",
+      "Bash(make lint *)",
+      "Bash(make format *)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(docker compose ps *)",
+      "Bash(docker compose logs *)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(!.env.example)",
+      "Edit(/docs/**)",
+      "Edit(/artefactos/**)",
+      "Edit(/referencia/**)",
+      "Edit(/opencode.json)",
+      "Edit(/CLAUDE.md)",
+      "Edit(/.claude/settings.json)",
+      "Bash(sudo *)",
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(git rebase *)",
+      "Bash(git clean *)",
+      "Bash(git checkout main *)",
+      "Bash(git switch main *)",
+      "Bash(rm -rf *)",
+      "Bash(docker system prune *)",
+      "Bash(docker volume rm *)",
+      "Bash(printenv *)",
+      "Bash(env *)"
+    ]
+  }
+}

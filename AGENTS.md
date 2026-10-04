@@ -1,0 +1,228 @@
+# Sommelier de juegos de mesa
+
+Documento vivo del proyecto. Se actualiza al cerrar cada fase.
+
+## Comandos verificados
+
+| Comando | Resultado |
+| --- | --- |
+| `uv run --no-project python scripts/verificar_fase_0.py` | Verifica dependencias y artefactos locales de la Fase 0. |
+| `uv run --env-file .env python scripts/verificar_fase_0.py --web-search` | Ejecuta la unica llamada real autorizada de `web_search` para la Fase 0. Lo ejecuta Miguel para cargar la clave sin que el agente lea `.env`. |
+
+## Stack verificado
+
+- Python `3.14.7`.
+- `scikit-learn==1.9.0`, `scipy==1.18.0`, `numpy==2.5.2` y `pandas==3.0.5` instalan y cargan correctamente en Python 3.14.
+- `openai==3.13.0` y `pydantic-settings==2.15.0` se instalaron para la verificacion de Fase 0, siguiendo las versiones del repositorio de referencia.
+
+## Artefactos verificados
+
+- `catalogo.csv` tiene 30,146 filas y 60 columnas.
+- Las columnas de precio autorizadas son `precio_usd`, `n_ofertas_us_stock`, `precio_confiable`, `fecha_precio` y `bgp_url`.
+- Las columnas de precio con sufijos `_x` y `_y` existen y son residuos de merges. No se siembran ni se usan.
+- `image_url` usa `__itemrep` y `Thumbnail` usa `__micro`. La UI debe usar `image_url`.
+- 8,503 filas de `bgp_url` contienen el marcador codificado `site_https%3A%2F%2Fgithub.com%2FTU_USUARIO%2FFinalDiplomado` dentro de `utm_source`.
+- Al servir un `bgp_url`, se debe decodificar el valor de `utm_source`, sustituir su valor completo por `BGP_SITENAME` y reconstruir la URL. No hacer un reemplazo de texto sobre la URL codificada.
+- `preproceso.pkl` carga como diccionario con vectorizadores, escalador, limites, pesos, umbrales, reglas de interaccion, familias, temas y niveles de jugadores.
+- Los bloques son `X_mecanicas=(30146, 193)`, `X_tematica=(30146, 83)`, `X_ocasion=(30146, 5)` y `X_interaccion=(30146, 2)`.
+- Los vocabularios son 193 mecanicas y 83 categorias.
+- Pesos: mecanicas `0.40`, ocasion `0.10`, interaccion `0.15`, tematica `0.35`.
+- Umbrales exactos: parecido `0.4165141436034246`, redundante `0.7729157377558937`, ofertas de precio `2`.
+- `players_hi` se limita a 10 en el vector. El nivel de cobertura `7 o mas` conserva el rango 7 a 999.
+- Las filas de las cuatro matrices coinciden con el orden de `catalogo.csv`.
+
+## Preproceso verificado
+
+- `mlb_mecanicas` y `mlb_tematica`: `sklearn.preprocessing._label.MultiLabelBinarizer`.
+- `tfidf_mecanicas` y `tfidf_tematica`: `sklearn.feature_extraction.text.TfidfTransformer`.
+- `escalador_ocasion`: `sklearn.preprocessing._data.MinMaxScaler`, ajustado y utilizable para transformar los cinco campos de ocasion.
+- `cols_ocasion`: `list`; `limites_ocasion`, `pesos`, `familias`, `respaldo_cat`, `temas` y `niveles_jugadores`: `dict`.
+- `umbral_redundante` y `umbral_parecido`: `float`; `umbral_ofertas_precio`: `int`; `sin_tema`: `str`.
+- `mec_directa`, `mec_indirecta`, `mec_combate`, `cat_combate`, `cat_directa` y `mec_traicion`: `set`.
+- No contiene un `sklearn.impute.KNNImputer`, otro imputador de peso ni los datos ajustados necesarios para un KNN. No es posible imputar el peso de un juego nuevo sin entrenar o recibir un artefacto adicional. La vectorizacion web de Fase 5 queda bloqueada en ese caso, como exige el requerimiento.
+- Miguel agregara `artefactos/imputador_ocasion.pkl` como artefacto aparte. La vectorizacion web de Fase 5 depende de ese archivo y no se debe inventar ni reentrenar un imputador en la aplicacion.
+
+## Decisiones verificadas
+
+- La marca visible de la aplicacion es `Wise Dice`, con el subtitulo "Tu asesor de ludoteca". Los nombres internos del repositorio y servicios no cambian.
+- La cascada de BGG fuera del ranking esta omitida por decision de producto. La aplicacion no hara peticiones a BoardGameGeek.
+- La unica llamada real de la Fase 0 fue ejecutada por Miguel con `web_search` y `tool_choice: "required"`. El modelo resuelto fue `gpt-5.1-2025-11-13` y devolvio cinco citas para Metropoli de Ideotas Juegos. Esto verifica que `gpt-5.1` admite la herramienta hospedada `web_search`.
+- La clave de OpenAI se carga en la aplicacion con `pydantic-settings` desde el entorno y `env_file=".env"`; se modela como `SecretStr`, nunca se imprime ni persiste.
+- Excepcion aprobada para Fase 0: no se ejecuta `make lint` porque el Makefile pertenece al andamiaje de Fase 1 y aun no existe.
+- La busqueda automatica de secretos debe excluir `artefactos/` y las URLs de imagen de `cf.geekdo-images.com`, o exigir el patron completo de una clave con `sk-` seguido de al menos 20 caracteres sin guiones intermedios de URL. Se confirmo un falso positivo dentro de una URL de imagen del catalogo.
+- Decisiones de entrega: Bloque 1 ajusta cobertura y plan; Bloque 2 incorpora perfiles B2B y Cafe demo; Bloque 3 implementa la Fase 4; Bloque 4 considera Fase 5 solo si hay tiempo. Cada bloque se cierra y reporta por separado.
+- Cambio de alcance del plan: la interfaz y las tools del chat solo exponen planes por numero de juegos con tres opciones disjuntas. El modo precio se conserva en backend y pruebas, pero no se expone. Los precios de BoardGamePrices quedan como referencia en el detalle.
+
+## Fase 1
+
+- El backend usa FastAPI, SQLAlchemy async y SQLite con `foreign_keys=ON`, WAL y fechas UTC.
+- El esquema incluye catalogo, colecciones, precios de usuario, vectores extra, alias, chat, trazas agenticas y cache de busqueda web.
+- `make seed` es idempotente: importa 30,146 juegos, crea el usuario demo y siembra sus 12 juegos. Una segunda ejecucion no inserta filas nuevas.
+- El frontend es Angular 22 standalone con Tailwind v4 y TypeScript 6.0.x. `npm install --force` es necesario por el peer de `openapi-typescript`.
+- `make contracts` genera `frontend/src/app/core/api/schema.d.ts` desde OpenAPI.
+- La Fase 1b aprobada se implementara despues de aprobar el cierre de esta fase. Incluira la vitrina y los endpoints de solo lectura del catalogo y la coleccion.
+
+## Fase 1b
+
+- Los endpoints de solo lectura son `GET /collection`, `GET /games?q=` y `GET /games/{id}` bajo `/api/v1`.
+- La Ludoteca consume solo estos endpoints y muestra la coleccion sembrada en estantes agrupables, buscador de catalogo y detalle basico con precio y enlace a BoardGamePrices.
+- `bgp_url` sustituye `utm_source` de forma estructurada y usa `BGP_SITENAME` sin reemplazos de texto sobre la URL codificada.
+- `docker compose down && docker compose up --build -d` inicia backend saludable en `http://localhost:8000` y frontend en `http://localhost:8080`. El volumen recreado se siembra con 30,146 juegos y la coleccion demo.
+- La imagen backend no incluye `curl`. El healthcheck se define solo en `docker-compose.yml` y usa `python` con `urllib.request` contra `127.0.0.1`, con timeout de 3 segundos.
+
+## Fase 2
+
+- FastAPI carga en memoria los cuatro bloques de vectores al arrancar; se indexan con `fila_vector`.
+- Las nueve pruebas doradas usan IDs de BGG fijos y pasan con tolerancia de 0.01. El par `7 Wonders` (`68448`) y `7 Wonders Duel` (`173346`) dio mecanicas `0.6479`, ocasion `0.9379`, interaccion `0.8750`, tematica `1.0000` y total `0.8342`.
+- El motor implementa similitud por bloques con renormalizacion, redundancia, cobertura de seis ejes, compra greedy en modos juego y precio, disponibilidad y resolucion local ambigua.
+- El plan por precio con presupuesto USD 60, `n=5`, `users_rated_min=1000`, `average_min=0` y sin ejes ignorados reproduce el anexo: Cosmic Wimpout, The Werewolves of Miller's Hollow, Kingdom Legacy, Flip 7 y Trek 12. Costo USD `51.765`; valor pendiente `0.183333...`.
+- `Wingspan` y `Wyrmspan` comparten `product_line` y reimplementacion en el catalogo. La regla exacta los considera relacionados; frente a una coleccion con Wingspan, Wyrmspan cubre huecos y el veredicto es `parecido_pero_cubre_hueco`.
+- Decision de producto: frente a la coleccion demo, Wyrmspan es `redundante` por regla exacta, porque reimplementa Wingspan y comparte su linea de producto, aunque su similitud es 0.70. Esta decision prevalece sobre el punto 1 del guion de demo de la seccion 11.
+
+## Fase 3 y 3b
+
+- La API expone coleccion editable y los cuatro endpoints del motor bajo `/api/v1`.
+- Los contratos TypeScript se regeneran desde OpenAPI con `make contracts`.
+- Cobertura, plan de compra, detalle evaluable, disponibilidad y la vista previa de Chat consumen datos reales del motor.
+- Chart.js se usa directamente para el radar de cobertura.
+
+## Bloque 2
+
+- Cafe demo usa 40 juegos populares ligeros o medios y el perfil Cafe define metas versionadas por nivel. La meta 0 no participa en cobertura, faltantes, debilidades ni valor del plan.
+- Cafe excluye la mecanica exacta `Legacy Game` y los titulos cuyo nombre inicia exactamente con `EXIT: The Game`. La segunda es una regla explicita de serie porque el catalogo no tiene una etiqueta especifica para EXIT.
+- No se excluyen `Game: Escape (Queen Games)`, `Game: Lost Legacy` ni `Game: Flash Point Legacy of Flame`.
+
+## Bloque 3
+
+- La Fase 4 implementa planner con degradacion determinista, plan persistido antes de tools, ejecucion secuencial, narrador por plantillas y critic determinista. El chat usa el perfil activo como contexto y no expone modo precio.
+
+## Fase 4
+
+- El narrator LLM usa `LLM_MODEL`, redacta en espanol solo a partir de resultados de tools y conserva plantillas para falta de clave, fallo o intents fijos.
+- El critic mantiene sus reglas deterministas y agrega revision estructurada con `LLM_MODEL_FAST` para cifras, juegos y atributos sin respaldo y recomendaciones no sustentadas.
+- Los rechazos regeneran la respuesta con hallazgos como feedback hasta `CRITIC_MAX_RETRIES`; al agotarse los intentos se usa la plantilla. Narrator, critic, intentos y hallazgos quedan en `agent_steps`.
+- El planner determinista extrae el titulo de una pregunta de compra, identifica plan de compra, que falta, que sacar hoy y fuera de dominio. La resolucion prioriza una coincidencia exacta normalizada como `Catan` (`13`) y solo devuelve ambiguo sin coincidencia exacta.
+- El narrator solo usa hechos de tools. El critic exige el motivo de una regla exacta, los valores A, B y C en planes, faltantes y debiles en cobertura, y niveles de peso, interaccion o duracion presentes en los resultados.
+- El planner incluye ejemplos de formulaciones naturales por intent y valida el plan contra el catalogo: un juego encontrado fuerza `evaluar_compra` si no esta en la coleccion o `detalle_juego` si ya esta. La resolucion acepta el titulo antes de `:` cuando es unico, como `SETI`.
+- El narrator no ofrece funciones fuera del manifiesto ni nombres internos entre comillas invertidas. El critic rechaza ambos casos y pide al LLM detectar respuestas que no contestan la pregunta.
+- La validacion posterior solo fuerza un intent de juego para una coincidencia exacta normalizada o el titulo unico antes de `:`. Una coincidencia difusa no puede convertir una consulta general de cobertura en `evaluar_compra`.
+- `¿Y SETI?` se interpreta como consulta de compra y `Catan` conserva la coincidencia exacta con el ID `13`.
+- La resolucion combina coincidencias exactas normalizadas y titulos unicos antes de `:`. Con varios candidatos, resuelve solo si el primero por `Users rated` tiene al menos cinco veces los votos del segundo; en otro caso devuelve ambiguedad ordenada por votos.
+- `SETI` resuelve a `SETI: Search for Extraterrestrial Intelligence` (`418059`, 21,902 votos) frente a `Seti` (`17785`, 47 votos).
+- Se probaron las seis preguntas del guion sin LLM. Los casos reales saneados quedan en `backend/tests/fixtures/chat_casos_reales_saneados.json`; la resolucion ambigua real de Catan esta en `backend/tests/fixtures/chat_catan_ambiguo_saneado.json`. Los fixtures no guardan cabeceras.
+- Verificacion de cierre: `make test` con 83 pruebas backend y 1 frontend; `make lint` limpio; `docker compose up --build -d` con backend saludable.
+
+## Fase 6
+
+- La interfaz usa una sola barra de navegacion: Ludoteca, Modo mesa, Cobertura y Chat. Ludoteca y Modo mesa cambian el perfil activo y conservan las pantallas existentes.
+- Ludoteca, Modo mesa y Cobertura incluyen una explicacion breve y un bloque desplegable de tres lineas sobre su funcionamiento.
+- Cada grupo de la Ludoteca se presenta como un librero independiente en una cuadricula de dos o tres columnas en escritorio. Las colecciones de mas de 24 juegos empiezan en vista compacta y permiten alternar la vista.
+- En Modo mesa, solo los resultados con ajuste `ideal` usan resplandor dorado; los que funcionan conservan su color y los que no cumplen permanecen oscurecidos. La leyenda lo explica.
+- Chat inicia como conversacion con bienvenida de Wise Dice, tres preguntas aleatorias de un banco local de casos probados y burbujas diferenciadas. Los chips, tarjetas y candidatos de cada respuesta permanecen dentro de su burbuja.
+- El chat renderiza markdown con un transformador local que escapa la entrada antes de aplicar formato. Las burbujas permiten cortes en URLs y palabras largas.
+- La sesión conserva el último juego resuelto como foco; el planner recibe tres turnos resumidos y las continuaciones sin título reutilizan ese foco.
+- Si el nombre en español no resuelve localmente y hay clave, el modelo rápido propone hasta tres títulos originales estructurados. El resultado registra `interpretado_como`; sin clave se omite este paso.
+- Una consulta de compra para un juego ya poseído no lo evalúa como compra: devuelve el impacto determinista de venderlo.
+- El librero agrupa Familia por familias mecánicas y cada grupo se renderiza en un solo mueble. Las filas se dibujan con un fondo repetido y los grupos con más de 6 juegos ocupan todo el ancho disponible.
+- El perfil activo se conserva en el navegador y se incluye como parámetro en las llamadas de colección, motor y chat. Las colecciones reales verificadas tienen 12 juegos para `coleccionista` y 40 para `cafe`.
+- Ludoteca integra el filtro de mesa sobre el librero: el resultado `ideal` ilumina la portada, `funciona` conserva su color y el resto se oscurece. La vista compacta solo modifica la altura de portada mediante `--cover-h`.
+- El markdown del chat escapa todo contenido antes de permitir encabezados, párrafos, listas, negrita, cursiva y enlaces HTTP(S) con `rel="noopener"`.
+- El foco de chat solo se reutiliza cuando no se extrae un título nuevo del mensaje. Las traducciones guardan nombre buscado, título resuelto y sugerencias del modelo en la traza; las sugerencias no resueltas se convierten en candidatos locales por similitud y votos.
+- Las coincidencias aproximadas no resuelven un juego: solo producen candidatos ambiguos tras comparar cadenas completas y limitar la diferencia de longitud. La continuación "El nombre en inglés es" conserva la intención pendiente de la sesión.
+- La resolución de nombres del chat usa una sola puerta: solo coincide de forma exacta, por el prefijo antes de `:` o por una traducción exacta. Una traducción exacta queda como candidato ambiguo y requiere confirmación de la persona. La sugerencia final `💡` la añade el backend desde la intención, no el narrator.
+- La traducción de títulos guarda en el resultado persistido de la tool si se llamó al LLM, los títulos devueltos y cualquier error acotado. Así una excepción no se confunde con una respuesta sin sugerencias.
+- `gpt-5.1-mini` no está disponible para la clave del entorno y devuelve `404 model_not_found`. Los valores por defecto de `LLM_MODEL` y `LLM_MODEL_FAST` son `gpt-5.1`, modelo verificado; no hay normalización implícita de nombres.
+- La traza de traducción también se conserva cuando una sugerencia resuelve un juego, no solo cuando queda sin resolver.
+- Planner, traducción, narrator y critic registran en `agent_steps` el modelo utilizado y cualquier excepción acotada. Al arrancar, la aplicación lista los modelos disponibles y `/capabilities` expone la validación separada de `LLM_MODEL` y `LLM_MODEL_FAST`.
+- El narrator recibe una copia formateada de los resultados: peso con un decimal, similitudes con dos, precios `USD 67.50` y fechas `24 sep 2026`. Las cifras crudas siguen en los resultados deterministas para tarjetas y critic.
+- El backend antepone el emoji de resultado y sanea negritas markdown desbalanceadas por línea. El prompt del narrator prohíbe emojis.
+- Plan, ficha y evaluación usan los mismos formateadores de precio y fecha en Angular; no se muestran timestamps ISO en tarjetas.
+- La resolución local rechaza consultas normalizadas de menos de dos caracteres y descarta títulos con clave normalizada vacía. La normalización conserva letras Unicode, incluidos alfabetos no latinos, tras quitar acentos.
+- Mejora futura: imponer una procedencia explícita de resolución antes de ejecutar tools, permitiendo solo coincidencia exacta o prefijo del texto de usuario, candidato confirmado o foco de sesión.
+- La identificación de nombres en español permite al modelo proponer hasta tres títulos originales probables. Cada propuesta se busca localmente por coincidencia exacta, prefijo antes de `:` o mejor `WRatio` de al menos 85; siempre queda como candidato para confirmación, nunca resuelve directo. La traza conserva propuestas y sus IDs coincidentes.
+- El encabezado de veredicto antepone un único emoji y capitaliza el texto. La plantilla determinista explica la regla exacta de redundancia, incluida la línea de producto o reimplementación.
+
+## Bloque 2
+
+- Se agregaron perfiles versionados de colección. `coleccionista` conserva meta 2 en todos los niveles y reproduce las pruebas doradas y el anexo existentes.
+- `cafe` usa los 40 IDs entregados, con metas por nivel para operación B2B. Los niveles con meta 0 no participan en cobertura, faltantes, debilidades ni en el valor del plan.
+- La valoración de un nivel faltante es `1 / niveles relevantes del eje`; una cobertura parcial reparte la mitad restante entre las posiciones de la meta 2 a la meta configurada.
+- La API acepta `perfil` como contexto para colección y motor, expone `GET /profiles` y `GET /profiles/context`, y la interfaz ofrece el selector `Modo mesa` para Café demo.
+- La inicialización SQLite añade `profile_id` a una colección ya creada y asigna sus filas existentes a `coleccionista`, sin borrar datos.
+- Con la siembra real, Café demo tiene 40 juegos. Con `n=5`, `average_min=6.5` y `users_rated_min=1000`, el plan por precio USD 60 propone EXIT: The Game - The Forbidden Castle, Kingdom Legacy: Feudal Kingdom, The Werewolves of Miller's Hollow y Level 10, por USD 47.82 y valor pendiente 0.025.
+
+## Resolución de nombres de juego
+
+- **Invariante:** ninguna tool de juego se ejecuta con un nombre vacío, no anclado en el mensaje o un `game_id` no aceptado. Si no hay nombre ni foco, la respuesta es la aclaración "¿De qué juego me hablas? Escríbeme su nombre." sin herramientas.
+- **Validación:** `nombre_valido` devuelve el nombre limpio o `None`. Rechaza no texto, cadenas vacías tras quitar espacios, comillas y signos, `null`, `none`, `nil`, `undefined`, `n/a`, `na`, `desconocido`, referencias genéricas ("el juego", "este", "ese", "lo") y formas normalizadas de menos de 2 caracteres.
+- **Anclaje:** el nombre del planner solo se acepta si aparece en el mensaje (`partial_ratio` de 90 o más) o es el juego en foco o el pendiente.
+- **Cadena de respaldo:** planner anclado, regex sobre el mensaje, intención pendiente y luego foco (solo si el mensaje no trae nombre) y, al final, la aclaración. El punto de control está antes del ejecutor; la segunda pasada conserva la procedencia si llega al mismo juego.
+- **`game_id` aceptado:** solo si es entero, existe en el catálogo y coincide con el foco, el pendiente o el botón pulsado. La traza del planner registra `origen_nombre` (`planner`, `planner_reintento`, `regex`, `pendiente`, `foco`, `boton`, `ninguno`), el nombre final y el `motivo_descarte` (`invalido`, `no_anclado`, `id_no_aceptado`) junto con los intentos del planner (salida cruda y error).
+- **Contrato del planner:** `intent` y `tool` son `Literal` con los valores de `_INTENTS` y `_TOOLS`, más `general` con `steps` vacío. El esquema no lanza `ValueError`. El reintento es único y explica la causa real del rechazo. El prompt incluye "Juego en foco: {nombre} (id {id})" o "Juego en foco: ninguno". Una referencia como "ese" debe usar el `game_id` del foco, y entonces `origen_nombre` es `foco`.
+- **Traducción literal más identificación con confirmación:** si el título no se resuelve localmente, un LLM propone hasta 5 traducciones literales (con variantes del adjetivo) y hasta 3 identificaciones. Cada propuesta aporta un solo candidato, su mejor coincidencia con `WRatio` de 90 o más. Hay máximo 3 candidatos y siempre hay confirmación de la persona, con el botón "Escribir el nombre en inglés".
+- **Orden de candidatos:** primero la coincidencia exacta normalizada, ignorando artículos iniciales (the, a, an, el, la, los, las) en ambos lados; después el puntaje descendente y, al empatar, el orden de la lista (literales antes que identificaciones).
+- **Alias confirmados:** tabla `confirmed_aliases` (texto normalizado a `game_id`, por usuario y perfil). Se guardan al pulsar un candidato (el `game_id` debe estar entre los candidatos pendientes) o al resolverse un nombre en inglés. Se consultan antes de la identificación por LLM y resuelven directo con la nota determinista "Interpreté «X» como «Y».", que no indica que viene de un alias para no revelar lo que confirmó otra persona del mismo café. La traza registra `origen_resolucion = alias`. Un alias de un perfil no afecta a otro.
+- **Respuestas deterministas fuera del crítico:** la aclaración, la confirmación de candidatos y "No encontré ese juego" no pasan por narrador ni crítico. `critic_passed` es `null` y la traza marca ambos pasos como `omitido` con motivo `determinista`. Los textos de confirmación y de no encontrado avisan: "Entiendo mejor los nombres en inglés; si tu juego no aparece, escríbelo en inglés."
+
+## Narrador y crítico
+
+- **Vista legible compartida:** el narrador y el crítico LLM reciben la misma vista, con claves y valores en español sin guiones bajos ("Huecos que cubre", "Niveles que refuerza", "Ya cubiertos", "Juego más parecido", "Similitud", "Qué tan parecido"). Los valores como `parecido_pero_cubre_hueco` se convierten a texto. La similitud llega como porcentaje y con una etiqueta determinista según los umbrales del motor; solo el veredicto puede llamar `redundante`, y por encima del umbral con otro veredicto la etiqueta es "muy parecido". Los niveles de duración llevan "minutos". Las URLs, la traza de traducción y las fuentes no entran en la vista.
+- **Precio fuera del narrador:** el backend agrega la línea "Precio de referencia: USD X (BoardGamePrices, fecha)" o "sin precio confiable", después de la crítica para que un precio escrito por el narrador se detecte.
+- **Alcance del narrador:** en `evaluar_compra` no escribe veredicto, recomendaciones ni próximos pasos. El encabezado y la sugerencia final los pone el backend. Solo explica qué huecos cubre, qué refuerza, qué ya estaba cubierto y a qué juego de la colección se parece más, con porcentaje y etiqueta. El crítico determinista rechaza `veredicto`, `propongo`, `te recomiendo`, `recomiendo`, `te sugiero` y `vale la pena` en el texto del narrador.
+- **Plantilla de respaldo:** al agotarse los reintentos del crítico, el backend arma un encabezado y de 2 a 4 oraciones naturales con los mismos campos y formas. La plantilla es la respuesta de respaldo segura. Cada intento del narrador (borrador) y sus findings quedan en `agent_steps`.
+
+## Frontend: dirección visual y componentes
+
+- **Dirección visual:** "El estudio del sabio": nogal oscuro para fondos y marcos, pergamino para superficies de lectura, tinta café para el texto, latón para acentos y estados activos, vino para alertas y verde cardenillo para aciertos. Los tokens están en un solo lugar, `frontend/src/tokens.css`, con contraste AA verificado. Tipografía: Cinzel para el logo y los títulos, Source Serif 4 para la lectura, empaquetadas con `@fontsource` (sin red en ejecución). Las texturas son solo CSS.
+- **Forma:** esquinas de 12 a 20 px, sombras suaves en capas, botones de píldora (principal de latón, secundario con contorno), campos con la etiqueta arriba y pergaminos enrollados dibujados con CSS en los paneles de filtro y búsqueda. `prefers-reduced-motion` anula transiciones y animaciones.
+- **Ilustraciones:** SVG originales en línea dentro de `frontend/src/ilustraciones.css` (dados de hueso, cielo con constelaciones, astrolabio y sellos de lacre con su ícono). Un script los generó; no hay imágenes externas.
+- **CSS:** `frontend/src/styles.css` está consolidado: cada selector se define una sola vez, agrupado por componente (base, cabecera, superficies, sellos, Ludoteca, Cobertura, ficha y chat) y con los ajustes por ancho al final. La consolidación se verificó con capturas antes y después (0 % de píxeles distintos).
+- **Componentes compartidos:** `app/aporte/aporte.ts` tiene `app-sello-veredicto`, `app-aporte-coleccion` y los constructores puros `construirAporte` y `construirVenta`. El bloque "Qué aporta a tu colección" (ficha y tarjeta de evaluación del chat) y "Qué pasaría si lo vendes" usan los mismos componentes con tres estados. La venta calcula el estado con los conteos de la simulación y la meta por nivel de `/engine/coverage`; los niveles sin meta no cuentan. `app/logo/logo.ts` es el dado sabio (opción B): versión detallada en la cabecera y simplificada en el avatar y el favicon. Las opciones descartadas están en `frontend/diseno/`.
+- **Animación del logo:** SVG y CSS sin librerías, con grupos separados (sombrero, cejas, ojos, barba, boca, varita y galleta). Cada 20 a 40 segundos decide al azar si hace algo (70 %) y qué: parpadeo, mirar, barba, hechizo, galleta o bostezo, de 0,6 a 2 s y sin encimarse. El mouse lanza el hechizo, el temporizador se pausa con la pestaña oculta y con `prefers-reduced-motion` no se anima. Para forzar una acción: `?logo=hechizo` (también `parpadeo`, `mirar`, `barba`, `galleta`, `bostezo`) y `&mitad=1` la congela a la mitad.
+- **Capturas:** `frontend/scripts/capturas.mjs` abre la app (por defecto `http://localhost:8080`; `SERVIR_DIST=1` sirve `dist/` y enruta `/api` al backend) y guarda capturas en `frontend/capturas/` (ignorada por git): Ludoteca en cafe y personal, ficha de SETI, ficha de Wavelength con la venta, Cobertura y Chat a 1440 px, y Ludoteca y Chat a 390 px. El chat usa una respuesta guardada (`scripts/chat-guardado.json`) y sugerencias fijas, sin llamar al LLM. `scripts/capturas-logo.mjs` captura cada acción del logo y `scripts/comparar-capturas.mjs` compara dos carpetas píxel a píxel. `playwright` es dependencia de desarrollo; Chromium se guarda en `~/.cache/ms-playwright` y las librerías del sistema (`libnspr4`, `libnss3`, `libasound2t64`) las instaló Miguel con sudo. Chromium sin cabeza no dibuja emojis.
+- **Chat:** el botón "Nueva conversación" limpia la sesión (nuevo `session_id`, sin foco ni pendientes), vacía el historial y pide sugerencias nuevas.
+- **Preguntas sugeridas:** `GET /api/v1/chat/suggestions?perfil=` devuelve tres preguntas distintas en cada carga: una de compra con un juego de la lista curada que no está en la colección del perfil, una de huecos y una más entre `que_compro`, `que_saco_hoy`, `coleccion` y `detalle_juego`, con varias redacciones. La lista curada (`app/services/sugerencias.py`, 32 juegos populares) la verifica `tests/test_sugerencias.py` contra el catálogo real y sin red: cada juego existe, tiene precio confiable, se resuelve directo sin LLM y `evaluar_compra` lo encuentra. Si uno falla, se saca de la lista. Wyrmspan aparece a veces y sale redundante con el perfil personal.
+- **Resolución del título exacto:** una coincidencia exacta del título completo normalizado gana a las coincidencias solo por prefijo antes de ":", salvo que un prefijo tenga al menos cinco veces sus votos (SETI frente a "Seti"). Los homónimos exactos siguen la regla de popularidad. Con esto "Ticket to Ride" (9209) y "Codenames" (178900) se resuelven directo.
+- **Texto de la evaluación de compra:** el backend escribe de forma determinista el aporte ("Cubre un hueco: X.", "Refuerza un nivel débil: X." o "No cubre huecos nuevos; se ubica en zonas que ya tienes.") y el parecido ("Se parece en un N% a Juego."). El narrador escribe una sola oración sobre la experiencia del juego (familias de mecánicas, temática, peso y duración), sin números, veredicto ni juicios sobre la colección, y el crítico la revisa contra esos datos. La plantilla de respaldo usa una descripción determinista equivalente.
+
+## Usuarios y sesión
+
+- **Diseño:** la tabla `usuarios` (`id`, `usuario` único, `nombre`, `perfil`, `clave_hash`, `creado_en`) tiene dos cuentas sembradas al arrancar si no existen: `cafe` ("Café demo", perfil `cafe`) y `coleccionista` ("Colección personal", perfil `coleccionista`, el id que ya tenía el perfil de colección personal). Si falta la clave de una cuenta en el entorno, esa cuenta no se crea y se registra una advertencia con el nombre de la variable, sin valores.
+- **Contraseñas:** `hashlib.scrypt` (`n=2^14`, `r=8`, `p=1`) con sal aleatoria por usuario, almacenadas como `scrypt$n$r$p$sal$hash` y comparadas con `hmac.compare_digest`. Nunca se guarda ni se registra una clave en claro. Cuando el usuario no existe se gasta el mismo tiempo de cálculo.
+- **Token:** PyJWT (dependencia nueva, `pyjwt==2.15.0`), HS256, firmado con `JWT_SECRET`, con el id del usuario, el perfil y la expiración (`JWT_HORAS`, 12 por defecto). Sin `JWT_SECRET` el backend no arranca y lo dice en el log.
+- **Endpoints:** `POST /api/v1/auth/login` con `{usuario, clave}` devuelve `{token, nombre, perfil}` y `GET /api/v1/auth/yo` la sesión actual. Ante cualquier error de login el mensaje es siempre "Usuario o contraseña incorrectos". Todos los demás endpoints, salvo `health`, exigen `Authorization: Bearer <token>` y responden 401 sin un token válido de un usuario que exista.
+- **Perfil:** sale siempre del token. El parámetro `?perfil=` ya no existe y, si llega, se ignora. La colección y los alias confirmados siguen siendo del usuario demo sembrado y se aíslan por perfil. Las sesiones y corridas del chat se aíslan por persona (`chat_sessions.usuario_id`): quien presente la sesión de otra persona empieza una nueva y no ve sus corridas.
+- **Variables de entorno** (en `.env`, con valores vacíos en `.env.example`): `JWT_SECRET`, `JWT_HORAS`, `CLAVE_USUARIO_CAFE` y `CLAVE_USUARIO_COLECCIONISTA`.
+- **Frontend:** `/login` (logo animado y estilo del estudio), `SesionService` (token en `localStorage`), interceptor que agrega `Authorization` y, ante un 401, borra la sesión y va a `/login`, y un guard que protege Ludoteca, Cobertura y Chat. La cabecera muestra el nombre y "Cerrar sesión", que destruye el componente del estudio: no queda chat, foco ni sugerencias de la persona anterior. La URL base del API sale de `src/environments/`. El script de capturas inicia sesión con `CAPTURAS_CLAVE_CAFE` y `CAPTURAS_CLAVE_COLECCIONISTA` de su entorno y nunca lee `.env`.
+- **Por qué token en encabezado y no cookie:** al desplegar, el frontend y el backend estarán en dominios distintos. Una cookie de sesión cruzada exigiría `SameSite=None`, `Secure` y protección CSRF, y los navegadores cada vez bloquean más las cookies de terceros. Con el token en el encabezado `Authorization`, el frontend decide cuándo enviarlo y no hay CSRF. El costo es que el token vive en `localStorage` y es legible por scripts de la propia página, por lo que se vigilan las dependencias y el HTML se escapa.
+- **Trabajo futuro:** vista de administrador para gestionar usuarios, registro de cuentas, recuperación de contraseña y límite de intentos de login (hoy no hay).
+
+## Limitaciones conocidas
+
+- **Plantilla:** el crítico LLM es estricto y un caso puede caer en la plantilla. Antes de la vista legible, SETI y "¿y ese vale la pena?" cayeron en plantilla por identificadores con guion bajo. En la verificación final (SETI, Catan y "¿y ese vale la pena?") los tres casos pasaron con narración aprobada sin reintentos.
+- **Identificación en español:** 7 de 7 nombres probados aparecieron entre los candidatos (Arte moderno, Las torres errantes, Isla prohibida, Las ruinas perdidas de Arnak, Aventureros al tren, Código secreto y Pandemia). "Aventureros al tren" y "Código secreto" dependen de las identificaciones, no de las literales. Con la regla de artículos, "Las torres errantes" quedó primero.
+- **Criaturas maravillosas** es un caso aislado: depende de que el LLM proponga "Wondrous Creatures" y no siempre lo hace (en una prueba propuso "Amazing Creatures" y 400366 no apareció). Un alias confirmado lo resuelve en adelante.
+- El LLM no es determinista, así que el orden y el contenido de los candidatos pueden variar entre ejecuciones.
+
+## Trabajo futuro
+
+- Reducir los `args` del planner a los campos propios de cada tool. La evidencia mostró que el fallo era el `intent`, no los `args`, por lo que no se hizo.
+- Mecanismo para corregir un alias mal confirmado.
+- Imponer una procedencia explícita de resolución antes de ejecutar tools.
+
+## Archivos que mantiene Miguel
+
+- `CLAUDE.md`, `.claude/settings.json` y `docs/reglas_agente.md` los mantiene Miguel. No se modifican.
+
+## Estado por fases
+
+| Fase | Estado | Contenido |
+| --- | --- | --- |
+| 0 | Completada | Dependencias, artefactos, web_search y decisiones de BGG verificados. |
+| 1 | Completada | Monorepo, Makefile, Docker, backend FastAPI, frontend Angular, SQLite, esquema y seed. |
+| 1b | Completada | Vitrina de Ludoteca, catalogo y coleccion de solo lectura. |
+| 2 | Completada | Motor determinista, matrices, cobertura, compra, disponibilidad y pruebas doradas. |
+| 3 | Completada | API REST de coleccion y motor, con pruebas de API. |
+| 3b | Completada | Pantallas de Cobertura, detalle, disponibilidad y vista previa de Chat. |
+| 4 | Completada | Planner determinista corregido, narracion y critic LLM, regeneracion trazada, fixtures reales y pruebas del guion. |
+| 6 | Completada | Interfaz de ludoteca, modo mesa, cobertura y chat pulida para escritorio y movil. |

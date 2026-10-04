@@ -1,0 +1,96 @@
+/*
+ * El estudio del sabio: paleta, tipografía y texturas en un solo lugar.
+ * Todo contraste de texto verificado en AA (4.5:1 o más) para los pares documentados.
+ */
+:root {
+  /* Nogal: fondos y marcos */
+  --nogal-950: #170e0a;
+  --nogal-900: #21140e;
+  --nogal-800: #33201a;
+  --nogal-700: #4a2f20;
+  --nogal-600: #654230;
+
+  /* Pergamino: superficies de lectura */
+  --pergamino-50: #fcf7ea;
+  --pergamino-100: #f6ecd2;
+  --pergamino-200: #ecdcb8;
+  --pergamino-300: #dcc79a;
+
+  /* Tinta: texto sobre pergamino */
+  --tinta-900: #2a1c13; /* 14:1 sobre pergamino-100 */
+  --tinta-700: #4d3727; /* 9.4:1 */
+  --tinta-600: #62482f; /* 7.2:1 sobre pergamino-100, 6.2:1 sobre pergamino-200 */
+
+  /* Latón envejecido: acentos, bordes y estados activos */
+  --laton-200: #f1d68e;
+  --laton-300: #e0b95c; /* 9.6:1 sobre nogal-900 */
+  --laton-400: #c9a03f;
+  --laton-500: #a47e2c;
+  --laton-600: #86641f; /* solo bordes y adornos */
+  --laton-700: #6a4e17; /* 6.6:1 sobre pergamino-100: texto de acento */
+
+  /* Estados */
+  --vino-700: #7d1f2e; /* alertas: 8.5:1 sobre pergamino-100 */
+  --vino-100: #f1d9d6;
+  --cardenillo-700: #1f6a52; /* ideal y aciertos: 5.5:1 sobre pergamino-100 */
+  --cardenillo-100: #d5e8df;
+
+  /* Roles */
+  --fondo-pagina: var(--nogal-900);
+  --texto-sobre-nogal: var(--pergamino-100); /* 15:1 */
+  --texto-suave-sobre-nogal: var(--pergamino-200); /* 13:1 */
+  --acento-sobre-nogal: var(--laton-300);
+  --superficie: var(--pergamino-100);
+  --superficie-clara: var(--pergamino-50);
+  --superficie-oscura: var(--pergamino-200);
+  --texto: var(--tinta-900);
+  --texto-suave: var(--tinta-600);
+  --borde-laton: var(--laton-500);
+  --foco: var(--laton-300);
+
+  /* Tipografía */
+  --fuente-display:
+    "Cinzel", "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --fuente-lectura: "Source Serif 4", Georgia, "Times New Roman", serif;
+
+  /* Texturas solo con CSS */
+  --grano:
+    repeating-linear-gradient(
+      0deg,
+      rgb(255 255 255 / 1.5%) 0 1px,
+      transparent 1px 3px
+    ),
+    repeating-linear-gradient(90deg, rgb(0 0 0 / 3%) 0 1px, transparent 1px 4px);
+  --grano-pergamino:
+    radial-gradient(circle at 20% 15%, rgb(255 255 255 / 40%), transparent 55%),
+    radial-gradient(circle at 85% 90%, rgb(110 78 23 / 9%), transparent 50%),
+    repeating-linear-gradient(
+      0deg,
+      rgb(110 78 23 / 3%) 0 1px,
+      transparent 1px 3px
+    );
+  --vineta: radial-gradient(
+    ellipse at 50% 30%,
+    transparent 45%,
+    rgb(0 0 0 / 55%) 100%
+  );
+  --separador-laton: linear-gradient(
+    90deg,
+    transparent,
+    var(--laton-600) 15%,
+    var(--laton-300) 50%,
+    var(--laton-600) 85%,
+    transparent
+  );
+  --placa-laton: linear-gradient(135deg, #f1d68e, #d9b457 50%, #c9a03f);
+  --sombra-capas:
+    0 1px 2px rgb(10 5 2 / 28%), 0 6px 14px -2px rgb(10 5 2 / 32%),
+    0 18px 36px -10px rgb(10 5 2 / 38%);
+  --sombra-elevada:
+    0 2px 4px rgb(10 5 2 / 30%), 0 12px 22px -4px rgb(10 5 2 / 36%),
+    0 26px 44px -12px rgb(10 5 2 / 42%);
+  --radio-hoja: 16px;
+  --radio-campo: 12px;
+  --sombra-hoja:
+    0 1px 0 rgb(255 255 255 / 55%) inset, 0 6px 16px rgb(10 5 2 / 38%);
+}

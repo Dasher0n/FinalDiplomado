@@ -3,3 +3,17 @@
 .env.*
 !.env.example
 referencia/
+.venv/
+*.db
+*.db-wal
+*.db-shm
+node_modules/
+dist/
+.angular/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+frontend/openapi.json
+.claude/settings.local.json
+frontend/capturas/
