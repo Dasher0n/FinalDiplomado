@@ -58,13 +58,13 @@ Chart.defaults.color = "#4d3727";
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DecimalPipe],
   template: ` <main class="min-h-screen">
-    <header class="wise-header px-4 py-3 text-[#f8f1e5]">
+    <header class="wise-header text-[#f8f1e5]">
       <div class="mx-auto flex max-w-7xl items-center justify-between">
-        <div class="flex items-center gap-2">
+        <div class="brand-plate">
           <img class="h-10 w-10" src="/wise-dice.svg" alt="Dado sabio" />
           <div>
-            <h1 class="font-serif text-2xl">Wise Dice</h1>
-            <p class="text-xs text-amber-200">Tu asesor de ludoteca</p>
+            <h1 class="brand-name">Wise Dice</h1>
+            <p class="brand-tag">Tu asesor de ludoteca</p>
           </div>
         </div>
         <div class="header-actions">
@@ -78,19 +78,22 @@ Chart.defaults.color = "#4d3727";
               <option value="coleccionista">Colección personal</option>
             </select></label
           >
-          <nav class="wise-nav">
+          <nav class="wise-nav" aria-label="Secciones">
             <button
               [class.active]="vista() === 'ludoteca'"
+              [attr.aria-current]="vista() === 'ludoteca' ? 'page' : null"
               (click)="abrir('ludoteca')"
             >
               Ludoteca</button
             ><button
               [class.active]="vista() === 'cobertura'"
+              [attr.aria-current]="vista() === 'cobertura' ? 'page' : null"
               (click)="abrir('cobertura')"
             >
               Cobertura</button
             ><button
               [class.active]="vista() === 'chat'"
+              [attr.aria-current]="vista() === 'chat' ? 'page' : null"
               (click)="abrir('chat')"
             >
               Chat
@@ -101,7 +104,7 @@ Chart.defaults.color = "#4d3727";
     </header>
 
     @if (error()) {
-      <p class="mx-auto mt-4 max-w-7xl rounded bg-red-100 p-3 text-red-900">
+      <p class="alerta mx-auto mt-4 max-w-7xl rounded p-3">
         {{ error() }}
       </p>
     }

@@ -82,7 +82,7 @@
     var(--laton-600) 85%,
     transparent
   );
-  --placa-laton: linear-gradient(135deg, #f1d68e, #c9a03f 55%, #a47e2c);
+  --placa-laton: linear-gradient(135deg, #f1d68e, #d9b457 50%, #c9a03f);
   --sombra-hoja:
     0 1px 0 rgb(255 255 255 / 55%) inset, 0 6px 16px rgb(10 5 2 / 38%);
 }
