@@ -151,6 +151,43 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - La inicialización SQLite añade `profile_id` a una colección ya creada y asigna sus filas existentes a `coleccionista`, sin borrar datos.
 - Con la siembra real, Café demo tiene 40 juegos. Con `n=5`, `average_min=6.5` y `users_rated_min=1000`, el plan por precio USD 60 propone EXIT: The Game - The Forbidden Castle, Kingdom Legacy: Feudal Kingdom, The Werewolves of Miller's Hollow y Level 10, por USD 47.82 y valor pendiente 0.025.
 
+## Resolución de nombres de juego
+
+- **Invariante:** ninguna tool de juego se ejecuta con un nombre vacío, no anclado en el mensaje o un `game_id` no aceptado. Si no hay nombre ni foco, la respuesta es la aclaración "¿De qué juego me hablas? Escríbeme su nombre." sin herramientas.
+- **Validación:** `nombre_valido` devuelve el nombre limpio o `None`. Rechaza no texto, cadenas vacías tras quitar espacios, comillas y signos, `null`, `none`, `nil`, `undefined`, `n/a`, `na`, `desconocido`, referencias genéricas ("el juego", "este", "ese", "lo") y formas normalizadas de menos de 2 caracteres.
+- **Anclaje:** el nombre del planner solo se acepta si aparece en el mensaje (`partial_ratio` de 90 o más) o es el juego en foco o el pendiente.
+- **Cadena de respaldo:** planner anclado, regex sobre el mensaje, intención pendiente y luego foco (solo si el mensaje no trae nombre) y, al final, la aclaración. El punto de control está antes del ejecutor; la segunda pasada conserva la procedencia si llega al mismo juego.
+- **`game_id` aceptado:** solo si es entero, existe en el catálogo y coincide con el foco, el pendiente o el botón pulsado. La traza del planner registra `origen_nombre` (`planner`, `planner_reintento`, `regex`, `pendiente`, `foco`, `boton`, `ninguno`), el nombre final y el `motivo_descarte` (`invalido`, `no_anclado`, `id_no_aceptado`) junto con los intentos del planner (salida cruda y error).
+- **Contrato del planner:** `intent` y `tool` son `Literal` con los valores de `_INTENTS` y `_TOOLS`, más `general` con `steps` vacío. El esquema no lanza `ValueError`. El reintento es único y explica la causa real del rechazo. El prompt incluye "Juego en foco: {nombre} (id {id})" o "Juego en foco: ninguno". Una referencia como "ese" debe usar el `game_id` del foco, y entonces `origen_nombre` es `foco`.
+- **Traducción literal más identificación con confirmación:** si el título no se resuelve localmente, un LLM propone hasta 5 traducciones literales (con variantes del adjetivo) y hasta 3 identificaciones. Cada propuesta aporta un solo candidato, su mejor coincidencia con `WRatio` de 90 o más. Hay máximo 3 candidatos y siempre hay confirmación de la persona, con el botón "Escribir el nombre en inglés".
+- **Orden de candidatos:** primero la coincidencia exacta normalizada, ignorando artículos iniciales (the, a, an, el, la, los, las) en ambos lados; después el puntaje descendente y, al empatar, el orden de la lista (literales antes que identificaciones).
+- **Alias confirmados:** tabla `confirmed_aliases` (texto normalizado a `game_id`, por usuario y perfil). Se guardan al pulsar un candidato (el `game_id` debe estar entre los candidatos pendientes) o al resolverse un nombre en inglés. Se consultan antes de la identificación por LLM y resuelven directo con la nota determinista "Interpreté «X» como «Y» (lo confirmaste antes).". La traza registra `origen_resolucion = alias`. Un alias de un perfil no afecta a otro.
+- **Respuestas deterministas fuera del crítico:** la aclaración, la confirmación de candidatos y "No encontré ese juego" no pasan por narrador ni crítico. `critic_passed` es `null` y la traza marca ambos pasos como `omitido` con motivo `determinista`. Los textos de confirmación y de no encontrado avisan: "Entiendo mejor los nombres en inglés; si tu juego no aparece, escríbelo en inglés."
+
+## Narrador y crítico
+
+- **Vista legible compartida:** el narrador y el crítico LLM reciben la misma vista, con claves y valores en español sin guiones bajos ("Huecos que cubre", "Niveles que refuerza", "Ya cubiertos", "Juego más parecido", "Similitud", "Qué tan parecido"). Los valores como `parecido_pero_cubre_hueco` se convierten a texto. La similitud llega como porcentaje y con una etiqueta determinista según los umbrales del motor; solo el veredicto puede llamar `redundante`, y por encima del umbral con otro veredicto la etiqueta es "muy parecido". Los niveles de duración llevan "minutos". Las URLs, la traza de traducción y las fuentes no entran en la vista.
+- **Precio fuera del narrador:** el backend agrega la línea "Precio de referencia: USD X (BoardGamePrices, fecha)" o "sin precio confiable", después de la crítica para que un precio escrito por el narrador se detecte.
+- **Alcance del narrador:** en `evaluar_compra` no escribe veredicto, recomendaciones ni próximos pasos. El encabezado y la sugerencia final los pone el backend. Solo explica qué huecos cubre, qué refuerza, qué ya estaba cubierto y a qué juego de la colección se parece más, con porcentaje y etiqueta. El crítico determinista rechaza `veredicto`, `propongo`, `te recomiendo`, `recomiendo`, `te sugiero` y `vale la pena` en el texto del narrador.
+- **Plantilla de respaldo:** al agotarse los reintentos del crítico, el backend arma un encabezado y de 2 a 4 oraciones naturales con los mismos campos y formas. La plantilla es la respuesta de respaldo segura. Cada intento del narrador (borrador) y sus findings quedan en `agent_steps`.
+
+## Limitaciones conocidas
+
+- **Plantilla:** el crítico LLM es estricto y un caso puede caer en la plantilla. Antes de la vista legible, SETI y "¿y ese vale la pena?" cayeron en plantilla por identificadores con guion bajo. En la verificación final (SETI, Catan y "¿y ese vale la pena?") los tres casos pasaron con narración aprobada sin reintentos.
+- **Identificación en español:** 7 de 7 nombres probados aparecieron entre los candidatos (Arte moderno, Las torres errantes, Isla prohibida, Las ruinas perdidas de Arnak, Aventureros al tren, Código secreto y Pandemia). "Aventureros al tren" y "Código secreto" dependen de las identificaciones, no de las literales. Con la regla de artículos, "Las torres errantes" quedó primero.
+- **Criaturas maravillosas** es un caso aislado: depende de que el LLM proponga "Wondrous Creatures" y no siempre lo hace (en una prueba propuso "Amazing Creatures" y 400366 no apareció). Un alias confirmado lo resuelve en adelante.
+- El LLM no es determinista, así que el orden y el contenido de los candidatos pueden variar entre ejecuciones.
+
+## Trabajo futuro
+
+- Reducir los `args` del planner a los campos propios de cada tool. La evidencia mostró que el fallo era el `intent`, no los `args`, por lo que no se hizo.
+- Mecanismo para corregir un alias mal confirmado.
+- Imponer una procedencia explícita de resolución antes de ejecutar tools.
+
+## Archivos que mantiene Miguel
+
+- `CLAUDE.md`, `.claude/settings.json` y `docs/reglas_agente.md` los mantiene Miguel. No se modifican.
+
 ## Estado por fases
 
 | Fase | Estado | Contenido |
