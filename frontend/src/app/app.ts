@@ -3,9 +3,11 @@ import {
   ChangeDetectionStrategy,
   Component,
   HostListener,
+  computed,
   inject,
   signal,
 } from "@angular/core";
+import { Router } from "@angular/router";
 import {
   Chart,
   BarController,
@@ -30,11 +32,11 @@ import {
   JuegoDetalle,
   JuegoListado,
   PlanCompraRespuesta,
-  Perfil,
   VentaImpactoRespuesta,
   ChatRespuesta,
 } from "./core/api/catalogo.service";
 import { primeraMayuscula } from "./core/etiquetas";
+import { SesionService } from "./core/sesion.service";
 import {
   Aporte,
   AporteColeccionComponent,
@@ -65,7 +67,7 @@ Chart.defaults.font.family = '"Source Serif 4", Georgia, serif';
 Chart.defaults.color = "#4d3727";
 
 @Component({
-  selector: "app-root",
+  selector: "app-estudio",
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     DecimalPipe,
@@ -84,16 +86,10 @@ Chart.defaults.color = "#4d3727";
           </div>
         </div>
         <div class="header-actions">
-          <label class="profile-selector"
-            >Perfil<select
-              #perfilSelector
-              [value]="perfilActivo()"
-              (change)="cambiarPerfil(perfilSelector.value)"
-            >
-              <option value="cafe">Café demo</option>
-              <option value="coleccionista">Colección personal</option>
-            </select></label
-          >
+          <div class="usuario-sesion">
+            <span class="usuario-nombre">{{ sesion.nombre() }}</span>
+            <button class="chip" (click)="cerrarSesion()">Cerrar sesión</button>
+          </div>
           <nav class="wise-nav" aria-label="Secciones">
             <button
               [class.active]="vista() === 'ludoteca'"
@@ -939,8 +935,9 @@ export class App {
   private grafica: Chart | null = null;
   private readonly graficas = new Map<string, Chart>();
   protected readonly vista = signal("ludoteca");
-  protected readonly perfilActivo = signal("coleccionista");
-  protected readonly perfilesDisponibles = signal<Perfil[]>([]);
+  protected readonly sesion = inject(SesionService);
+  private readonly router = inject(Router);
+  protected readonly perfilActivo = computed(() => this.sesion.perfil());
   protected readonly modo = signal("estantes");
   protected readonly vistaCompacta = signal<boolean | null>(null);
   protected readonly juegos = signal<JuegoDetalle[]>([]);
@@ -977,30 +974,14 @@ export class App {
   } | null>(null);
 
   constructor() {
-    const perfilGuardado = localStorage.getItem("wise-dice-perfil");
-    if (perfilGuardado === "cafe" || perfilGuardado === "coleccionista") {
-      this.perfilActivo.set(perfilGuardado);
-    }
-    void this.cargarPerfiles();
     void this.cargarColeccion();
     void this.cargarSugerencias();
   }
 
-  protected async cambiarPerfil(perfil: string): Promise<void> {
-    if (perfil === this.perfilActivo()) return;
-    this.perfilActivo.set(perfil);
-    localStorage.setItem("wise-dice-perfil", perfil);
-    this.plan.set(null);
-    this.noche.set(null);
-    this.evaluacionDetalle.set(null);
-    await this.cargarColeccion();
-    if (this.vista() === "cobertura") await this.cargarCobertura();
-    await this.cargarSugerencias();
-  }
-
-  protected async abrirLudoteca(perfil: string): Promise<void> {
-    await this.cambiarPerfil(perfil);
-    this.vista.set("ludoteca");
+  /** Cierra la sesión y vuelve a /login; al destruirse el componente no queda nada de la persona. */
+  protected async cerrarSesion(): Promise<void> {
+    this.sesion.cerrar();
+    await this.router.navigateByUrl("/login");
   }
 
   protected async abrir(vista: string): Promise<void> {
@@ -1034,9 +1015,7 @@ export class App {
   private async cargarSugerencias(): Promise<void> {
     if (this.mensajesChat().length > 1) return;
     try {
-      const respuesta = await firstValueFrom(
-        this.api.sugerencias(this.perfilActivo()),
-      );
+      const respuesta = await firstValueFrom(this.api.sugerencias());
       this.preguntasSugeridas.set(respuesta.preguntas);
     } catch {
       // Se conservan las preguntas locales de respaldo.
@@ -1062,12 +1041,12 @@ export class App {
   }
 
   protected async agregar(id: string): Promise<void> {
-    await firstValueFrom(this.api.agregar(id, this.perfilActivo()));
+    await firstValueFrom(this.api.agregar(id));
     await this.cargarColeccion();
   }
 
   protected async quitar(id: string): Promise<void> {
-    await firstValueFrom(this.api.quitar(id, this.perfilActivo()));
+    await firstValueFrom(this.api.quitar(id));
     this.seleccionado.set(null);
     await this.cargarColeccion();
   }
@@ -1080,10 +1059,11 @@ export class App {
     if (jugadores > 0 && minutos > 0)
       this.noche.set(
         await firstValueFrom(
-          this.api.estaNoche(
-            { jugadores, minutos, edad_minima: edadMinima || undefined },
-            this.perfilActivo(),
-          ),
+          this.api.estaNoche({
+            jugadores,
+            minutos,
+            edad_minima: edadMinima || undefined,
+          }),
         ),
       );
   }
@@ -1107,15 +1087,12 @@ export class App {
   ): Promise<void> {
     this.plan.set(
       await firstValueFrom(
-        this.api.plan(
-          {
-            n,
-            average_min,
-            users_rated_min,
-            orden,
-          },
-          this.perfilActivo(),
-        ),
+        this.api.plan({
+          n,
+          average_min,
+          users_rated_min,
+          orden,
+        }),
       ),
     );
   }
@@ -1123,19 +1100,16 @@ export class App {
   protected async evaluarDetalle(): Promise<void> {
     if (this.seleccionado())
       this.evaluacionDetalle.set(
-        await firstValueFrom(
-          this.api.evaluar(this.seleccionado()!.id, this.perfilActivo()),
-        ),
+        await firstValueFrom(this.api.evaluar(this.seleccionado()!.id)),
       );
   }
 
   protected async simularVenta(): Promise<void> {
     const juego = this.seleccionado();
     if (!juego) return;
-    const perfil = this.perfilActivo();
     const [venta, cobertura] = await Promise.all([
-      firstValueFrom(this.api.impactoVenta(juego.id, perfil)),
-      firstValueFrom(this.api.cobertura(perfil)),
+      firstValueFrom(this.api.impactoVenta(juego.id)),
+      firstValueFrom(this.api.cobertura()),
     ]);
     this.ventaDetalle.set(venta);
     this.ventaBloque.set(
@@ -1172,7 +1146,7 @@ export class App {
     ]);
     try {
       const respuesta = await firstValueFrom(
-        this.api.chat(mensaje, this.perfilActivo(), this.chatSessionId, gameId),
+        this.api.chat(mensaje, this.chatSessionId, gameId),
       );
       this.chatSessionId = respuesta.session_id;
       this.mensajesChat.update((mensajes) => [
@@ -1548,9 +1522,7 @@ export class App {
 
   private async cargarColeccion(): Promise<void> {
     try {
-      const coleccion = await firstValueFrom(
-        this.api.coleccion(this.perfilActivo()),
-      );
+      const coleccion = await firstValueFrom(this.api.coleccion());
       this.juegos.set(
         await Promise.all(
           coleccion.juegos.map((juego) =>
@@ -1563,9 +1535,7 @@ export class App {
     }
   }
   private async cargarCobertura(): Promise<void> {
-    this.cobertura.set(
-      await firstValueFrom(this.api.cobertura(this.perfilActivo())),
-    );
+    this.cobertura.set(await firstValueFrom(this.api.cobertura()));
     setTimeout(() => {
       this.dibujarRadar();
       this.dibujarGraficasCobertura();
@@ -1737,15 +1707,5 @@ export class App {
 
   private colorConteo(conteo: number): string {
     return conteo === 0 ? "#7d1f2e" : conteo === 1 ? "#a47e2c" : "#1f6a52";
-  }
-
-  private async cargarPerfiles(): Promise<void> {
-    try {
-      this.perfilesDisponibles.set(
-        (await firstValueFrom(this.api.perfiles())).perfiles,
-      );
-    } catch {
-      this.error.set("No fue posible cargar los perfiles de ludoteca.");
-    }
   }
 }

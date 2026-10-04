@@ -1,6 +1,7 @@
 import { HttpClient } from "@angular/common/http";
 import { Injectable } from "@angular/core";
 
+import { environment } from "../../../environments/environment";
 import type { components } from "./schema";
 
 export type ColeccionRespuesta = components["schemas"]["ColeccionRespuesta"];
@@ -16,115 +17,80 @@ export type ChatRespuesta = components["schemas"]["ChatRespuesta"];
 export type SugerenciasRespuesta =
   components["schemas"]["SugerenciasRespuesta"];
 
-export interface Perfil {
-  id: string;
-  nombre: string;
-  tipo: string;
-  descripcion: string;
-  version_configuracion: number;
-  metas: Record<string, Record<string, number>>;
-}
+const API = environment.apiBase;
 
+/** El perfil lo decide el backend a partir del token: ningún método lo envía. */
 @Injectable({ providedIn: "root" })
 export class CatalogoService {
   constructor(private readonly http: HttpClient) {}
 
-  perfiles() {
-    return this.http.get<{ perfiles: Perfil[] }>("/api/v1/profiles");
-  }
-
-  coleccion(perfil: string) {
-    return this.http.get<ColeccionRespuesta>("/api/v1/collection", {
-      params: { perfil },
-    });
+  coleccion() {
+    return this.http.get<ColeccionRespuesta>(`${API}/collection`);
   }
 
   buscar(query: string) {
-    return this.http.get<{ juegos: JuegoListado[] }>("/api/v1/games", {
+    return this.http.get<{ juegos: JuegoListado[] }>(`${API}/games`, {
       params: { q: query, limit: 8 },
     });
   }
 
   detalle(gameId: string) {
-    return this.http.get<JuegoDetalle>(`/api/v1/games/${gameId}`);
+    return this.http.get<JuegoDetalle>(`${API}/games/${gameId}`);
   }
 
-  agregar(gameId: string, perfil: string) {
-    return this.http.post(
-      "/api/v1/collection",
-      { game_id: gameId },
-      { params: { perfil } },
-    );
+  agregar(gameId: string) {
+    return this.http.post(`${API}/collection`, { game_id: gameId });
   }
 
-  quitar(gameId: string, perfil: string) {
-    return this.http.delete(`/api/v1/collection/${gameId}`, {
-      params: { perfil },
+  quitar(gameId: string) {
+    return this.http.delete(`${API}/collection/${gameId}`);
+  }
+
+  cobertura() {
+    return this.http.get<CoberturaRespuesta>(`${API}/engine/coverage`);
+  }
+
+  evaluar(gameId: string) {
+    return this.http.post<EvaluarRespuesta>(`${API}/engine/evaluate`, {
+      game_id: gameId,
     });
   }
 
-  cobertura(perfil: string) {
-    return this.http.get<CoberturaRespuesta>("/api/v1/engine/coverage", {
-      params: { perfil },
+  impactoVenta(gameId: string) {
+    return this.http.post<VentaImpactoRespuesta>(`${API}/engine/sell-impact`, {
+      game_id: gameId,
     });
   }
 
-  evaluar(gameId: string, perfil: string) {
-    return this.http.post<EvaluarRespuesta>(
-      "/api/v1/engine/evaluate",
-      {
-        game_id: gameId,
-      },
-      { params: { perfil } },
-    );
-  }
-
-  impactoVenta(gameId: string, perfil: string) {
-    return this.http.post<VentaImpactoRespuesta>(
-      "/api/v1/engine/sell-impact",
-      {
-        game_id: gameId,
-      },
-      { params: { perfil } },
-    );
-  }
-
-  plan(
-    datos: {
-      n: number;
-      average_min: number;
-      users_rated_min: number;
-      orden: string;
-    },
-    perfil: string,
-  ) {
-    return this.http.post<PlanCompraRespuesta>(
-      "/api/v1/engine/buy-plan",
-      { ...datos, modo: "juego" },
-      { params: { perfil } },
-    );
-  }
-
-  estaNoche(
-    datos: { jugadores: number; minutos: number; edad_minima?: number },
-    perfil: string,
-  ) {
-    return this.http.post<EstaNocheRespuesta>("/api/v1/engine/tonight", datos, {
-      params: { perfil },
+  plan(datos: {
+    n: number;
+    average_min: number;
+    users_rated_min: number;
+    orden: string;
+  }) {
+    return this.http.post<PlanCompraRespuesta>(`${API}/engine/buy-plan`, {
+      ...datos,
+      modo: "juego",
     });
   }
 
-  chat(mensaje: string, perfil: string, sessionId?: string, gameId?: string) {
-    return this.http.post<ChatRespuesta>(
-      "/api/v1/chat",
-      { mensaje, session_id: sessionId, game_id: gameId },
-      { params: { perfil } },
-    );
+  estaNoche(datos: {
+    jugadores: number;
+    minutos: number;
+    edad_minima?: number;
+  }) {
+    return this.http.post<EstaNocheRespuesta>(`${API}/engine/tonight`, datos);
   }
 
-  sugerencias(perfil: string) {
-    return this.http.get<SugerenciasRespuesta>("/api/v1/chat/suggestions", {
-      params: { perfil },
+  chat(mensaje: string, sessionId?: string, gameId?: string) {
+    return this.http.post<ChatRespuesta>(`${API}/chat`, {
+      mensaje,
+      session_id: sessionId,
+      game_id: gameId,
     });
+  }
+
+  sugerencias() {
+    return this.http.get<SugerenciasRespuesta>(`${API}/chat/suggestions`);
   }
 }

@@ -241,26 +241,29 @@ main > section h2.font-serif::after {
   gap: 1.1rem;
 }
 
-.profile-selector {
-  display: grid;
-  gap: 0.15rem;
+.usuario-sesion {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
   margin-bottom: 0.9rem;
-  color: var(--texto-suave-sobre-nogal);
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
-.profile-selector select {
-  border: 1px solid var(--laton-500);
-  border-radius: 3px;
-  background: var(--superficie);
-  padding: 0.3rem 0.4rem;
-  color: var(--tinta-900);
-  font-family: var(--fuente-lectura);
-  letter-spacing: 0;
-  text-transform: none;
+.usuario-nombre {
+  color: var(--texto-suave-sobre-nogal);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.usuario-sesion .chip {
+  min-height: 2.1rem;
+  padding: 0.3rem 0.9rem;
+  border-color: var(--laton-300);
+  color: var(--laton-300);
+  font-size: 0.85rem;
+}
+
+.usuario-sesion .chip:hover:not(:disabled) {
+  background: rgb(224 185 92 / 18%);
 }
 
 .wise-nav {
@@ -1391,6 +1394,60 @@ main > section h2.font-serif::after {
   --sello-icono: var(--icono-perdida);
 }
 
+/* ===== Inicio de sesión ===== */
+
+.login-pantalla {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 3rem 1rem;
+}
+
+.login-hoja {
+  width: min(26rem, 100%);
+  margin-block: 2.4rem;
+  text-align: center;
+}
+
+.login-logo {
+  display: block;
+  width: 8rem;
+  height: 8rem;
+  margin: 0 auto 0.4rem;
+  filter: drop-shadow(0 4px 6px rgb(42 28 19 / 40%));
+}
+
+.login-titulo {
+  margin: 0;
+  font-size: 2.4rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.login-subtitulo {
+  margin: 0.2rem 0 1.4rem;
+  color: var(--texto-suave);
+  font-style: italic;
+}
+
+.login-formulario {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+}
+
+.login-formulario .primary {
+  justify-self: stretch;
+  margin-top: 0.4rem;
+}
+
+.login-error {
+  margin: 0;
+  color: var(--vino-700);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
 /* ===== Chat ===== */
 
 .chat-cabecera {
@@ -1613,9 +1670,14 @@ main > section h2.font-serif::after {
     gap: 0.5rem;
     margin-left: auto;
   }
-  .profile-selector {
-    max-width: 9rem;
+  .usuario-sesion {
     margin-bottom: 0.6rem;
+  }
+  .usuario-nombre {
+    max-width: 7.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   /* Barra de pestañas fija al pie, con las pestañas hacia arriba */
   .wise-nav {

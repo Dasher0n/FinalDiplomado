@@ -40,7 +40,7 @@ const respuestaChat = JSON.parse(
   readFileSync("scripts/chat-guardado.json", "utf8"),
 );
 
-async function abrirPagina(navegador, ancho, perfil) {
+async function abrirPagina(navegador, ancho, usuario) {
   const contexto = await navegador.newContext({
     viewport: { width: ancho, height: ancho > 800 ? 900 : 844 },
     deviceScaleFactor: 1,
@@ -51,12 +51,6 @@ async function abrirPagina(navegador, ancho, perfil) {
     let semilla = 20240;
     Math.random = () => (semilla = (semilla * 16807) % 2147483647) / 2147483647;
   });
-  await pagina.addInitScript((p) => {
-    try {
-      localStorage.setItem("perfilActivo", p);
-      localStorage.setItem("perfil", p);
-    } catch {}
-  }, perfil);
   if (process.env.SERVIR_DIST) {
     await pagina.route("**/api/**", async (ruta) => {
       const url = new URL(ruta.request().url());
@@ -85,11 +79,23 @@ async function abrirPagina(navegador, ancho, perfil) {
       }),
     });
   });
-  await pagina.goto(base);
-  await pagina.waitForLoadState("networkidle");
-  const selector = pagina.locator(".profile-selector select");
-  if ((await selector.inputValue()) !== perfil)
-    await selector.selectOption(perfil);
+  // Inicia sesión por la pantalla de login con las claves de CAPTURAS_CLAVE_CAFE y
+  // CAPTURAS_CLAVE_COLECCIONISTA (el script nunca lee el archivo .env).
+  const clave =
+    process.env[
+      usuario === "cafe"
+        ? "CAPTURAS_CLAVE_CAFE"
+        : "CAPTURAS_CLAVE_COLECCIONISTA"
+    ];
+  if (!clave)
+    throw new Error(
+      `Falta la clave de ${usuario} en el entorno de las capturas`,
+    );
+  await pagina.goto(base + "/login");
+  await pagina.fill('input[name="usuario"]', usuario);
+  await pagina.fill('input[name="clave"]', clave);
+  await pagina.getByRole("button", { name: "Entrar" }).click();
+  await pagina.waitForSelector(".wise-header");
   await pagina.waitForLoadState("networkidle");
   await pagina.waitForTimeout(700);
   return { contexto, pagina };
@@ -125,6 +131,18 @@ const nav = (pagina, texto) =>
 
 const navegador = await chromium.launch();
 try {
+  // Pantalla de inicio de sesión, sin sesión previa
+  for (const ancho of [1440, 390]) {
+    const contexto = await navegador.newContext({
+      viewport: { width: ancho, height: ancho > 800 ? 900 : 844 },
+    });
+    const pagina = await contexto.newPage();
+    await pagina.goto(base + "/login");
+    await pagina.waitForSelector(".login-hoja");
+    await pagina.waitForTimeout(700);
+    await foto(pagina, `login-${ancho}`, true);
+    await contexto.close();
+  }
   // Ludoteca, perfil cafe y perfil personal
   for (const [perfil, etiqueta] of [
     ["cafe", "cafe"],
