@@ -882,8 +882,8 @@ def test_formatear_resultados_para_narrador() -> None:
 
     assert chat_service._formatear_resultados_narrador(resultados) == [
         {
-            "juego": {"peso": "2.3", "precio_usd": "USD 67.50", "fecha_precio": "24 sep 2026"},
-            "similitud": {"total": "0.83", "mecanicas": "0.65"},
+            "juego": {"peso": "2.3"},
+            "similitud": {"total": "83%", "mecanicas": "65%"},
         }
     ]
 
@@ -1078,7 +1078,8 @@ def test_chat_reintenta_narrador_y_persiste_critic(
     assert response.status_code == 200
     payload = response.json()
     assert payload["answer"] == (
-        "📦 " + fixture["narrador_corregido"] + "\n\n💡 ¿Quieres simular qué pasaría si lo vendes?"
+        "📦 " + fixture["narrador_corregido"] + "\n\nPrecio de referencia: USD 55.00 "
+        "(BoardGamePrices, 1 ene 2026).\n\n💡 ¿Quieres simular qué pasaría si lo vendes?"
     )
     assert payload["critic_passed"] is True
     assert payload["critic_attempts"] == 1

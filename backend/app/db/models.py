@@ -118,6 +118,23 @@ class GameAlias(Base):
     creado_en: Mapped[datetime] = created_at_column()
 
 
+class ConfirmedAlias(Base):
+    """Alias confirmados por la persona: texto normalizado a game_id, por perfil."""
+
+    __tablename__ = "confirmed_aliases"
+    __table_args__ = (
+        UniqueConstraint("user_id", "profile_id", "alias_normalizado", name="uq_alias_perfil"),
+    )
+
+    id: Mapped[str] = pk_column()
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    profile_id: Mapped[str] = mapped_column(String(32), index=True)
+    alias_normalizado: Mapped[str] = mapped_column(String(512), index=True)
+    game_id: Mapped[str] = mapped_column(ForeignKey("games.ID", ondelete="CASCADE"), index=True)
+    origen: Mapped[str] = mapped_column(String(32))
+    creado_en: Mapped[datetime] = created_at_column()
+
+
 class UserCollection(Base):
     __tablename__ = "user_collection"
     __table_args__ = (

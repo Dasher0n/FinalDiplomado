@@ -52,6 +52,6 @@ async def test_narrador_llm_usa_cliente_simulado_y_solo_resultados(monkeypatch: 
     assert "funciones que no estén en el manifiesto" in llamadas["input"][0]["content"]
     assert "una sola pregunta concreta" in llamadas["input"][0]["content"]
     assert "sin emojis" in llamadas["input"][0]["content"]
-    assert "USD 67.50" in llamadas["input"][1]["content"]
-    assert "24 sep 2026" in llamadas["input"][1]["content"]
-    assert "0.83" in llamadas["input"][1]["content"]
+    contenido = llamadas["input"][1]["content"]
+    assert "USD 67.50" not in contenido and "24 sep 2026" not in contenido
+    assert "83%" in contenido

@@ -15,10 +15,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.catalogo import _juego_detalle
 from app.api.v1.engine import _artefactos, _coleccion, _juego, _niveles
 from app.core.config import Settings
-from app.db.models import AgentRun, AgentStep, ChatMessage, ChatSession, Game, ToolCall
+from app.db.models import (
+    AgentRun,
+    AgentStep,
+    ChatMessage,
+    ChatSession,
+    ConfirmedAlias,
+    Game,
+    ToolCall,
+)
 from app.engine.motor import (
     cobertura,
     evaluar_redundancia,
+    niveles_de_juego,
     normalizar_nombre,
     opciones_compra,
     que_saco_hoy,
@@ -168,7 +177,7 @@ class _CriticaRespuestaLlm(BaseModel):
 class _TitulosTraducidosLlm(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    traducciones_literales: list[str] = Field(default_factory=list, max_length=3)
+    traducciones_literales: list[str] = Field(default_factory=list, max_length=5)
     identificaciones: list[str] = Field(default_factory=list, max_length=3)
     titulos: list[str] = Field(default_factory=list, max_length=3)
 
@@ -722,12 +731,13 @@ async def _resolver_con_traduccion(
             input=(
                 "Un usuario hispanohablante busca un juego de mesa llamado «"
                 + nombre
-                + "». Devuelve hasta 3 traducciones literales al inglés y hasta 3 juegos de mesa "
-                "que creas que son, en ese orden. No expliques nada."
+                + "». Devuelve hasta 5 traducciones literales al inglés, incluidas variantes del "
+                "adjetivo (por ejemplo wondrous, marvelous, wonderful, amazing), y hasta 3 juegos "
+                "de mesa que creas que son, en ese orden. No expliques nada."
             ),
             text_format=_TitulosTraducidosLlm,
         )
-        literales = salida.output_parsed.traducciones_literales[:3] if salida.output_parsed else []
+        literales = salida.output_parsed.traducciones_literales[:5] if salida.output_parsed else []
         identificaciones = (
             (salida.output_parsed.identificaciones or salida.output_parsed.titulos)[:3]
             if salida.output_parsed
@@ -811,6 +821,106 @@ async def _validar_plan_con_juego(
     return PlanLlm(intent=intent, steps=[PasoPlan(id="1", tool=tool, args={"game_id": juego.id})])
 
 
+async def _buscar_alias(
+    session: AsyncSession, user_id: str, perfil_id: str, nombre: str
+) -> ConfirmedAlias | None:
+    return await session.scalar(
+        select(ConfirmedAlias).where(
+            ConfirmedAlias.user_id == user_id,
+            ConfirmedAlias.profile_id == perfil_id,
+            ConfirmedAlias.alias_normalizado == normalizar_nombre(nombre),
+        )
+    )
+
+
+async def _guardar_alias(
+    session: AsyncSession, user_id: str, perfil_id: str, nombre: str, game_id: str, origen: str
+) -> bool:
+    clave = normalizar_nombre(nombre)
+    if not clave:
+        return False
+    existente = await _buscar_alias(session, user_id, perfil_id, nombre)
+    if existente is not None:
+        existente.game_id, existente.origen = game_id, origen
+    else:
+        session.add(
+            ConfirmedAlias(
+                user_id=user_id,
+                profile_id=perfil_id,
+                alias_normalizado=clave,
+                game_id=game_id,
+                origen=origen,
+            )
+        )
+    return True
+
+
+async def _consulta_pendiente(
+    session: AsyncSession, session_id: str
+) -> tuple[str, set[str]] | None:
+    """Nombre buscado y candidatos de la última consulta de la sesión que quedó sin resolver."""
+    run = await session.scalar(
+        select(AgentRun)
+        .where(AgentRun.session_id == session_id)
+        .order_by(AgentRun.creado_en.desc())
+        .limit(1)
+    )
+    if run is None:
+        return None
+    llamadas = (await session.scalars(select(ToolCall).where(ToolCall.run_id == run.id))).all()
+    for llamada in llamadas:
+        resultado = llamada.resultado or {}
+        nombre = nombre_valido(llamada.argumentos.get("nombre"))
+        if nombre and resultado.get("estado") in {"ambiguo", "no_encontrado"}:
+            return nombre, {candidato["id"] for candidato in resultado.get("candidatos", [])}
+    return None
+
+
+_MESES = {
+    "Jan": "ene",
+    "Feb": "feb",
+    "Mar": "mar",
+    "Apr": "abr",
+    "May": "may",
+    "Jun": "jun",
+    "Jul": "jul",
+    "Aug": "ago",
+    "Sep": "sep",
+    "Oct": "oct",
+    "Nov": "nov",
+    "Dec": "dic",
+}
+
+
+def _fecha_corta(fecha: datetime) -> str:
+    texto = fecha.strftime("%-d %b %Y").replace(".", "")
+    for origen, destino in _MESES.items():
+        texto = texto.replace(origen, destino)
+    return texto
+
+
+def _texto_precio(juego: Game) -> str:
+    """Precio de referencia con fuente y fecha, o la indicación de que no es confiable."""
+    if juego.precio_usd is None or not juego.precio_confiable:
+        return "sin precio confiable"
+    fecha = f", {_fecha_corta(juego.fecha_precio)}" if juego.fecha_precio else ""
+    return f"USD {float(juego.precio_usd):.2f} (BoardGamePrices{fecha})"
+
+
+def _etiqueta_similitud(
+    total: float, veredicto: str, umbral_redundante: float, umbral_parecido: float
+) -> str:
+    """Etiqueta con los umbrales del motor. Solo el veredicto puede llamar redundante."""
+    if total >= umbral_redundante:
+        return "redundante" if veredicto == "redundante" else "muy parecido"
+    return "parecido" if total >= umbral_parecido else "distinto"
+
+
+def _nota_interpretacion(interpretado: dict[str, str]) -> str:
+    confirmado = " (lo confirmaste antes)" if interpretado.get("origen") == "alias" else ""
+    return f"Interpreté «{interpretado['buscado']}» como «{interpretado['resuelto']}»{confirmado}."
+
+
 async def _ejecutar_tool(
     nombre: str,
     args: dict[str, Any],
@@ -886,9 +996,27 @@ async def _ejecutar_tool(
                 for etiqueta, plan in zip(("A", "B", "C"), planes, strict=True)
             ]
         }
-    resolucion = await _resolver_con_traduccion(
-        repo, args.get("nombre"), args.get("game_id"), settings
+    # Un alias confirmado antes se resuelve directo, sin identificación por LLM.
+    origen_resolucion = None
+    alias = (
+        await _buscar_alias(session, user_id, perfil.id, args["nombre"])
+        if not args.get("game_id") and nombre_valido(args.get("nombre"))
+        else None
     )
+    juego_alias = await repo.obtener_juego(alias.game_id) if alias else None
+    if juego_alias is not None:
+        escrito = nombre_valido(args["nombre"]) or ""
+        interpretado = (
+            None
+            if normalizar_nombre(escrito) == normalizar_nombre(juego_alias.nombre)
+            else {"buscado": escrito, "resuelto": juego_alias.nombre, "origen": "alias"}
+        )
+        resolucion: Any = ("encontrado", (juego_alias,), interpretado, [], None)
+        origen_resolucion = "alias"
+    else:
+        resolucion = await _resolver_con_traduccion(
+            repo, args.get("nombre"), args.get("game_id"), settings
+        )
     estado, juegos_resueltos, interpretado_como, sugerencias_traduccion, traza_traduccion = (
         resolucion
     )
@@ -908,6 +1036,12 @@ async def _ejecutar_tool(
             "estado": "encontrado",
             "juego": _juego_detalle(juego).model_dump(mode="json"),
             "ya_en_coleccion": any(item.id == juego.id for item in coleccion),
+            "precio_texto": _texto_precio(juego),
+            "niveles_del_juego": [
+                f"{eje}: {nivel}"
+                for eje, nivel in sorted(niveles_de_juego(juego, artefactos.tipos))
+            ],
+            "origen_resolucion": origen_resolucion,
             "interpretado_como": interpretado_como,
             "sugerencias_traduccion": sugerencias_traduccion,
             "traza_traduccion": traza_traduccion,
@@ -920,6 +1054,8 @@ async def _ejecutar_tool(
             "estado": "encontrado",
             "ya_en_coleccion": True,
             "juego": _juego(juego, artefactos).model_dump(mode="json"),
+            "precio_texto": _texto_precio(juego),
+            "origen_resolucion": origen_resolucion,
             "impacto_venta": _impacto_cobertura(
                 artefactos, coleccion, sin_candidato, perfil.metas
             ).model_dump(mode="json"),
@@ -935,9 +1071,29 @@ async def _ejecutar_tool(
         for eje, eje_cobertura in cobertura(artefactos, sin_candidato, perfil.metas).ejes.items()
         for nivel in eje_cobertura.faltantes
     }
+    cubre = niveles_de_juego(juego, artefactos.tipos)
+    ejes_sin_candidato = cobertura(artefactos, sin_candidato, perfil.metas).ejes
+
+    def niveles_en(estado_nivel: str) -> list[str]:
+        return [
+            f"{eje}: {nivel}"
+            for eje, nivel in sorted(cubre)
+            if eje in ejes_sin_candidato and nivel in getattr(ejes_sin_candidato[eje], estado_nivel)
+        ]
+
     return {
         "estado": "encontrado",
         "veredicto": veredicto,
+        "similitud_etiqueta": _etiqueta_similitud(
+            similitud.total, veredicto, artefactos.umbral_redundante, artefactos.umbral_parecido
+        )
+        if similitud
+        else None,
+        "faltantes_que_cubre": niveles_en("faltantes"),
+        "debiles_que_refuerza": niveles_en("debiles"),
+        "ya_cubiertos": niveles_en("cubiertos"),
+        "precio_texto": _texto_precio(juego),
+        "origen_resolucion": origen_resolucion,
         "juego": _juego(juego, artefactos, huecos).model_dump(mode="json"),
         "juego_mas_parecido": _juego(cercano, artefactos).model_dump(mode="json")
         if cercano
@@ -982,11 +1138,7 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
     if intent == "evaluar_compra":
         juego, similar = resultado["juego"], resultado.get("juego_mas_parecido")
         interpretacion = resultado.get("interpretado_como")
-        prefijo = (
-            f"Interpreté «{interpretacion['buscado']}» como «{interpretacion['resuelto']}».\n\n"
-            if interpretacion
-            else ""
-        )
+        prefijo = f"{_nota_interpretacion(interpretacion)}\n\n" if interpretacion else ""
         if resultado.get("ya_en_coleccion"):
             return (
                 prefijo + f"**{juego['nombre']}** ya está en tu colección.\n\n"
@@ -1047,11 +1199,7 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
     if intent == "coleccion":
         return f"Tu colección activa tiene {resultado['total']} juegos."
     interpretacion = resultado.get("interpretado_como")
-    prefijo = (
-        f"Interpreté «{interpretacion['buscado']}» como «{interpretacion['resuelto']}».\n\n"
-        if interpretacion
-        else ""
-    )
+    prefijo = f"{_nota_interpretacion(interpretacion)}\n\n" if interpretacion else ""
     en_coleccion = resultado.get("ya_en_coleccion")
     estado = "📦 ya está en tu colección" if en_coleccion else "está disponible en el catálogo"
     return (
@@ -1086,6 +1234,20 @@ def _con_sugerencia_final(respuesta: str, intent: str, resultados: list[dict[str
     return "\n".join(lineas).rstrip() + "\n\n" + _sugerencia_final(intent, resultados)
 
 
+def _agregar_precio(respuesta: str, resultados: list[dict[str, Any]]) -> str:
+    """Inserta la línea determinista de precio antes de la sugerencia final.
+
+    Va después de la crítica: si el narrador menciona un precio, el crítico lo ve sin la fuente
+    que agrega el backend y lo rechaza.
+    """
+    precio = resultados[0].get("precio_texto") if resultados else None
+    if not precio:
+        return respuesta
+    linea = f"Precio de referencia: {precio}."
+    cuerpo, separador, sugerencia = respuesta.rpartition("\n\n💡")
+    return f"{cuerpo}\n\n{linea}{separador}{sugerencia}" if separador else f"{respuesta}\n\n{linea}"
+
+
 def _sanear_negritas(respuesta: str) -> str:
     """Evita que una línea con markdown incompleto afecte el resto de la respuesta."""
     return "\n".join(
@@ -1111,48 +1273,45 @@ def _emoji_resultado(intent: str, resultados: list[dict[str, Any]]) -> str:
 
 def _presentar_respuesta(respuesta: str, intent: str, resultados: list[dict[str, Any]]) -> str:
     respuesta = _sanear_negritas(respuesta).strip()
-    return (
+    presentada = (
         f"{_emoji_resultado(intent, resultados)} {respuesta}"
         if respuesta
         else _emoji_resultado(intent, resultados)
     )
+    interpretado = resultados[0].get("interpretado_como") if resultados else None
+    if interpretado and interpretado.get("origen") == "alias":
+        nota = _nota_interpretacion(interpretado)
+        if nota not in presentada:
+            presentada = f"{nota}\n\n{presentada}"
+    return presentada
+
+
+_CLAVES_FUERA_DEL_NARRADOR = {
+    "precio_usd",
+    "fecha_precio",
+    "precio_confiable",
+    "n_ofertas_us_stock",
+    "url_bgp",
+    "bgp_url",
+    "precio_texto",
+    "niveles_que_cubre",
+}
 
 
 def _formatear_resultados_narrador(resultados: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    meses = {
-        "Jan": "ene",
-        "Feb": "feb",
-        "Mar": "mar",
-        "Apr": "abr",
-        "May": "may",
-        "Jun": "jun",
-        "Jul": "jul",
-        "Aug": "ago",
-        "Sep": "sep",
-        "Oct": "oct",
-        "Nov": "nov",
-        "Dec": "dic",
-    }
+    """Copia para el narrador: sin precios, similitud en porcentaje y niveles explícitos."""
 
     def recorrer(valor: Any, clave: str | None = None, es_similitud: bool = False) -> Any:
         if isinstance(valor, dict):
+            if clave == "interpretado_como" and valor.get("origen") == "alias":
+                return None  # La nota de alias la agrega el backend.
             return {
                 nombre: recorrer(item, nombre, es_similitud or nombre == "similitud")
                 for nombre, item in valor.items()
+                if nombre not in _CLAVES_FUERA_DEL_NARRADOR
             }
         if isinstance(valor, list):
             return [recorrer(item, clave, es_similitud) for item in valor]
-        if clave == "precio_usd" and isinstance(valor, (int, float)):
-            return f"USD {valor:.2f}"
-        if clave == "fecha_precio" and isinstance(valor, str):
-            try:
-                fecha = datetime.fromisoformat(valor.replace("Z", "+00:00"))
-                texto = fecha.strftime("%-d %b %Y").replace(".", "")
-                for origen, destino in meses.items():
-                    texto = texto.replace(origen, destino)
-                return texto
-            except ValueError:
-                return valor
         if clave == "peso" and isinstance(valor, (int, float)):
             return f"{valor:.1f}"
         if (
@@ -1160,10 +1319,14 @@ def _formatear_resultados_narrador(resultados: list[dict[str, Any]]) -> list[dic
             and clave in {"total", "mecanicas", "ocasion", "interaccion", "tematica"}
             and isinstance(valor, (int, float))
         ):
-            return f"{valor:.2f}"
+            return f"{round(valor * 100)}%"
         return valor
 
-    return [recorrer(resultado) for resultado in resultados]
+    copia = [recorrer(resultado) for resultado in resultados]
+    for resultado in copia:
+        if resultado.get("interpretado_como") is None:
+            resultado.pop("interpretado_como", None)
+    return copia
 
 
 def _valores(resultados: list[dict[str, Any]]) -> list[Any]:
@@ -1436,12 +1599,18 @@ async def _narrar_llm(
         "objetivos ocultos si no aparecen en los resultados. No inventes cifras, atributos, "
         "fuentes ni recomendaciones. Para un veredicto, explica su motivo real: si regla_exacta "
         "es reimplementa o misma_linea_de_producto, menciónalo; en otro caso indica similitud "
-        "total y los bloques disponibles. Nunca llames afinidad o match a la similitud. En un "
+        "total y los bloques disponibles. La similitud llega ya como porcentaje y con una "
+        "etiqueta en similitud_etiqueta: usa solo ese porcentaje y esa etiqueta, sin calificativos "
+        "propios como mucho, poco o casi. Sobre niveles de cobertura, afirma solo los que estén en "
+        "faltantes_que_cubre, debiles_que_refuerza, ya_cubiertos o niveles_del_juego, con el "
+        "nombre con que aparecen; un nivel faltante es un hueco de la colección, no una "
+        "característica del juego. Nunca llames afinidad o match a la similitud. En un "
         "plan de compra, presenta A, B y C con su valor cubierto, y solo puedes llamar "
         "recomendada a la opción A. En que_me_falta incluye faltantes y débiles. Nunca menciones "
         "funciones que no estén en el manifiesto de tools, nombres internos entre comillas "
-        "invertidas, ni precio o presupuesto salvo que el resultado incluya ese precio. Si los "
-        "resultados no responden la pregunta, dilo en una línea y haz una sola pregunta concreta."
+        "invertidas, ni precio ni presupuesto: el sistema agrega el precio en una línea "
+        "aparte. Si los resultados no responden la pregunta, dilo en una línea y haz una sola "
+        "pregunta concreta."
     )
     if retroalimentacion:
         hallazgos = [
@@ -1561,6 +1730,9 @@ async def responder(
     )
     resumen = (
         ", ".join(juego.nombre for juego in coleccion_activa) + f". Últimos turnos: {historial}"
+    )
+    pendiente = (
+        await _consulta_pendiente(session, chat_session.id) if solicitud.session_id else None
     )
     es_continuacion_en_ingles = bool(
         re.match(r"^el nombre en ingl[eé]s es:\s*.+$", solicitud.mensaje, re.IGNORECASE)
@@ -1726,6 +1898,40 @@ async def responder(
                         error_mensaje=traza_traduccion.get("error"),
                     )
                 )
+    primero = resultados[0] if resultados else {}
+    juego_resuelto = primero.get("juego") if isinstance(primero.get("juego"), dict) else None
+    if pendiente and juego_resuelto and primero.get("estado") == "encontrado":
+        nombre_pendiente, ids_candidatos = pendiente
+        origen_alias = None
+        if solicitud.game_id and solicitud.game_id == juego_resuelto["id"]:
+            origen_alias = "candidato" if solicitud.game_id in ids_candidatos else None
+        elif es_continuacion_en_ingles:
+            origen_alias = "ingles"
+        if origen_alias and await _guardar_alias(
+            session, user.id, perfil.id, nombre_pendiente, juego_resuelto["id"], origen_alias
+        ):
+            session.add(
+                AgentStep(
+                    user_id=user.id,
+                    run_id=run.id,
+                    agent_name="alias",
+                    output={
+                        "alias_normalizado": normalizar_nombre(nombre_pendiente),
+                        "game_id": juego_resuelto["id"],
+                        "origen": origen_alias,
+                    },
+                )
+            )
+    for resultado in resultados:
+        if resultado.get("origen_resolucion") == "alias":
+            session.add(
+                AgentStep(
+                    user_id=user.id,
+                    run_id=run.id,
+                    agent_name="resolution",
+                    output={"origen_resolucion": "alias", "llm_called": False},
+                )
+            )
     answer = _narrar(plan.intent, resultados)
     narrator_llm_used = False
     critic_findings: list[str | dict[str, str]] = []
@@ -1759,17 +1965,18 @@ async def responder(
         trazas.append(("narrator", "fallback", {"attempt": 0, "llm_used": False}))
 
     while not determinista:
-        answer = _presentar_respuesta(
+        vista_critica = _presentar_respuesta(
             _con_sugerencia_final(answer, plan.intent, resultados), plan.intent, resultados
         )
-        deterministic_findings = _criticar_determinista(answer, resultados)
+        answer = _agregar_precio(vista_critica, resultados)
+        deterministic_findings = _criticar_determinista(vista_critica, resultados)
         critic_findings.clear()
         critic_findings.extend(deterministic_findings)
         critic_llm_used = False
         if not deterministic_findings and settings.llm_active and narrativa_llm_permitida:
             try:
                 critic_findings.extend(
-                    await _criticar_llm(settings, answer, resultados, solicitud.mensaje)
+                    await _criticar_llm(settings, vista_critica, resultados, solicitud.mensaje)
                 )
                 critic_llm_used = True
             except Exception as error:  # noqa: BLE001
@@ -1802,12 +2009,13 @@ async def responder(
             break
         if critic_attempts >= settings.critic_max_retries:
             answer = _narrar(plan.intent, resultados)
-            answer = _presentar_respuesta(
+            vista_critica = _presentar_respuesta(
                 _con_sugerencia_final(answer, plan.intent, resultados), plan.intent, resultados
             )
+            answer = _agregar_precio(vista_critica, resultados)
             narrator_llm_used = False
             critic_findings.clear()
-            critic_findings.extend(_criticar_determinista(answer, resultados))
+            critic_findings.extend(_criticar_determinista(vista_critica, resultados))
             trazas.append(
                 (
                     "narrator",

@@ -1,0 +1,137 @@
+{
+ "caso4": {
+  "estado": "encontrado",
+  "veredicto": "aporta",
+  "juego": {
+   "id": "418059",
+   "nombre": "SETI: Search for Extraterrestrial Intelligence",
+   "promedio": 8.41,
+   "precio_usd": "79.99",
+   "precio_confiable": true,
+   "fecha_precio": "2026-09-24T23:11:25Z",
+   "peso": 3.8394,
+   "nivel_peso": "pesado",
+   "peso_estimado": false,
+   "peso_pocos_votos": false,
+   "duracion_estimada": false,
+   "jugadores_estimados": false,
+   "niveles_que_cubre": [
+    {
+     "eje": "Duración",
+     "nivel": "más de 120",
+     "estado": "faltante"
+    },
+    {
+     "eje": "Peso",
+     "nivel": "pesado",
+     "estado": "faltante"
+    }
+   ]
+  },
+  "juego_mas_parecido": {
+   "id": "70323",
+   "nombre": "King of Tokyo",
+   "promedio": 7.11,
+   "precio_usd": "41.99",
+   "precio_confiable": true,
+   "fecha_precio": "2026-09-24T23:13:25Z",
+   "peso": 1.4843,
+   "nivel_peso": "ligero",
+   "peso_estimado": false,
+   "peso_pocos_votos": false,
+   "duracion_estimada": false,
+   "jugadores_estimados": false,
+   "niveles_que_cubre": []
+  },
+  "similitud": {
+   "mecanicas": 0.0,
+   "ocasion": 0.8814331767964392,
+   "interaccion": 1.0,
+   "tematica": 0.2733093347947643,
+   "total": 0.3338015848578115
+  },
+  "regla_exacta": null,
+  "niveles_que_cubre": [
+   {
+    "eje": "Duración",
+    "nivel": "más de 120",
+    "estado": "faltante"
+   },
+   {
+    "eje": "Peso",
+    "nivel": "pesado",
+    "estado": "faltante"
+   }
+  ],
+  "similitud_etiqueta": "distinto",
+  "faltantes_que_cubre": [
+   "Duración: más de 120",
+   "Peso: pesado"
+  ],
+  "debiles_que_refuerza": [],
+  "ya_cubiertos": [],
+  "precio_texto": "USD 79.99 (BoardGamePrices, 24 sep 2026)"
+ },
+ "caso6": {
+  "estado": "encontrado",
+  "veredicto": "parecido",
+  "juego": {
+   "id": "13",
+   "nombre": "Catan",
+   "promedio": 7.09,
+   "precio_usd": "50.00",
+   "precio_confiable": true,
+   "fecha_precio": "2026-09-24T23:13:52Z",
+   "peso": 2.2804,
+   "nivel_peso": "medio",
+   "peso_estimado": false,
+   "peso_pocos_votos": false,
+   "duracion_estimada": false,
+   "jugadores_estimados": false,
+   "niveles_que_cubre": [
+    {
+     "eje": "Duración",
+     "nivel": "61 a 120",
+     "estado": "faltante"
+    }
+   ]
+  },
+  "juego_mas_parecido": {
+   "id": "11",
+   "nombre": "Bohnanza",
+   "promedio": 7.08,
+   "precio_usd": "15.10",
+   "precio_confiable": false,
+   "fecha_precio": "2026-09-24T23:13:33Z",
+   "peso": 1.6655,
+   "nivel_peso": "ligero",
+   "peso_estimado": false,
+   "peso_pocos_votos": false,
+   "duracion_estimada": false,
+   "jugadores_estimados": false,
+   "niveles_que_cubre": []
+  },
+  "similitud": {
+   "mecanicas": 0.2666255833549015,
+   "ocasion": 0.9611547962752851,
+   "interaccion": 1.0,
+   "tematica": 0.4902021767354962,
+   "total": 0.5243364748269128
+  },
+  "regla_exacta": null,
+  "niveles_que_cubre": [
+   {
+    "eje": "Duración",
+    "nivel": "61 a 120",
+    "estado": "faltante"
+   }
+  ],
+  "similitud_etiqueta": "parecido",
+  "faltantes_que_cubre": [
+   "Duración: 61 a 120"
+  ],
+  "debiles_que_refuerza": [],
+  "ya_cubiertos": [],
+  "precio_texto": "USD 50.00 (BoardGamePrices, 24 sep 2026)"
+ }
+}
