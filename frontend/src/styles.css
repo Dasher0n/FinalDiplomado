@@ -51,23 +51,7 @@ table,
 .level-chip,
 .bar-label,
 .shelf-plaque {
-  position: absolute;
-  z-index: 3;
-  top: 0.55rem;
-  left: 1.4rem;
-  margin: 0;
-  padding: 0.22rem 0.7rem;
-  border: 1px solid var(--laton-700);
-  border-radius: 3px;
-  background: var(--placa-laton);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 50%),
-    0 2px 3px rgb(0 0 0 / 55%);
-  color: var(--tinta-900);
-  font-family: var(--fuente-display);
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 /* Foco visible en latón para todo control */
@@ -95,13 +79,7 @@ main > section h2.font-serif::after {
 .ficha-modal,
 .game-tooltip,
 .input {
-  min-width: 8rem;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--laton-600);
-  border-radius: 3px;
-  background: var(--superficie-clara);
-  box-shadow: inset 0 1px 3px rgb(42 28 19 / 22%);
-  font-family: var(--fuente-lectura);
+  color: var(--texto);
 }
 .panel,
 .chat-card,
@@ -297,11 +275,13 @@ main > section h2.font-serif::after {
   text-transform: uppercase;
 }
 .input {
-  border: 1px solid var(--laton-500);
-  border-radius: 0.55rem;
-  background: var(--superficie-clara);
-  padding: 0.55rem 0.7rem;
   min-width: 8rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--laton-600);
+  border-radius: 3px;
+  background: var(--superficie-clara);
+  box-shadow: inset 0 1px 3px rgb(42 28 19 / 22%);
+  font-family: var(--fuente-lectura);
 }
 .panel,
 .chat-card {
@@ -637,14 +617,18 @@ main > section h2.font-serif::after {
   top: 0.55rem;
   left: 1.4rem;
   margin: 0;
-  border: 1px solid #8d6229;
+  padding: 0.22rem 0.7rem;
+  border: 1px solid var(--laton-700);
   border-radius: 3px;
-  padding: 0.22rem 0.55rem;
+  background: var(--placa-laton);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 50%),
+    0 2px 3px rgb(0 0 0 / 55%);
   color: var(--tinta-900);
-  font-size: 0.78rem;
+  font-family: var(--fuente-display);
+  font-size: 0.76rem;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--laton-300), #b6822e);
-  box-shadow: 0 2px 2px rgb(0 0 0 / 35%);
+  letter-spacing: 0.08em;
 }
 
 .shelf-rail {
