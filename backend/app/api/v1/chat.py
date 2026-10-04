@@ -2,10 +2,10 @@
 
 from fastapi import APIRouter, Request
 
-from app.api.deps import CurrentProfile, CurrentUser, DbSession
+from app.api.deps import CurrentProfile, CurrentUser, DbSession, SesionActual
 from app.api.v1.engine import _coleccion
 from app.core.config import settings
-from app.db.models import AgentRun
+from app.db.models import AgentRun, ChatSession
 from app.schemas.chat import ChatRespuesta, ChatSolicitud, RunResumen, SugerenciasRespuesta
 from app.services.chat import listar_runs, responder
 from app.services.sugerencias import generar_sugerencias
@@ -20,8 +20,11 @@ async def conversar(
     session: DbSession,
     user: CurrentUser,
     perfil: CurrentProfile,
+    sesion: SesionActual,
 ) -> ChatRespuesta:
-    return await responder(session, request, user, perfil, solicitud, settings)
+    return await responder(
+        session, request, user, perfil, solicitud, settings, usuario_id=sesion.usuario_id
+    )
 
 
 @router.get("/suggestions", response_model=SugerenciasRespuesta)
@@ -34,7 +37,7 @@ async def sugerencias(
 
 
 @router.get("/runs", response_model=list[RunResumen])
-async def runs(session: DbSession, user: CurrentUser) -> list[RunResumen]:
+async def runs(session: DbSession, user: CurrentUser, sesion: SesionActual) -> list[RunResumen]:
     return [
         RunResumen(
             id=run.id,
@@ -44,14 +47,22 @@ async def runs(session: DbSession, user: CurrentUser) -> list[RunResumen]:
             estado=run.estado,
             creado_en=run.creado_en.isoformat(),
         )
-        for run in await listar_runs(session, user.id)
+        for run in await listar_runs(session, user.id, sesion.usuario_id)
     ]
 
 
 @router.get("/runs/{run_id}", response_model=ChatRespuesta)
-async def run(run_id: str, session: DbSession, user: CurrentUser) -> ChatRespuesta:
+async def run(
+    run_id: str, session: DbSession, user: CurrentUser, sesion: SesionActual
+) -> ChatRespuesta:
     item = await session.get(AgentRun, run_id)
-    if item is None or item.user_id != user.id:
+    dueno = await session.get(ChatSession, item.session_id) if item and item.session_id else None
+    if (
+        item is None
+        or item.user_id != user.id
+        or dueno is None
+        or dueno.usuario_id != sesion.usuario_id
+    ):
         from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail="Corrida no encontrada.")

@@ -16,9 +16,8 @@ def test_health_reports_database_and_never_exposes_secret() -> None:
     assert "openai_api_key" not in response.text
 
 
-def test_capabilities_informa_estado_de_modelos() -> None:
-    with TestClient(create_app()) as client:
-        response = client.get("/api/v1/capabilities")
+def test_capabilities_informa_estado_de_modelos(api_client: TestClient) -> None:
+    response = api_client.get("/api/v1/capabilities")
 
     assert response.status_code == 200
     assert response.json()["api_fase"] == 4

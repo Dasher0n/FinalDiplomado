@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     bgp_sitename: str = ""
     demo_user_email: str = "demo@sommelier.local"
 
+    # Usuarios y sesión: las claves y el secreto vienen del entorno y nunca se registran.
+    jwt_secret: SecretStr = SecretStr("")
+    jwt_horas: int = 12
+    clave_usuario_cafe: SecretStr = SecretStr("")
+    clave_usuario_coleccionista: SecretStr = SecretStr("")
+
+    @field_validator("jwt_horas", mode="before")
+    @classmethod
+    def horas_por_defecto(cls, value: object) -> object:
+        return 12 if isinstance(value, str) and not value.strip() else value
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_origins(cls, value: object) -> object:

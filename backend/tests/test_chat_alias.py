@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from app.db.models import AgentStep, ConfirmedAlias
 from app.services import chat as chat_service
+from tests.auth import iniciar_sesion
 from tests.test_chat_resolucion_nombres import (  # noqa: F401
     CRIATURAS_ID,
     _preparar,
@@ -52,7 +53,9 @@ def _preparar_alias(monkeypatch: pytest.MonkeyPatch, literales: list[str]) -> tu
 
 def _post(client: TestClient, mensaje: str, perfil: str, **extra: Any) -> dict[str, Any]:
     respuesta = client.post(
-        "/api/v1/chat", params={"perfil": perfil}, json={"mensaje": mensaje, **extra}
+        "/api/v1/chat",
+        headers=iniciar_sesion(client, perfil),
+        json={"mensaje": mensaje, **extra},
     )
     assert respuesta.status_code == 200, respuesta.text
     return respuesta.json()

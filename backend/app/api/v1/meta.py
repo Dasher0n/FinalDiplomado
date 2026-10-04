@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from app.api.deps import DbSession
+from app.api.deps import DbSession, exigir_sesion
 from app.core.config import settings
 
 router = APIRouter(tags=["meta"])
@@ -49,7 +49,12 @@ async def health(session: DbSession) -> HealthStatus:
     )
 
 
-@router.get("/capabilities", response_model=Capabilities, summary="Capacidades activas")
+@router.get(
+    "/capabilities",
+    response_model=Capabilities,
+    summary="Capacidades activas",
+    dependencies=[Depends(exigir_sesion)],
+)
 async def capabilities(request: Request) -> Capabilities:
     modelos = getattr(request.app.state, "modelos_llm", {})
     return Capabilities(

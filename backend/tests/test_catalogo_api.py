@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.v1.catalogo import transformar_bgp_url
+from tests.auth import iniciar_sesion
 
 
 def test_collection_returns_demo_games(api_client: TestClient) -> None:
@@ -21,7 +22,7 @@ def test_collection_returns_demo_games(api_client: TestClient) -> None:
 
 def test_profiles_expose_versioned_goals_and_isolated_context(api_client: TestClient) -> None:
     profiles = api_client.get("/api/v1/profiles")
-    cafe = api_client.get("/api/v1/profiles/context", params={"perfil": "cafe"})
+    cafe = api_client.get("/api/v1/profiles/context", headers=iniciar_sesion(api_client, "cafe"))
     collector = api_client.get("/api/v1/profiles/context")
 
     assert profiles.status_code == 200
@@ -34,7 +35,7 @@ def test_profiles_expose_versioned_goals_and_isolated_context(api_client: TestCl
 
 
 def test_cafe_coverage_ignores_zero_goal(api_client: TestClient) -> None:
-    response = api_client.get("/api/v1/engine/coverage", params={"perfil": "cafe"})
+    response = api_client.get("/api/v1/engine/coverage", headers=iniciar_sesion(api_client, "cafe"))
 
     assert response.status_code == 200
     jugadores = response.json()["ejes"]["Jugadores"]

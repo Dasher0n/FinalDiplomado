@@ -30,6 +30,8 @@ from app.db.session import get_session
 from app.main import create_app
 from app.services import chat as chat_service
 from app.services.chat import normalizar_nombre
+from app.services.usuarios import sembrar_usuarios
+from tests.auth import iniciar_sesion
 
 CATAN_ID = "13"
 SETI_ID = "418059"
@@ -86,6 +88,7 @@ def entorno() -> Generator[tuple[TestClient, Any]]:
             await connection.run_sync(Base.metadata.create_all)
         async with sessionmaker() as session:
             await seed_database(session, Path(__file__).parent / "fixtures")
+            await sembrar_usuarios(session)
             await session.commit()
             for viejo, nuevo in (("2", CATAN_ID), ("1", WINGSPAN_ID), ("3", SETI_ID)):
                 await session.execute(
@@ -133,6 +136,7 @@ def entorno() -> Generator[tuple[TestClient, Any]]:
     app = create_app()
     app.dependency_overrides[get_session] = sesion_de_prueba
     with TestClient(app) as client:
+        client.headers.update(iniciar_sesion(client, "coleccionista"))
         yield client, sessionmaker
     asyncio.run(engine.dispose())
 

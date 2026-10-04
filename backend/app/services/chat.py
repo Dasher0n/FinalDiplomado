@@ -1955,13 +1955,23 @@ async def _criticar_llm(
 
 
 async def responder(
-    session: AsyncSession, request: Any, user: Any, perfil: Any, solicitud: Any, settings: Settings
+    session: AsyncSession,
+    request: Any,
+    user: Any,
+    perfil: Any,
+    solicitud: Any,
+    settings: Settings,
+    usuario_id: str = "",
 ) -> ChatRespuesta:
     chat_session = (
         await session.get(ChatSession, solicitud.session_id) if solicitud.session_id else None
     )
+    if chat_session is not None and chat_session.usuario_id != (usuario_id or None):
+        chat_session = None  # La sesión de otra persona no se continúa: empieza una nueva.
     if chat_session is None:
-        chat_session = ChatSession(user_id=user.id, titulo=solicitud.mensaje[:120])
+        chat_session = ChatSession(
+            user_id=user.id, titulo=solicitud.mensaje[:120], usuario_id=usuario_id or None
+        )
         session.add(chat_session)
         await session.flush()
     coleccion_activa = await _coleccion(session, user, perfil.id)
@@ -2417,12 +2427,13 @@ async def responder(
     )
 
 
-async def listar_runs(session: AsyncSession, user_id: str) -> list[AgentRun]:
+async def listar_runs(session: AsyncSession, user_id: str, usuario_id: str) -> list[AgentRun]:
     return list(
         (
             await session.scalars(
                 select(AgentRun)
-                .where(AgentRun.user_id == user_id)
+                .join(ChatSession, ChatSession.id == AgentRun.session_id)
+                .where(AgentRun.user_id == user_id, ChatSession.usuario_id == usuario_id)
                 .order_by(AgentRun.creado_en.desc())
             )
         ).all()

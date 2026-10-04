@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.db.models import ChatSession
 from app.services import chat as chat_service
+from tests.auth import iniciar_sesion
 from tests.test_chat_alias import _alias, _post, _preparar_alias
 from tests.test_chat_resolucion_nombres import SETI_ID, entorno  # noqa: F401
 
@@ -49,7 +50,7 @@ def test_nombre_en_ingles_tras_la_confirmacion_continua_la_evaluacion_y_guarda_e
     espias.tools.clear()
     primera = client.post(
         "/api/v1/chat",
-        params={"perfil": "cafe"},
+        headers=iniciar_sesion(client, "cafe"),
         json={"mensaje": "Buscadores de señales seria buena compra?"},
     ).json()
     assert primera["tarjetas"][0]["datos"]["estado"] == "no_encontrado"

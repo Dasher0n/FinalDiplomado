@@ -21,6 +21,19 @@ class User(Base):
     creado_en: Mapped[datetime] = created_at_column()
 
 
+class Usuario(Base):
+    """Cuenta de acceso. El perfil de colección sale siempre de aquí, nunca de la solicitud."""
+
+    __tablename__ = "usuarios"
+
+    id: Mapped[str] = pk_column()
+    usuario: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    nombre: Mapped[str] = mapped_column(String(255))
+    perfil: Mapped[str] = mapped_column(String(32))
+    clave_hash: Mapped[str] = mapped_column(String(512))
+    creado_en: Mapped[datetime] = created_at_column()
+
+
 class CollectionProfile(Base):
     __tablename__ = "collection_profiles"
 
@@ -170,6 +183,7 @@ class ChatSession(Base):
     titulo: Mapped[str | None] = mapped_column(String(255), default=None)
     juego_en_foco_id: Mapped[str | None] = mapped_column(String(32), default=None)
     intent_pendiente: Mapped[str | None] = mapped_column(String(32), default=None)
+    usuario_id: Mapped[str | None] = mapped_column(String(32), index=True, default=None)
     creado_en: Mapped[datetime] = created_at_column()
     actualizado_en: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 

@@ -26,6 +26,8 @@ from app.services.sugerencias import (
     PLANTILLAS_OTRAS,
     generar_sugerencias,
 )
+from app.services.usuarios import sembrar_usuarios
+from tests.auth import iniciar_sesion
 
 INTENCIONES_OTRAS = {
     "que_compro": "que_compro",
@@ -46,6 +48,7 @@ def catalogo_real() -> Generator[tuple[TestClient, Any]]:
             await conexion.run_sync(Base.metadata.create_all)
         async with sessionmaker() as session:
             await seed_database(session)
+            await sembrar_usuarios(session)
             await session.commit()
 
     async def sesion_de_prueba() -> AsyncGenerator[AsyncSession]:
@@ -56,6 +59,7 @@ def catalogo_real() -> Generator[tuple[TestClient, Any]]:
     app = create_app()
     app.dependency_overrides[get_session] = sesion_de_prueba
     with TestClient(app) as client:
+        client.headers.update(iniciar_sesion(client, "coleccionista"))
         yield client, sessionmaker
     asyncio.run(engine.dispose())
 
@@ -80,7 +84,6 @@ def test_cada_juego_curado_existe_se_resuelve_directo_y_se_evalua(
     assert juego.precio_confiable and juego.precio_usd is not None
     respuesta = client.post(
         "/api/v1/chat",
-        params={"perfil": "coleccionista"},
         json={"mensaje": f"¿Qué tal entraría {curado.nombre} en la colección?"},
     ).json()
     datos = respuesta["tarjetas"][0]["datos"]
@@ -136,14 +139,16 @@ def test_el_endpoint_devuelve_tres_preguntas_distintas_por_perfil(
     catalogo_real: tuple[TestClient, Any], perfil: str
 ) -> None:
     client, _ = catalogo_real
-    coleccion = client.get("/api/v1/collection", params={"perfil": perfil}).json()["juegos"]
+    coleccion = client.get("/api/v1/collection", headers=iniciar_sesion(client, perfil)).json()[
+        "juegos"
+    ]
     nombres = {juego["nombre"] for juego in coleccion}
     vistas: set[str] = set()
 
     for _ in range(25):
-        preguntas = client.get("/api/v1/chat/suggestions", params={"perfil": perfil}).json()[
-            "preguntas"
-        ]
+        preguntas = client.get(
+            "/api/v1/chat/suggestions", headers=iniciar_sesion(client, perfil)
+        ).json()["preguntas"]
         intents = [chat_service._plan_determinista(p, None).intent for p in preguntas]
         assert len(preguntas) == 3 and len(set(preguntas)) == 3
         assert intents.count("evaluar_compra") == 1 and intents.count("que_me_falta") == 1
@@ -159,9 +164,7 @@ def test_wyrmspan_aparece_a_veces_y_es_redundante_con_el_perfil_personal(
     catalogo_real: tuple[TestClient, Any],
 ) -> None:
     client, _ = catalogo_real
-    coleccion = client.get("/api/v1/collection", params={"perfil": "coleccionista"}).json()[
-        "juegos"
-    ]
+    coleccion = client.get("/api/v1/collection").json()["juegos"]
     ids = {juego["id"] for juego in coleccion}
     pregunta = next(
         p
@@ -170,8 +173,6 @@ def test_wyrmspan_aparece_a_veces_y_es_redundante_con_el_perfil_personal(
         if "Wyrmspan" in p and chat_service._plan_determinista(p, None).intent == "evaluar_compra"
     )
 
-    respuesta = client.post(
-        "/api/v1/chat", params={"perfil": "coleccionista"}, json={"mensaje": pregunta}
-    ).json()
+    respuesta = client.post("/api/v1/chat", json={"mensaje": pregunta}).json()
 
     assert respuesta["tarjetas"][0]["datos"]["veredicto"] == "redundante"

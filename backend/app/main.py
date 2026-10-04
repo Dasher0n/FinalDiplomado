@@ -15,8 +15,9 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import get_logger, setup_logging
-from app.db.session import dispose_db, init_db
+from app.db.session import dispose_db, get_sessionmaker, init_db
 from app.engine.artefactos import ArtefactosMotor
+from app.services.usuarios import sembrar_usuarios
 
 log = get_logger(__name__)
 
@@ -24,11 +25,17 @@ log = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     setup_logging("DEBUG" if settings.debug else "INFO")
+    if not settings.jwt_secret.get_secret_value().strip():
+        log.error("JWT_SECRET no está definido: el backend no puede arrancar sin él")
+        raise RuntimeError("Falta la variable de entorno JWT_SECRET.")
     log.info(
         "Arrancando backend",
         extra={"environment": settings.environment, "llm_active": settings.llm_active},
     )
     await init_db()
+    async with get_sessionmaker()() as session:
+        await sembrar_usuarios(session)
+        await session.commit()
     app.state.artefactos_motor = ArtefactosMotor.cargar(settings.artefactos_dir)
     app.state.modelos_llm = {"activo": settings.llm_active, "modelos": {}, "error": None}
     if settings.llm_active:

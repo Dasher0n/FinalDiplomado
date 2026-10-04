@@ -8,14 +8,26 @@ from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from typing import Any
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+# Secretos de prueba (no reales): deben existir antes de importar la configuración.
+os.environ.setdefault("JWT_SECRET", "secreto-de-prueba-que-no-es-real-0123456789")
+os.environ.setdefault("CLAVE_USUARIO_CAFE", "clave-cafe-de-prueba")
+os.environ.setdefault("CLAVE_USUARIO_COLECCIONISTA", "clave-coleccionista-de-prueba")
+os.environ.setdefault("JWT_HORAS", "12")
 
-from app.db.base import Base
-from app.db.seed import seed_database
-from app.db.session import get_session
-from app.main import create_app
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from app.db.base import Base  # noqa: E402
+from app.db.seed import seed_database  # noqa: E402
+from app.db.session import get_session  # noqa: E402
+from app.main import create_app  # noqa: E402
+from app.services.usuarios import sembrar_usuarios  # noqa: E402
+from tests.auth import iniciar_sesion  # noqa: E402
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:////tmp/opencode/sommelier-test.db")
 os.environ.setdefault("ENVIRONMENT", "test")
@@ -49,6 +61,7 @@ def api_client() -> Generator[TestClient]:
             await connection.run_sync(Base.metadata.create_all)
         async with sessionmaker() as session:
             await seed_database(session, Path(__file__).parent / "fixtures")
+            await sembrar_usuarios(session)
             await session.commit()
 
     async def sesion_de_prueba() -> AsyncGenerator[AsyncSession]:
@@ -62,5 +75,7 @@ def api_client() -> Generator[TestClient]:
     app = create_app()
     app.dependency_overrides[get_session] = sesion_de_prueba
     with TestClient(app) as client:
+        # Por defecto la sesión es la del perfil personal; otros perfiles usan iniciar_sesion.
+        client.headers.update(iniciar_sesion(client, "coleccionista"))
         yield client
     asyncio.run(cerrar())

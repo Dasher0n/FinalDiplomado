@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from tests.auth import iniciar_sesion
+
 
 def test_chat_persists_plan_before_tools_and_returns_evaluation(api_client: TestClient) -> None:
     response = api_client.post(
@@ -33,7 +35,7 @@ def test_chat_persists_plan_before_tools_and_returns_evaluation(api_client: Test
 def test_chat_uses_active_profile_and_only_number_buy_plans(api_client: TestClient) -> None:
     response = api_client.post(
         "/api/v1/chat",
-        params={"perfil": "cafe"},
+        headers=iniciar_sesion(api_client, "cafe"),
         json={"mensaje": "¿Qué compro para cubrir huecos? 2 juegos"},
     )
 
