@@ -758,10 +758,9 @@ async def _resolver_con_traduccion(
             },
         )
     juegos_catalogo = await repo.todos_los_juegos()
-    candidatos: list[Game] = []
     coincidencias: list[dict[str, Any]] = []
-    vistos: set[str] = set()
-    for titulo_original in titulos:
+    encontrados: list[tuple[bool, float, int, Game]] = []
+    for orden, titulo_original in enumerate(titulos):
         titulo = nombre_valido(titulo_original)
         consulta = normalizar_nombre(titulo) if titulo else ""
         if not consulta:
@@ -775,13 +774,16 @@ async def _resolver_con_traduccion(
             default=None,
             key=lambda item: (item[0], item[1].users_rated or 0),
         )
-        encontrado = mejor[1] if mejor and mejor[0] >= 90 else None
+        coincidencia = mejor[1] if mejor and mejor[0] >= 90 else None
         coincidencias.append(
-            {"propuesta": titulo, "coincidencias": [encontrado.id] if encontrado else []}
+            {"propuesta": titulo, "coincidencias": [coincidencia.id] if coincidencia else []}
         )
-        if encontrado and encontrado.id not in vistos and len(candidatos) < 3:
-            vistos.add(encontrado.id)
-            candidatos.append(encontrado)
+        if coincidencia and mejor:
+            exacta = consulta == normalizar_nombre(coincidencia.nombre)
+            encontrados.append((exacta, mejor[0], orden, coincidencia))
+    # Exacta normalizada primero, luego mayor puntaje y, al empatar, el orden de la lista.
+    encontrados.sort(key=lambda item: (not item[0], -item[1], item[2]))
+    candidatos = list({item[3].id: item[3] for item in encontrados}.values())[:3]
     traza = {
         "llm_called": True,
         "traducciones_literales": literales,
@@ -1113,10 +1115,62 @@ def _motivo_regla_exacta(juego: Game, parecido: Game) -> str:
     return "reimplementa"
 
 
+_AVISO_INGLES = "Entiendo mejor los nombres en inglés; si tu juego no aparece, escríbelo en inglés."
+
+
 def _es_respuesta_determinista(intent: str, resultados: list[dict[str, Any]]) -> bool:
     if intent == "general" and not resultados:
         return True
     return bool(resultados) and resultados[0].get("estado") in {"ambiguo", "no_encontrado"}
+
+
+def _lista_natural(items: list[str], maximo: int = 3) -> str:
+    items = items[:maximo]
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " y " + items[-1]
+
+
+def _encabezado_evaluacion(resultado: dict[str, Any]) -> str:
+    """Veredicto determinista: lo escribe el backend, no el narrador."""
+    juego, similar = resultado["juego"], resultado.get("juego_mas_parecido")
+    frases = {
+        "redundante": "es redundante con tu colección",
+        "parecido_pero_cubre_hueco": "se parece a un juego tuyo, pero cubre huecos",
+        "parecido": "se parece a lo que ya tienes",
+    }
+    frase = frases.get(str(resultado.get("veredicto")), "aporta a tu colección")
+    texto = f"**{juego['nombre']}** {frase}."
+    if resultado.get("regla_exacta") == "misma_linea_de_producto" and similar:
+        texto += f" Comparte línea de producto con **{similar['nombre']}**."
+    elif resultado.get("regla_exacta") == "reimplementa" and similar:
+        texto += f" Reimplementa **{similar['nombre']}**."
+    return texto
+
+
+def _cuerpo_evaluacion(resultado: dict[str, Any]) -> str:
+    """De dos a cuatro oraciones con las mismas formas que el narrador."""
+    similar, similitud = resultado.get("juego_mas_parecido"), resultado.get("similitud")
+    oraciones: list[str] = []
+    faltantes = resultado.get("faltantes_que_cubre") or []
+    debiles = resultado.get("debiles_que_refuerza") or []
+    cubiertos = resultado.get("ya_cubiertos") or []
+    oraciones.append(
+        f"Cubre huecos de tu colección: {_lista_natural(faltantes)}."
+        if faltantes
+        else "No cubre ningún hueco de tu colección."
+    )
+    if debiles:
+        oraciones.append(f"Refuerza niveles que tenías débiles: {_lista_natural(debiles)}.")
+    if cubiertos:
+        oraciones.append(f"Ya tenías cubiertos niveles como {_lista_natural(cubiertos)}.")
+    if similar and similitud:
+        porcentaje = f"{round(similitud['total'] * 100)}%"
+        etiqueta = resultado.get("similitud_etiqueta")
+        detalle = f" ({etiqueta})" if etiqueta else ""
+        oraciones.append(
+            f"El más parecido de tu colección es **{similar['nombre']}**, "
+            f"con {porcentaje} de similitud{detalle}."
+        )
+    return " ".join(oraciones[:4])
 
 
 def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
@@ -1128,40 +1182,20 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
         return "¿De qué juego me hablas? Escríbeme su nombre."
     resultado = resultados[0] if resultados else {}
     if resultado.get("estado") == "ambiguo":
-        return "**¿Te refieres a…?**\n\n- Elige una de las opciones o escribe el nombre en inglés."
+        return "**¿Te refieres a…?**\n\n" + _AVISO_INGLES
     if resultado.get("estado") == "no_encontrado":
-        return (
-            "**No encontré ese juego**\n\n"
-            "- 🎲 No hay una coincidencia segura en el catálogo local.\n"
-            "- Escribe el nombre en inglés para intentarlo de nuevo."
-        )
+        return "**No encontré ese juego**\n\n" + _AVISO_INGLES
     if intent == "evaluar_compra":
-        juego, similar = resultado["juego"], resultado.get("juego_mas_parecido")
         interpretacion = resultado.get("interpretado_como")
         prefijo = f"{_nota_interpretacion(interpretacion)}\n\n" if interpretacion else ""
         if resultado.get("ya_en_coleccion"):
             return (
-                prefijo + f"**{juego['nombre']}** ya está en tu colección.\n\n"
+                prefijo + f"**{resultado['juego']['nombre']}** ya está en tu colección.\n\n"
                 "- 📦 La tarjeta muestra el impacto de simular su venta.\n"
                 "- 🧩 Así puedes revisar la cobertura que perderías.\n\n"
                 "💡 ¿Quieres simular la venta de otro juego?"
             )
-        veredictos = {
-            "redundante": "Redundante",
-            "parecido_pero_cubre_hueco": "Aporta un hueco",
-            "complementario": "Complementario",
-        }
-        texto = prefijo + f"**{veredictos.get(resultado['veredicto'], 'Evaluado')}**"
-        texto += f"\n\n- **{juego['nombre']}** está evaluado para tu colección."
-        if resultado.get("regla_exacta") == "misma_linea_de_producto" and similar:
-            texto += f"\n- Comparte línea de producto con **{similar['nombre']}**."
-        elif resultado.get("regla_exacta") == "reimplementa" and similar:
-            texto += f"\n- Reimplementa **{similar['nombre']}**."
-        if similar and resultado.get("similitud"):
-            similitud = resultado["similitud"]
-            texto += f"\n- 🔁 Se parece a **{similar['nombre']}**."
-            texto += f"\n- **Similitud total {similitud['total']:.2f}**."
-        return texto + "\n\n💡 ¿Quieres evaluar otro juego?"
+        return prefijo + _encabezado_evaluacion(resultado) + "\n\n" + _cuerpo_evaluacion(resultado)
     if intent == "que_me_falta":
         faltantes = [
             f"{eje}: {', '.join(valor['faltantes'])}"
@@ -1232,6 +1266,19 @@ def _con_sugerencia_final(respuesta: str, intent: str, resultados: list[dict[str
         if not linea.lstrip().startswith("💡") and "?" not in linea and "¿" not in linea
     ]
     return "\n".join(lineas).rstrip() + "\n\n" + _sugerencia_final(intent, resultados)
+
+
+def _con_encabezado(respuesta: str, intent: str, resultados: list[dict[str, Any]]) -> str:
+    """Antepone el veredicto determinista al texto del narrador en una evaluación."""
+    resultado = resultados[0] if resultados else {}
+    if (
+        intent != "evaluar_compra"
+        or resultado.get("estado") != "encontrado"
+        or resultado.get("ya_en_coleccion")
+        or "juego" not in resultado
+    ):
+        return respuesta
+    return _encabezado_evaluacion(resultado) + "\n\n" + respuesta
 
 
 def _agregar_precio(respuesta: str, resultados: list[dict[str, Any]]) -> str:
@@ -1481,6 +1528,12 @@ def _criticar_niveles(respuesta: str, resultados: list[dict[str, Any]]) -> list[
     return hallazgos
 
 
+_PALABRAS_DE_VEREDICTO = re.compile(
+    r"\b(?:veredicto|propongo|te\s+recomiendo|recomiendo|te\s+sugiero|vale\s+la\s+pena)\b",
+    re.IGNORECASE,
+)
+
+
 def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> list[str]:
     """Aplica las reglas de transparencia antes de gastar una llamada del critic."""
     hallazgos: list[str] = []
@@ -1499,6 +1552,15 @@ def _criticar_determinista(respuesta: str, resultados: list[dict[str, Any]]) -> 
         hallazgos.append(
             "Solo la sugerencia final determinista puede hacer una pregunta de seguimiento."
         )
+    for linea in respuesta.splitlines():
+        if linea.lstrip().startswith(("💡", "Precio de referencia")):
+            continue
+        if _PALABRAS_DE_VEREDICTO.search(linea):
+            hallazgos.append(
+                "El narrador no puede escribir veredictos ni recomendaciones: los agrega el "
+                "sistema."
+            )
+            break
     if "redundante" in respuesta.lower() and not any(
         item.get("veredicto") == "redundante" for item in resultados
     ):
@@ -1583,11 +1645,16 @@ async def _narrar_llm(
 
     instrucciones = (
         "Eres el narrador de Wise Dice. Responde en español y markdown breve, sin emojis. "
-        "La primera línea "
-        "debe contener la respuesta o veredicto principal en negrita, seguida de dos a cuatro "
-        "viñetas cortas y una última línea que proponga solo una acción del "
-        "manifiesto: evaluar otro juego, ver qué falta, plan de compra, modo mesa o simular venta. "
-        "No uses emojis. Usa negritas solo para juegos, el veredicto y números clave, con una "
+        "Nunca escribas veredictos, recomendaciones ni próximos pasos (veredicto, propongo, "
+        "te recomiendo, vale la pena): el sistema los agrega. Para evaluar_compra no escribas "
+        "encabezado ni cierre: escribe de dos a cuatro viñetas cortas solo con estas formas: "
+        "qué huecos cubre (faltantes_que_cubre), qué refuerza (debiles_que_refuerza), qué ya "
+        "estaba cubierto (ya_cubiertos) y a qué juego de la colección se parece más "
+        "(juego_mas_parecido) con el porcentaje de similitud.total y su similitud_etiqueta. "
+        "Omite la viñeta de una lista vacía. No compares con toda la colección ni uses "
+        "calificativos propios. En los demás intents, la primera línea contiene el resumen "
+        "principal en negrita, seguida de dos a cuatro viñetas cortas, sin línea final de acción. "
+        "No uses emojis. Usa negritas solo para juegos y números clave, con una "
         "negrita como máximo por viñeta. No pegues URLs. No enumeres mecánicas o categorías "
         "crudas: si hace falta, "
         "usa familias en español. Para detalle_juego, limita el texto al resumen: la tarjeta "
@@ -1597,11 +1664,11 @@ async def _narrar_llm(
         "No uses conocimiento propio para describir jugabilidad, sensaciones, géneros ni "
         "características: están prohibidos términos como eurogame, estructura de turno u "
         "objetivos ocultos si no aparecen en los resultados. No inventes cifras, atributos, "
-        "fuentes ni recomendaciones. Para un veredicto, explica su motivo real: si regla_exacta "
-        "es reimplementa o misma_linea_de_producto, menciónalo; en otro caso indica similitud "
-        "total y los bloques disponibles. La similitud llega ya como porcentaje y con una "
-        "etiqueta en similitud_etiqueta: usa solo ese porcentaje y esa etiqueta, sin calificativos "
-        "propios como mucho, poco o casi. Sobre niveles de cobertura, afirma solo los que estén en "
+        "fuentes ni recomendaciones. Si regla_exacta es reimplementa o misma_linea_de_producto, "
+        "menciónalo. La similitud llega ya como porcentaje y con una "
+        "etiqueta en similitud_etiqueta: usa solo ese porcentaje y esa etiqueta, sin "
+        "calificativos propios como mucho, poco o casi. Sobre niveles de cobertura, afirma solo "
+        "los que estén en "
         "faltantes_que_cubre, debiles_que_refuerza, ya_cubiertos o niveles_del_juego, con el "
         "nombre con que aparecen; un nivel faltante es un hueco de la colección, no una "
         "característica del juego. Nunca llames afinidad o match a la similitud. En un "
@@ -1660,7 +1727,13 @@ async def _criticar_llm(
                 "role": "system",
                 "content": (
                     "Eres el critic de Wise Dice. Contrasta cada afirmación de la respuesta "
-                    "con los resultados de las tools. Revisa cifras sin fuente, mecánicas o "
+                    "con los resultados de las tools. La vista de resultados que recibes es la "
+                    "fuente de verdad: los porcentajes y las etiquetas (similitud_etiqueta) ya "
+                    "vienen calculados por el motor, así que repetirlos no es una cifra sin "
+                    "fuente. faltantes_que_cubre, debiles_que_refuerza y ya_cubiertos son niveles "
+                    "que tiene el juego evaluado frente a la colección: huecos que cubre, niveles "
+                    "débiles que refuerza y niveles que ya estaban cubiertos; decirlo está "
+                    "respaldado. Revisa cifras sin fuente, mecánicas o "
                     "atributos "
                     "ausentes, juegos no incluidos y recomendaciones sin respaldo. No uses "
                     "conocimiento general: que un juego o atributo sea conocido no es evidencia. "
@@ -1682,7 +1755,7 @@ async def _criticar_llm(
                 "content": json.dumps(
                     {
                         "pregunta": pregunta,
-                        "resultados_tools": resultados,
+                        "resultados_tools": _formatear_resultados_narrador(resultados),
                         "respuesta": respuesta,
                     },
                     ensure_ascii=False,
@@ -1965,8 +2038,9 @@ async def responder(
         trazas.append(("narrator", "fallback", {"attempt": 0, "llm_used": False}))
 
     while not determinista:
+        texto = _con_encabezado(answer, plan.intent, resultados) if narrator_llm_used else answer
         vista_critica = _presentar_respuesta(
-            _con_sugerencia_final(answer, plan.intent, resultados), plan.intent, resultados
+            _con_sugerencia_final(texto, plan.intent, resultados), plan.intent, resultados
         )
         answer = _agregar_precio(vista_critica, resultados)
         deterministic_findings = _criticar_determinista(vista_critica, resultados)

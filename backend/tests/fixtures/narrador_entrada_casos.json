@@ -2,6 +2,23 @@
  "caso4": {
   "estado": "encontrado",
   "veredicto": "aporta",
+  "similitud_etiqueta": "distinto",
+  "faltantes_que_cubre": [
+   "Duración: más de 120",
+   "Peso: pesado"
+  ],
+  "debiles_que_refuerza": [],
+  "ya_cubiertos": [
+   "Interacción: directa",
+   "Jugadores: 2",
+   "Jugadores: 3 a 4",
+   "Mecánicas: Control de área",
+   "Mecánicas: Gestión de mano",
+   "Mecánicas: Motor y progresión",
+   "Mecánicas: Movimiento y carreras",
+   "Temática: Ciencia ficción y espacio"
+  ],
+  "precio_texto": "USD 79.99 (BoardGamePrices, 24 sep 2026)",
   "juego": {
    "id": "418059",
    "nombre": "SETI: Search for Extraterrestrial Intelligence",
@@ -62,19 +79,29 @@
     "nivel": "pesado",
     "estado": "faltante"
    }
-  ],
-  "similitud_etiqueta": "distinto",
-  "faltantes_que_cubre": [
-   "Duración: más de 120",
-   "Peso: pesado"
-  ],
-  "debiles_que_refuerza": [],
-  "ya_cubiertos": [],
-  "precio_texto": "USD 79.99 (BoardGamePrices, 24 sep 2026)"
+  ]
  },
  "caso6": {
   "estado": "encontrado",
   "veredicto": "parecido",
+  "similitud_etiqueta": "parecido",
+  "faltantes_que_cubre": [
+   "Duración: 61 a 120"
+  ],
+  "debiles_que_refuerza": [
+   "Mecánicas: Negociación y diplomacia",
+   "Peso: medio"
+  ],
+  "ya_cubiertos": [
+   "Interacción: directa",
+   "Jugadores: 3 a 4",
+   "Mecánicas: Dados y riesgo",
+   "Mecánicas: Económico y mercado",
+   "Mecánicas: Gestión de mano",
+   "Mecánicas: Motor y progresión",
+   "Temática: Economía, industria y ciudades"
+  ],
+  "precio_texto": "USD 50.00 (BoardGamePrices, 24 sep 2026)",
   "juego": {
    "id": "13",
    "nombre": "Catan",
@@ -125,13 +152,6 @@
     "nivel": "61 a 120",
     "estado": "faltante"
    }
-  ],
-  "similitud_etiqueta": "parecido",
-  "faltantes_que_cubre": [
-   "Duración: 61 a 120"
-  ],
-  "debiles_que_refuerza": [],
-  "ya_cubiertos": [],
-  "precio_texto": "USD 50.00 (BoardGamePrices, 24 sep 2026)"
+  ]
  }
 }

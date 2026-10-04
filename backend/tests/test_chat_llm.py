@@ -786,7 +786,8 @@ async def test_identificacion_simulada_muestra_hasta_tres_coincidencias_sin_reso
     )
 
     assert estado == "ambiguo"
-    assert [juego.id for juego in candidatos] == ["1", "2", "3"]
+    # La coincidencia exacta normalizada va primero; después el puntaje y el orden de la lista.
+    assert [juego.id for juego in candidatos] == ["1", "3", "2"]
     assert propuestas == ["Wingspan", "Wyrmspan", "Root"]
     assert traza["coincidencias"] == [
         {"propuesta": "Wingspan", "coincidencias": ["1"]},
@@ -863,7 +864,7 @@ def test_plantilla_veredicto_muestra_motivo_y_un_solo_emoji() -> None:
         "evaluar_compra",
         [{"estado": "encontrado", "veredicto": "redundante"}],
     )
-    assert presentada.startswith("⚠️ **Redundante**")
+    assert presentada.startswith("⚠️ **Wyrmspan** es redundante con tu colección.")
     assert presentada.count("⚠️") == 1
     assert "Comparte línea de producto con **Wingspan**." in presentada
 
