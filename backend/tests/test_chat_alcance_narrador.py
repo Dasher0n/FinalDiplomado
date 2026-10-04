@@ -18,7 +18,7 @@ from app.services import chat as chat_service
 CASOS = json.loads((Path(__file__).parent / "fixtures" / "narrador_entrada_casos.json").read_text())
 
 NARRACION_SETI = (
-    "- Cubre los huecos Duración: más de 120 y Peso: pesado.\n"
+    "- Cubre los huecos Duración: más de 120 minutos y Peso: pesado.\n"
     "- Ya estaban cubiertos Interacción: directa y Jugadores: 2.\n"
     "- Se parece más a King of Tokyo, con 33% de similitud (distinto)."
 )
@@ -58,9 +58,9 @@ def test_critico_llm_recibe_la_vista_formateada_y_la_fuente_de_verdad(
 
     sistema, usuario = llamada["input"][0]["content"], llamada["input"][1]["content"]
     assert "fuente de verdad" in sistema and "repetirlos no es una cifra sin fuente" in sistema
-    assert "faltantes_que_cubre" in sistema
-    assert '"total": "52%"' in usuario and "0.5243" not in usuario
-    assert "similitud_etiqueta" in usuario and "ya_cubiertos" in usuario
+    assert "Huecos que cubre" in sistema
+    assert '"Total": "52%"' in usuario and "0.5243" not in usuario
+    assert "Qué tan parecido" in usuario and "Ya cubiertos" in usuario
     assert "precio_texto" not in usuario
 
 
@@ -88,7 +88,8 @@ def test_encabezado_del_backend_y_narracion_en_las_formas_permitidas_pasan(caso:
     narracion = (
         NARRACION_SETI
         if caso == "caso4"
-        else "- Cubre el hueco Duración: 61 a 120.\n- Se parece más a Bohnanza, con 52% (parecido)."
+        else "- Cubre el hueco Duración: 61 a 120 minutos.\n"
+        "- Se parece más a Bohnanza, con 52% (parecido)."
     )
 
     respuesta = _compuesta(narracion, caso)
@@ -122,7 +123,7 @@ def test_plantilla_para_seti_y_catan_con_los_campos_reales() -> None:
     assert seti.startswith(
         "**SETI: Search for Extraterrestrial Intelligence** aporta a tu colección."
     )
-    assert "Cubre huecos de tu colección: Duración: más de 120 y Peso: pesado." in seti
+    assert "Cubre huecos de tu colección: Duración: más de 120 minutos y Peso: pesado." in seti
     assert (
         "El más parecido de tu colección es **King of Tokyo**, con 33% de similitud (distinto)."
         in seti

@@ -4,7 +4,7 @@
   "veredicto": "aporta",
   "similitud_etiqueta": "distinto",
   "faltantes_que_cubre": [
-   "Duración: más de 120",
+   "Duración: más de 120 minutos",
    "Peso: pesado"
   ],
   "debiles_que_refuerza": [],
@@ -86,7 +86,7 @@
   "veredicto": "parecido",
   "similitud_etiqueta": "parecido",
   "faltantes_que_cubre": [
-   "Duración: 61 a 120"
+   "Duración: 61 a 120 minutos"
   ],
   "debiles_que_refuerza": [
    "Mecánicas: Negociación y diplomacia",

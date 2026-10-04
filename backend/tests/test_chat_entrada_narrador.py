@@ -19,12 +19,12 @@ CASOS = json.loads((Path(__file__).parent / "fixtures" / "narrador_entrada_casos
 NARRACION_SETI = (
     "**SETI aporta a la colección**\n\n"
     "- La similitud con King of Tokyo es 33%, etiqueta distinto.\n"
-    "- Cubre Duración: más de 120 y Peso: pesado, que son huecos de tu colección."
+    "- Cubre Duración: más de 120 minutos y Peso: pesado, que son huecos de tu colección."
 )
 NARRACION_CATAN = (
     "**Catan es parecido a Bohnanza**\n\n"
     "- La similitud total es 52%, etiqueta parecido.\n"
-    "- Cubre Duración: 61 a 120, un hueco de tu colección."
+    "- Cubre Duración: 61 a 120 minutos, un hueco de tu colección."
 )
 
 
@@ -91,7 +91,7 @@ def test_similitud_llega_como_porcentaje_con_etiqueta() -> None:
 
     assert copia["similitud"]["total"] == "52%"
     assert copia["similitud_etiqueta"] == "parecido"
-    assert copia["faltantes_que_cubre"] == ["Duración: 61 a 120"]
+    assert copia["faltantes_que_cubre"] == ["Duración: 61 a 120 minutos"]
     assert "niveles_que_cubre" not in copia
 
 
@@ -145,7 +145,7 @@ def test_prompt_del_narrador_prohibe_precio_y_limita_la_similitud(
 
     sistema = llamada["input"][0]["content"]
     assert "ni precio ni presupuesto" in sistema
-    assert "similitud_etiqueta" in sistema and "sin calificativos propios" in sistema
-    assert "faltantes_que_cubre" in sistema
+    assert "Qué tan parecido" in sistema and "sin calificativos propios" in sistema
+    assert "Huecos que cubre" in sistema
     usuario = llamada["input"][1]["content"]
     assert "79.99" not in usuario and "33%" in usuario

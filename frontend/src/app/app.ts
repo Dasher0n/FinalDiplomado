@@ -34,6 +34,7 @@ import {
   VentaImpactoRespuesta,
   ChatRespuesta,
 } from "./core/api/catalogo.service";
+import { primeraMayuscula } from "./core/etiquetas";
 import { renderMarkdown } from "./core/markdown";
 
 Chart.register(
@@ -1290,7 +1291,7 @@ export class App {
     ].filter((valor): valor is string => Boolean(valor));
   }
   protected placa(valor: string): string {
-    return valor.replace(/\b\p{L}/gu, (letra) => letra.toUpperCase());
+    return primeraMayuscula(valor);
   }
   protected etiquetaPerfil(): string {
     return this.perfilActivo() === "cafe" ? "Café demo" : "colección personal";

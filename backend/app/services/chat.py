@@ -779,8 +779,10 @@ async def _resolver_con_traduccion(
             {"propuesta": titulo, "coincidencias": [coincidencia.id] if coincidencia else []}
         )
         if coincidencia and mejor:
-            exacta = consulta == normalizar_nombre(coincidencia.nombre)
-            encontrados.append((exacta, mejor[0], orden, coincidencia))
+            exacta = _sin_articulo(consulta) == _sin_articulo(
+                normalizar_nombre(coincidencia.nombre)
+            )
+            encontrados.append((exacta, 100.0 if exacta else mejor[0], orden, coincidencia))
     # Exacta normalizada primero, luego mayor puntaje y, al empatar, el orden de la lista.
     encontrados.sort(key=lambda item: (not item[0], -item[1], item[2]))
     candidatos = list({item[3].id: item[3] for item in encontrados}.values())[:3]
@@ -821,6 +823,11 @@ async def _validar_plan_con_juego(
     tool = "detalle_juego" if en_coleccion else "evaluar_compra"
     intent = "detalle_juego" if en_coleccion else "evaluar_compra"
     return PlanLlm(intent=intent, steps=[PasoPlan(id="1", tool=tool, args={"game_id": juego.id})])
+
+
+def _sin_articulo(normalizado: str) -> str:
+    """Ignora el artículo inicial (the, a, an, el, la, los, las) al comparar títulos."""
+    return re.sub(r"^(?:the|a|an|el|la|los|las)\s+", "", normalizado)
 
 
 async def _buscar_alias(
@@ -892,6 +899,12 @@ _MESES = {
     "Nov": "nov",
     "Dec": "dic",
 }
+
+
+def _etiqueta_nivel(eje: str, nivel: str) -> str:
+    """Nivel legible; la duración lleva su unidad."""
+    unidad = " minutos" if eje == "Duración" and "minutos" not in nivel else ""
+    return f"{eje}: {nivel}{unidad}"
 
 
 def _fecha_corta(fecha: datetime) -> str:
@@ -1040,7 +1053,7 @@ async def _ejecutar_tool(
             "ya_en_coleccion": any(item.id == juego.id for item in coleccion),
             "precio_texto": _texto_precio(juego),
             "niveles_del_juego": [
-                f"{eje}: {nivel}"
+                _etiqueta_nivel(eje, nivel)
                 for eje, nivel in sorted(niveles_de_juego(juego, artefactos.tipos))
             ],
             "origen_resolucion": origen_resolucion,
@@ -1078,7 +1091,7 @@ async def _ejecutar_tool(
 
     def niveles_en(estado_nivel: str) -> list[str]:
         return [
-            f"{eje}: {nivel}"
+            _etiqueta_nivel(eje, nivel)
             for eje, nivel in sorted(cubre)
             if eje in ejes_sin_candidato and nivel in getattr(ejes_sin_candidato[eje], estado_nivel)
         ]
@@ -1333,7 +1346,75 @@ def _presentar_respuesta(respuesta: str, intent: str, resultados: list[dict[str,
     return presentada
 
 
+_ETIQUETAS_CLAVES = {
+    "estado": "Estado",
+    "veredicto": "Evaluación del motor",
+    "similitud_etiqueta": "Qué tan parecido",
+    "faltantes_que_cubre": "Huecos que cubre",
+    "debiles_que_refuerza": "Niveles que refuerza",
+    "ya_cubiertos": "Ya cubiertos",
+    "niveles_del_juego": "Niveles del juego",
+    "juego": "Juego",
+    "juego_mas_parecido": "Juego más parecido",
+    "similitud": "Similitud",
+    "total": "Total",
+    "mecanicas": "Mecánicas",
+    "ocasion": "Ocasión",
+    "interaccion": "Interacción",
+    "tematica": "Temática",
+    "regla_exacta": "Regla exacta",
+    "ya_en_coleccion": "Ya está en la colección",
+    "nombre": "Nombre",
+    "peso": "Peso",
+    "promedio": "Promedio",
+    "nivel_peso": "Nivel de peso",
+    "nivel_duracion": "Nivel de duración",
+    "nivel_interaccion": "Nivel de interacción",
+    "nivel_jugadores": "Nivel de jugadores",
+    "peso_estimado": "Peso estimado",
+    "peso_pocos_votos": "Peso con pocos votos",
+    "duracion_estimada": "Duración estimada",
+    "jugadores_estimados": "Jugadores estimados",
+    "interpretado_como": "Interpretación del título",
+    "buscado": "Buscado",
+    "resuelto": "Resuelto",
+    "candidatos": "Candidatos",
+}
+_VALORES_LEGIBLES = {
+    "parecido_pero_cubre_hueco": "parecido, pero cubre un hueco",
+    "misma_linea_de_producto": "misma línea de producto",
+    "no_encontrado": "no encontrado",
+}
+
+
+def _vista_legible(resultados: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Vista para el narrador y el crítico LLM: claves y valores en español, sin guiones bajos."""
+
+    def convertir(valor: Any) -> Any:
+        if isinstance(valor, dict):
+            return {
+                _ETIQUETAS_CLAVES.get(clave)
+                or (lambda texto: texto[:1].upper() + texto[1:])(
+                    clave.replace("_", " ")
+                ): convertir(item)
+                for clave, item in valor.items()
+            }
+        if isinstance(valor, list):
+            return [convertir(item) for item in valor]
+        if isinstance(valor, str):
+            return _VALORES_LEGIBLES.get(valor, valor.replace("_", " "))
+        return valor
+
+    return [convertir(resultado) for resultado in _formatear_resultados_narrador(resultados)]
+
+
 _CLAVES_FUERA_DEL_NARRADOR = {
+    "imagen_url",
+    "thumbnail",
+    "fuentes",
+    "evidencia",
+    "traza_traduccion",
+    "origen_resolucion",
     "precio_usd",
     "fecha_precio",
     "precio_confiable",
@@ -1355,7 +1436,7 @@ def _formatear_resultados_narrador(resultados: list[dict[str, Any]]) -> list[dic
             return {
                 nombre: recorrer(item, nombre, es_similitud or nombre == "similitud")
                 for nombre, item in valor.items()
-                if nombre not in _CLAVES_FUERA_DEL_NARRADOR
+                if nombre not in _CLAVES_FUERA_DEL_NARRADOR and not nombre.endswith("_url")
             }
         if isinstance(valor, list):
             return [recorrer(item, clave, es_similitud) for item in valor]
@@ -1648,9 +1729,9 @@ async def _narrar_llm(
         "Nunca escribas veredictos, recomendaciones ni próximos pasos (veredicto, propongo, "
         "te recomiendo, vale la pena): el sistema los agrega. Para evaluar_compra no escribas "
         "encabezado ni cierre: escribe de dos a cuatro viñetas cortas solo con estas formas: "
-        "qué huecos cubre (faltantes_que_cubre), qué refuerza (debiles_que_refuerza), qué ya "
-        "estaba cubierto (ya_cubiertos) y a qué juego de la colección se parece más "
-        "(juego_mas_parecido) con el porcentaje de similitud.total y su similitud_etiqueta. "
+        "qué huecos cubre (Huecos que cubre), qué refuerza (Niveles que refuerza), qué ya "
+        "estaba cubierto (Ya cubiertos) y a qué juego de la colección se parece más "
+        "(Juego más parecido) con el porcentaje de Similitud y su etiqueta Qué tan parecido. "
         "Omite la viñeta de una lista vacía. No compares con toda la colección ni uses "
         "calificativos propios. En los demás intents, la primera línea contiene el resumen "
         "principal en negrita, seguida de dos a cuatro viñetas cortas, sin línea final de acción. "
@@ -1658,18 +1739,18 @@ async def _narrar_llm(
         "negrita como máximo por viñeta. No pegues URLs. No enumeres mecánicas o categorías "
         "crudas: si hace falta, "
         "usa familias en español. Para detalle_juego, limita el texto al resumen: la tarjeta "
-        "contiene portada, datos, precio y enlace. Si aparece interpretado_como, escribe siempre "
-        "Interpreté «X» como «Y». "
+        "contiene portada, datos, precio y enlace. Si aparece Interpretación del título, "
+        "escribe siempre Interpreté «X» como «Y». "
         "Solo puedes afirmar hechos presentes literalmente en los resultados de las tools. "
         "No uses conocimiento propio para describir jugabilidad, sensaciones, géneros ni "
         "características: están prohibidos términos como eurogame, estructura de turno u "
         "objetivos ocultos si no aparecen en los resultados. No inventes cifras, atributos, "
-        "fuentes ni recomendaciones. Si regla_exacta es reimplementa o misma_linea_de_producto, "
-        "menciónalo. La similitud llega ya como porcentaje y con una "
-        "etiqueta en similitud_etiqueta: usa solo ese porcentaje y esa etiqueta, sin "
+        "fuentes ni recomendaciones. Si hay Regla exacta (reimplementa o misma línea de producto), "
+        "menciónala. La Similitud llega ya como porcentaje y con una "
+        "etiqueta en Qué tan parecido: usa solo ese porcentaje y esa etiqueta, sin "
         "calificativos propios como mucho, poco o casi. Sobre niveles de cobertura, afirma solo "
         "los que estén en "
-        "faltantes_que_cubre, debiles_que_refuerza, ya_cubiertos o niveles_del_juego, con el "
+        "Huecos que cubre, Niveles que refuerza, Ya cubiertos o Niveles del juego, con el "
         "nombre con que aparecen; un nivel faltante es un hueco de la colección, no una "
         "característica del juego. Nunca llames afinidad o match a la similitud. En un "
         "plan de compra, presenta A, B y C con su valor cubierto, y solo puedes llamar "
@@ -1697,7 +1778,7 @@ async def _narrar_llm(
                 "content": json.dumps(
                     {
                         "pregunta": pregunta,
-                        "resultados_tools": _formatear_resultados_narrador(resultados),
+                        "resultados_tools": _vista_legible(resultados),
                     },
                     ensure_ascii=False,
                     default=str,
@@ -1728,9 +1809,9 @@ async def _criticar_llm(
                 "content": (
                     "Eres el critic de Wise Dice. Contrasta cada afirmación de la respuesta "
                     "con los resultados de las tools. La vista de resultados que recibes es la "
-                    "fuente de verdad: los porcentajes y las etiquetas (similitud_etiqueta) ya "
+                    "fuente de verdad: los porcentajes y las etiquetas (Qué tan parecido) ya "
                     "vienen calculados por el motor, así que repetirlos no es una cifra sin "
-                    "fuente. faltantes_que_cubre, debiles_que_refuerza y ya_cubiertos son niveles "
+                    "fuente. Huecos que cubre, Niveles que refuerza y Ya cubiertos son niveles "
                     "que tiene el juego evaluado frente a la colección: huecos que cubre, niveles "
                     "débiles que refuerza y niveles que ya estaban cubiertos; decirlo está "
                     "respaldado. Revisa cifras sin fuente, mecánicas o "
@@ -1755,7 +1836,7 @@ async def _criticar_llm(
                 "content": json.dumps(
                     {
                         "pregunta": pregunta,
-                        "resultados_tools": _formatear_resultados_narrador(resultados),
+                        "resultados_tools": _vista_legible(resultados),
                         "respuesta": respuesta,
                     },
                     ensure_ascii=False,
@@ -2020,7 +2101,16 @@ async def responder(
             answer = await _narrar_llm(settings, resultados, solicitud.mensaje)
             narrator_llm_used = True
             trazas.append(
-                ("narrator", "ok", {"attempt": 0, "llm_used": True, "modelo": settings.llm_model})
+                (
+                    "narrator",
+                    "ok",
+                    {
+                        "attempt": 0,
+                        "llm_used": True,
+                        "modelo": settings.llm_model,
+                        "borrador": answer,
+                    },
+                )
             )
         except Exception as error:  # noqa: BLE001
             trazas.append(
@@ -2074,6 +2164,7 @@ async def responder(
                     "llm_used": critic_llm_used,
                     "modelo": settings.llm_model_fast,
                     "findings": list(critic_findings),
+                    "borrador": vista_critica,
                 },
             )
         )
@@ -2114,6 +2205,7 @@ async def responder(
                         "llm_used": True,
                         "modelo": settings.llm_model,
                         "feedback": critic_findings,
+                        "borrador": answer,
                     },
                 )
             )
