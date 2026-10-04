@@ -49,6 +49,45 @@ def test_critic_determinista_rechaza_identificadores_internos() -> None:
     assert any("guion bajo" in finding for finding in findings)
 
 
+@pytest.mark.parametrize(
+    "valor",
+    [
+        None,
+        42,
+        "",
+        "  ",
+        "\" ¿?¡!.,: ' ",
+        "null",
+        "None",
+        "nil",
+        "undefined",
+        "n/a",
+        "na",
+        "desconocido",
+        "juego",
+        "el juego",
+        "este juego",
+        "ese juego",
+        "este",
+        "ese",
+        "esto",
+        "eso",
+        "el",
+        "lo",
+        "x",
+    ],
+)
+def test_nombre_valido_rechaza_valores_nulos_genericos_o_cortos(valor: object) -> None:
+    assert chat_service.nombre_valido(valor) is None
+
+
+@pytest.mark.parametrize(
+    "nombre", ["Catan", "SETI", "7 Wonders", "Criaturas maravillosas", "스플렌더"]
+)
+def test_nombre_valido_conserva_titulos_reales(nombre: str) -> None:
+    assert chat_service.nombre_valido(f'  "{nombre}"! ') == nombre
+
+
 def test_planner_conserva_intencion_al_recibir_nombre_en_ingles() -> None:
     plan = chat_service._plan_determinista(
         "El nombre en inglés es: Wondrous Creatures",

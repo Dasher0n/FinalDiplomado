@@ -7,7 +7,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from rapidfuzz import fuzz
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,6 +53,35 @@ _INTENTS = {
     "fuera_de_dominio",
     "general",
 }
+_REFERENCIAS_GENERICAS = {
+    "juego",
+    "el juego",
+    "este juego",
+    "ese juego",
+    "este",
+    "ese",
+    "esto",
+    "eso",
+    "el",
+    "lo",
+}
+_NOMBRES_NULOS = {"null", "none", "nil", "undefined", "n/a", "na", "desconocido"}
+
+
+def nombre_valido(valor: object) -> str | None:
+    """Limpia un título y descarta valores nulos, genéricos o demasiado cortos."""
+    if not isinstance(valor, str):
+        return None
+    nombre = valor.strip(" \t\r\n\"'«»“”¿?¡!.,:")
+    sin_relleno = re.sub(r"[\s\"'«»“”¿?¡!.,:]", "", nombre)
+    if not sin_relleno:
+        return None
+    minusculas = nombre.casefold()
+    if minusculas in _NOMBRES_NULOS or minusculas in _REFERENCIAS_GENERICAS:
+        return None
+    if len(normalizar_nombre(nombre)) < 2:
+        return None
+    return nombre
 
 
 class PlanLlm(BaseModel):
@@ -77,6 +106,16 @@ class _ArgsPlanLlm(BaseModel):
     minutos: float | None = None
     edad_minima: int | None = None
 
+    @field_validator("nombre")
+    @classmethod
+    def validar_nombre(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
+        nombre = nombre_valido(valor)
+        if nombre is None:
+            raise ValueError("nombre debe contener un título de juego válido")
+        return nombre
+
 
 class _PasoPlanLlm(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -85,6 +124,12 @@ class _PasoPlanLlm(BaseModel):
     tool: str
     args: _ArgsPlanLlm = Field(default_factory=_ArgsPlanLlm)
     depends_on: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def exigir_nombre_para_tool_de_juego(self) -> _PasoPlanLlm:
+        if self.tool in {"detalle_juego", "evaluar_compra"} and self.args.nombre is None:
+            raise ValueError(f"{self.tool} requiere un nombre de juego válido")
+        return self
 
 
 class _PlanRespuestaLlm(BaseModel):
@@ -116,6 +161,11 @@ class _TitulosTraducidosLlm(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     titulos: list[str] = Field(default_factory=list, max_length=3)
+
+    @field_validator("titulos")
+    @classmethod
+    def limpiar_titulos(cls, valores: list[str]) -> list[str]:
+        return [titulo for valor in valores if (titulo := nombre_valido(valor)) is not None]
 
 
 _TOOL_MANIFEST = {
@@ -168,18 +218,21 @@ def _plan_determinista(
     consulta = normalizar_nombre(mensaje)
     titulo_en_ingles = re.match(r"^el nombre en ingl[eé]s es:\s*(.+)$", mensaje, re.IGNORECASE)
     if titulo_en_ingles and intent_pendiente in {"evaluar_compra", "detalle_juego"}:
-        nombre = titulo_en_ingles.group(1).strip()
-        return PlanLlm(
-            intent=intent_pendiente,
-            steps=[PasoPlan(id="1", tool=intent_pendiente, args={"nombre": nombre})],
-        )
+        nombre = nombre_valido(titulo_en_ingles.group(1))
+        if nombre:
+            return PlanLlm(
+                intent=intent_pendiente,
+                steps=[PasoPlan(id="1", tool=intent_pendiente, args={"nombre": nombre})],
+            )
     if intent_pendiente in {"evaluar_compra", "detalle_juego"} and re.fullmatch(
         r"[\w\s:,'-]{2,80}", mensaje, re.UNICODE
     ):
-        return PlanLlm(
-            intent=intent_pendiente,
-            steps=[PasoPlan(id="1", tool=intent_pendiente, args={"nombre": mensaje.strip()})],
-        )
+        nombre = nombre_valido(mensaje)
+        if nombre:
+            return PlanLlm(
+                intent=intent_pendiente,
+                steps=[PasoPlan(id="1", tool=intent_pendiente, args={"nombre": nombre})],
+            )
     if any(palabra in texto for palabra in ("ignora", "instrucciones", "prompt", "sistema")):
         return PlanLlm(intent="fuera_de_dominio")
     if any(palabra in texto for palabra in ("regla", "reglamento", "como se juega")):
@@ -224,7 +277,9 @@ def _plan_determinista(
         or game_id
     ):
         nombre = _extraer_nombre_juego(mensaje)
-        tiene_nombre = normalizar_nombre(nombre) != normalizar_nombre(mensaje)
+        tiene_nombre = nombre is not None and normalizar_nombre(nombre) != normalizar_nombre(
+            mensaje
+        )
         args = (
             {"game_id": game_id}
             if game_id
@@ -239,18 +294,21 @@ def _plan_determinista(
     pregunta_general = re.match(r"^(quien|quienes|cuando|donde|por que)\b", consulta)
     if pregunta_general and len(consulta.split()) >= 4:
         return PlanLlm(intent="fuera_de_dominio")
-    args = {"game_id": game_id} if game_id else {"nombre": _extraer_nombre_juego(mensaje)}
+    nombre = _extraer_nombre_juego(mensaje)
+    if not game_id and nombre is None:
+        return PlanLlm(intent="general")
+    args = {"game_id": game_id} if game_id else {"nombre": nombre}
     return PlanLlm(
         intent="detalle_juego",
         steps=[PasoPlan(id="1", tool="detalle_juego", args=args)],
     )
 
 
-def _extraer_nombre_juego(mensaje: str) -> str:
+def _extraer_nombre_juego(mensaje: str) -> str | None:
     """Separa el título de juego de la formulación de la pregunta."""
     continuacion = re.match(r"^[¿¡]?\s*y\s+(?P<nombre>.+?)[?!.]*$", mensaje, re.IGNORECASE)
     if continuacion:
-        return continuacion.group("nombre").strip()
+        return nombre_valido(continuacion.group("nombre"))
     patrones = (
         r"\b(?:comprar|compra|evaluar|evalúa)\s+(?:el juego\s+)?(?P<nombre>.+?)(?=[,;.!?¿]|$)",
         r"\bvale la pena\s+(?P<nombre>.+?)(?=[,;.!?¿]|$)",
@@ -261,10 +319,10 @@ def _extraer_nombre_juego(mensaje: str) -> str:
     for patron in patrones:
         coincidencia = re.search(patron, mensaje, re.IGNORECASE)
         if coincidencia:
-            nombre = coincidencia.group("nombre").strip(" \t\r\n,;.!?¿¡")
+            nombre = nombre_valido(coincidencia.group("nombre"))
             if nombre:
                 return nombre
-    return mensaje.strip(" \t\r\n,;.!?¿¡")
+    return nombre_valido(mensaje)
 
 
 def _validar_plan(plan: PlanLlm | None, max_pasos: int) -> PlanLlm | None:
@@ -280,8 +338,10 @@ def _validar_plan(plan: PlanLlm | None, max_pasos: int) -> PlanLlm | None:
             dependencia not in ids for dependencia in paso.depends_on
         ):
             return None
-        if paso.tool in {"detalle_juego", "evaluar_compra"} and not (
-            paso.args.get("nombre") or paso.args.get("game_id")
+        if (
+            paso.tool in {"detalle_juego", "evaluar_compra"}
+            and paso.args.get("game_id") is None
+            and nombre_valido(paso.args.get("nombre")) is None
         ):
             return None
         if paso.tool == "que_compro" and not isinstance(paso.args.get("n"), int):
@@ -331,7 +391,9 @@ def _niveles_plan(pasos: list[PasoPlan]) -> list[list[PasoPlan]]:
     return niveles
 
 
-async def _plan_llm(settings: Settings, mensaje: str, resumen: str) -> PlanLlm | None:
+async def _plan_llm(
+    settings: Settings, mensaje: str, resumen: str, error_validacion: str | None = None
+) -> PlanLlm | None:
     """Usa Responses.parse solo cuando la configuracion habilita explícitamente el LLM."""
     if not settings.llm_active:
         return None
@@ -351,7 +413,13 @@ async def _plan_llm(settings: Settings, mensaje: str, resumen: str) -> PlanLlm |
             f"{manifest}\nFormulaciones naturales: {_EJEMPLOS_INTENT}\n"
             "Para un juego, el argumento nombre debe conservar exactamente el título citado por "
             "la persona, sin traducirlo ni sustituirlo por otro título. "
-            f"Contexto de colección e historial reciente: {resumen}\nPregunta: {mensaje}"
+            f"Contexto de colección e historial reciente: {resumen}\n"
+            + (
+                f"El intento anterior no fue válido: {error_validacion}. Corrige el plan.\n"
+                if error_validacion
+                else ""
+            )
+            + f"Pregunta: {mensaje}"
         ),
         text_format=_PlanRespuestaLlm,
     )
@@ -378,10 +446,11 @@ async def _resolver(
     if game_id:
         juego = await repo.obtener_juego(game_id)
         return ("encontrado", (juego,)) if juego else ("no_encontrado", ())
-    juegos = await repo.todos_los_juegos()
-    consulta_normalizada = normalizar_nombre(nombre or "")
-    if len(consulta_normalizada) < 2:
+    nombre = nombre_valido(nombre)
+    if nombre is None:
         return "no_encontrado", ()
+    juegos = await repo.todos_los_juegos()
+    consulta_normalizada = normalizar_nombre(nombre)
     exactos = tuple(
         juego
         for juego in juegos
@@ -411,7 +480,8 @@ async def _resolver_con_traduccion(
     repo: CatalogoRepository, nombre: str | None, game_id: str | None, settings: Settings
 ) -> tuple[str, tuple[Game, ...], dict[str, str] | None, list[str], dict[str, Any] | None]:
     estado, juegos = await _resolver(repo, nombre, game_id, settings)
-    if estado != "no_encontrado" or game_id or not nombre or not settings.llm_active:
+    nombre = nombre_valido(nombre)
+    if estado != "no_encontrado" or game_id or nombre is None or not settings.llm_active:
         return estado, juegos, None, [], None
     from openai import AsyncOpenAI
 
@@ -444,7 +514,10 @@ async def _resolver_con_traduccion(
     candidatos: list[Game] = []
     coincidencias: list[dict[str, Any]] = []
     vistos: set[str] = set()
-    for titulo in titulos:
+    for titulo_original in titulos:
+        titulo = nombre_valido(titulo_original)
+        if titulo is None:
+            continue
         consulta = normalizar_nombre(titulo)
         encontrados = [
             juego
@@ -487,6 +560,8 @@ async def _validar_plan_con_juego(
     if any(paso.tool in {"evaluar_compra", "detalle_juego"} for paso in plan.steps):
         return plan
     nombre = _extraer_nombre_juego(mensaje)
+    if nombre is None:
+        return plan
     estado, juegos = await _resolver(repo, nombre, None, settings)
     if estado != "encontrado":
         return plan
@@ -647,6 +722,8 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
         return "Las consultas de reglas llegarán en una versión próxima."
     if intent == "fuera_de_dominio":
         return "Mi experiencia se limita al análisis y recomendación de juegos de mesa."
+    if intent == "general" and not resultados:
+        return "**Necesito el nombre del juego**\n\nEscribe el título que quieres consultar."
     resultado = resultados[0] if resultados else {}
     if resultado.get("estado") == "ambiguo":
         return (
@@ -1248,10 +1325,30 @@ async def responder(
     plan_llm: PlanLlm | None = None
     planner_error: str | None = None
     planner_llm_used = False
+    planner_reintentado = False
     if settings.llm_active and not es_continuacion_en_ingles:
         try:
             plan_llm = await _plan_llm(settings, solicitud.mensaje, resumen)
             planner_llm_used = plan_llm is not None
+            if (
+                plan_llm is not None
+                and _validar_plan(plan_llm, settings.llm_max_plan_steps) is None
+            ):
+                planner_reintentado = True
+                planner_error = (
+                    "El plan debe incluir un nombre de juego válido o un game_id válido."
+                )
+                plan_llm = await _plan_llm(settings, solicitud.mensaje, resumen, planner_error)
+                planner_llm_used = planner_llm_used or plan_llm is not None
+        except ValueError as error:
+            planner_reintentado = True
+            planner_error = str(error)[:300]
+            try:
+                plan_llm = await _plan_llm(settings, solicitud.mensaje, resumen, planner_error)
+                planner_llm_used = planner_llm_used or plan_llm is not None
+            except Exception as retry_error:  # noqa: BLE001
+                planner_error = str(retry_error)[:300]
+                plan_llm = None
         except Exception as error:  # noqa: BLE001
             planner_error = str(error)[:300]
             plan_llm = None
@@ -1263,6 +1360,8 @@ async def responder(
         chat_session.juego_en_foco_id,
         chat_session.intent_pendiente,
     )
+    if _validar_plan(plan, settings.llm_max_plan_steps) is None:
+        plan = PlanLlm(intent="general")
     plan = await _validar_plan_con_juego(
         plan,
         solicitud.mensaje,
@@ -1298,7 +1397,11 @@ async def responder(
                 run_id=run.id,
                 agent_name="planner",
                 estado="fallback" if planner_error else "ok",
-                output={"llm_used": planner_llm_used, "modelo": settings.llm_model_fast},
+                output={
+                    "llm_used": planner_llm_used,
+                    "modelo": settings.llm_model_fast,
+                    "reintentado": planner_reintentado,
+                },
                 error_mensaje=planner_error,
             )
         )
