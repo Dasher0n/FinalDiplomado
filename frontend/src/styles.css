@@ -673,7 +673,7 @@ main > section h2.font-serif::after {
 }
 .sello[data-veredicto="aporta"] {
   --sello: var(--cardenillo-700);
-  --sello-brillo: #3b8a6d;
+  --sello-brillo: #2a7d62;
   --sello-texto: var(--pergamino-50);
 }
 .sello[data-veredicto="redundante"] {
@@ -1067,7 +1067,7 @@ main > section h2.font-serif::after {
 }
 
 dt {
-  color: #78716c;
+  color: var(--texto-suave);
 }
 
 dd {
