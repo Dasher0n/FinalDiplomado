@@ -72,7 +72,7 @@ def test_nombre_en_ingles_tras_la_confirmacion_continua_la_evaluacion_y_guarda_e
     assert identificaciones == []
     assert directa["tarjetas"][0]["datos"]["juego"]["id"] == SETI_ID
     assert "Interpreté «Buscadores de señales» como" in directa["answer"]
-    assert "lo confirmaste antes" in directa["answer"]
+    assert "lo confirmaste" not in directa["answer"]
 
 
 def test_pulsar_un_boton_sigue_guardando_el_alias_como_candidato(
@@ -172,6 +172,7 @@ def test_solo_el_encabezado_determinista_lleva_negritas() -> None:
         "estado": "encontrado",
         "veredicto": "aporta",
         "juego": {"nombre": "SETI"},
+        "faltantes_que_cubre": ["Peso: pesado"],
     }
     texto = chat_service._con_encabezado(
         chat_service._sanear_narrador("**Cubre** el hueco *Peso: pesado*."),

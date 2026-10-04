@@ -115,10 +115,7 @@ def test_confirmar_un_candidato_guarda_el_alias_y_se_resuelve_sin_llm(
     assert identificaciones == []
     assert directa["tarjetas"][0]["datos"]["juego"]["id"] == CRIATURAS_ID
     assert directa["tarjetas"][0]["datos"]["origen_resolucion"] == "alias"
-    assert (
-        "Interpreté «Criaturas maravillosas» como «Wondrous Creatures» (lo confirmaste antes)."
-        in directa["answer"]
-    )
+    assert "Interpreté «Criaturas maravillosas» como «Wondrous Creatures»." in directa["answer"]
     assert directa["critic_passed"] is True
     [paso] = _pasos(sessionmaker, directa["run_id"], "resolution")
     assert paso.output == {"origen_resolucion": "alias", "llm_called": False}
@@ -137,7 +134,7 @@ def test_un_alias_de_un_perfil_no_afecta_al_otro(
 
     assert len(identificaciones) == 1
     assert otro["tarjetas"][0]["datos"].get("origen_resolucion") is None
-    assert "lo confirmaste antes" not in otro["answer"]
+    assert "Interpreté" not in otro["answer"]
 
 
 def test_escribir_el_nombre_en_ingles_tambien_guarda_el_alias(

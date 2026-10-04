@@ -945,8 +945,8 @@ def _etiqueta_similitud(
 
 
 def _nota_interpretacion(interpretado: dict[str, str]) -> str:
-    confirmado = " (lo confirmaste antes)" if interpretado.get("origen") == "alias" else ""
-    return f"Interpreté «{interpretado['buscado']}» como «{interpretado['resuelto']}»{confirmado}."
+    # No indica que viene de un alias: otras personas del mismo café no deben ver esa señal.
+    return f"Interpreté «{interpretado['buscado']}» como «{interpretado['resuelto']}»."
 
 
 async def _ejecutar_tool(
@@ -1158,12 +1158,29 @@ def _lista_natural(items: list[str], maximo: int = 3) -> str:
 def _encabezado_evaluacion(resultado: dict[str, Any]) -> str:
     """Veredicto determinista: lo escribe el backend, no el narrador."""
     juego, similar = resultado["juego"], resultado.get("juego_mas_parecido")
-    frases = {
-        "redundante": "es redundante con tu colección",
-        "parecido_pero_cubre_hueco": "se parece a un juego tuyo, pero cubre huecos",
-        "parecido": "se parece a lo que ya tienes",
-    }
-    frase = frases.get(str(resultado.get("veredicto")), "aporta a tu colección")
+    cubre_huecos = bool(resultado.get("faltantes_que_cubre"))
+    refuerza = bool(resultado.get("debiles_que_refuerza"))
+    veredicto = resultado.get("veredicto")
+    if veredicto == "parecido_pero_cubre_hueco":
+        # El motor cuenta como hueco un nivel faltante o débil: el texto debe decir cuál.
+        complemento = (
+            "cubre huecos"
+            if cubre_huecos
+            else "refuerza tu colección"
+            if refuerza
+            else "aporta algo a tu colección"
+        )
+        frase = f"se parece a un juego tuyo, pero {complemento}"
+    elif veredicto == "redundante":
+        frase = "es redundante con tu colección"
+    elif veredicto == "parecido":
+        frase = "se parece a lo que ya tienes"
+    else:
+        frase = (
+            "aporta a tu colección"
+            if cubre_huecos or refuerza
+            else "es distinto de lo que ya tienes"
+        )
     texto = f"**{juego['nombre']}** {frase}."
     if resultado.get("regla_exacta") == "misma_linea_de_producto" and similar:
         texto += f" Comparte línea de producto con **{similar['nombre']}**."

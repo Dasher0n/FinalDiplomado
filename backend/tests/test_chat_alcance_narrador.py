@@ -190,3 +190,70 @@ async def test_candidatos_con_las_listas_reales_de_a1_ponen_primero_la_exacta(
     assert estado == "ambiguo"
     assert ids[0] == "400366" and len(ids) <= 3 and len(set(ids)) == len(ids)
     assert "119890" not in ids
+
+
+MODERN_ART = {
+    "estado": "encontrado",
+    "veredicto": "parecido_pero_cubre_hueco",
+    "juego": {"nombre": "Modern Art"},
+    "juego_mas_parecido": {"nombre": "Cartographers"},
+    "similitud": {"total": 0.62},
+    "similitud_etiqueta": "parecido",
+    "faltantes_que_cubre": [],
+    "debiles_que_refuerza": ["Mecánicas: Subastas y pujas"],
+    "ya_cubiertos": ["Jugadores: 3 a 4"],
+}
+
+
+@pytest.mark.parametrize(
+    ("faltantes", "debiles", "esperado"),
+    [
+        ([], ["Mecánicas: Subastas y pujas"], "pero refuerza tu colección."),
+        (["Peso: pesado"], [], "pero cubre huecos."),
+        (["Peso: pesado"], ["Mecánicas: Subastas y pujas"], "pero cubre huecos."),
+        ([], [], "pero aporta algo a tu colección."),
+    ],
+)
+def test_encabezado_parecido_pero_coincide_con_las_listas(
+    faltantes: list[str], debiles: list[str], esperado: str
+) -> None:
+    resultado = {
+        **MODERN_ART,
+        "faltantes_que_cubre": faltantes,
+        "debiles_que_refuerza": debiles,
+    }
+
+    encabezado = chat_service._encabezado_evaluacion(resultado)
+
+    assert encabezado == f"**Modern Art** se parece a un juego tuyo, {esperado}"
+
+
+def test_plantilla_de_modern_art_no_dice_que_cubre_huecos() -> None:
+    plantilla = chat_service._narrar("evaluar_compra", [MODERN_ART])
+
+    assert "pero refuerza tu colección" in plantilla and "pero cubre huecos" not in plantilla
+    assert "No cubre ningún hueco de tu colección." in plantilla
+    assert "Refuerza niveles que tenías débiles: Mecánicas: Subastas y pujas." in plantilla
+
+
+@pytest.mark.parametrize(
+    ("veredicto", "faltantes", "debiles", "esperado"),
+    [
+        ("aporta", ["Peso: pesado"], [], "aporta a tu colección."),
+        ("aporta", [], ["Peso: medio"], "aporta a tu colección."),
+        ("aporta", [], [], "es distinto de lo que ya tienes."),
+        ("parecido", [], [], "se parece a lo que ya tienes."),
+        ("redundante", [], [], "es redundante con tu colección."),
+    ],
+)
+def test_encabezado_de_cada_veredicto_coincide_con_las_listas(
+    veredicto: str, faltantes: list[str], debiles: list[str], esperado: str
+) -> None:
+    resultado = {
+        **MODERN_ART,
+        "veredicto": veredicto,
+        "faltantes_que_cubre": faltantes,
+        "debiles_que_refuerza": debiles,
+    }
+
+    assert chat_service._encabezado_evaluacion(resultado) == f"**Modern Art** {esperado}"
