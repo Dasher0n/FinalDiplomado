@@ -75,11 +75,20 @@ async function abrirPagina(navegador, ancho, perfil) {
   await pagina.waitForTimeout(700);
   return { contexto, pagina };
 }
-async function foto(pagina, nombre) {
+// Página completa: se ocultan solo en la captura los elementos fijos (barra inferior móvil y
+// campo del chat), que si no aparecen a mitad de la imagen. `ventana` toma la ventana visible.
+async function foto(pagina, nombre, ventana = false) {
   await pagina.waitForTimeout(500);
-  const opciones = { path: join(SALIDA, nombre + ".png"), fullPage: true };
+  const opciones = { path: join(SALIDA, nombre + ".png"), fullPage: !ventana };
+  let estilo = null;
+  if (!ventana) {
+    estilo = await pagina.addStyleTag({
+      content:
+        "@media (max-width:640px){.wise-nav{display:none !important}} .chat-input{display:none !important}",
+    });
+  }
   // ALTO_MAX recorta la captura para revisarla más rápido sin recorrer toda la página.
-  if (process.env.ALTO_MAX) {
+  if (process.env.ALTO_MAX && !ventana) {
     const ancho = pagina.viewportSize().width;
     opciones.clip = {
       x: 0,
@@ -89,6 +98,7 @@ async function foto(pagina, nombre) {
     };
   }
   await pagina.screenshot(opciones);
+  await estilo?.evaluate((nodo) => nodo.remove());
   console.log("capturas/" + nombre + ".png");
 }
 const nav = (pagina, texto) =>
@@ -142,6 +152,7 @@ try {
         })
         .catch(() => {});
       await foto(pagina, "chat-1440");
+      await foto(pagina, "chat-1440-ventana", true);
     }
     await contexto.close();
   }
@@ -149,6 +160,7 @@ try {
   {
     const { contexto, pagina } = await abrirPagina(navegador, 390, "cafe");
     await foto(pagina, "ludoteca-cafe-390");
+    await foto(pagina, "ludoteca-cafe-390-ventana", true);
     await nav(pagina, "Chat");
     await pagina.fill("#chat-input", "¿Vale la pena SETI?");
     await pagina.keyboard.press("Enter");
@@ -156,6 +168,7 @@ try {
       .waitForSelector(".game-summary-card", { timeout: 10000 })
       .catch(() => {});
     await foto(pagina, "chat-390");
+    await foto(pagina, "chat-390-ventana", true);
     await contexto.close();
   }
 } finally {
