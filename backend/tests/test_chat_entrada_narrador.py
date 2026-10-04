@@ -147,6 +147,7 @@ def test_prompt_del_narrador_prohibe_precio_y_limita_la_similitud(
     assert "ni precio ni presupuesto" in sistema
     assert "Qué tan parecido" in sistema and "sin calificativos propios" in sistema
     assert "Huecos que cubre" in sistema
-    assert "una o dos oraciones" in sistema and "No enumeres Ya cubiertos" in sistema
+    assert "una sola oración" in sistema and "Experiencia del juego" in sistema
+    assert "Sin números, sin veredicto" in sistema
     usuario = llamada["input"][1]["content"]
     assert "79.99" not in usuario and "33%" in usuario

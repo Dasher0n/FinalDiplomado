@@ -929,6 +929,23 @@ _MESES = {
 }
 
 
+def _experiencia(juego: Game) -> dict[str, Any]:
+    """Datos del juego para describir qué experiencia ofrece: familias, peso, duración y más."""
+    duracion = juego.nivel_duracion
+    return {
+        key: valor
+        for key, valor in {
+            "familias_mecanicas": list(juego.familias_mec or []),
+            "familias_tematicas": list(juego.familias_tema or []),
+            "nivel_peso": juego.nivel_peso,
+            "nivel_duracion": f"{duracion} minutos" if duracion else None,
+            "nivel_jugadores": list(juego.nivel_jugadores or []),
+            "nivel_interaccion": juego.nivel_interaccion,
+        }.items()
+        if valor
+    }
+
+
 def _etiqueta_nivel(eje: str, nivel: str) -> str:
     """Nivel legible; la duración lleva su unidad."""
     unidad = " minutos" if eje == "Duración" and "minutos" not in nivel else ""
@@ -1135,6 +1152,7 @@ async def _ejecutar_tool(
         "faltantes_que_cubre": niveles_en("faltantes"),
         "debiles_que_refuerza": niveles_en("debiles"),
         "ya_cubiertos": niveles_en("cubiertos"),
+        "experiencia_del_juego": _experiencia(juego),
         "precio_texto": _texto_precio(juego),
         "origen_resolucion": origen_resolucion,
         "juego": _juego(juego, artefactos, huecos).model_dump(mode="json"),
@@ -1204,32 +1222,49 @@ def _encabezado_evaluacion(resultado: dict[str, Any]) -> str:
     return texto
 
 
-def _cuerpo_evaluacion(resultado: dict[str, Any]) -> str:
-    """Una o dos oraciones con las mismas formas que el narrador."""
-    similar, similitud = resultado.get("juego_mas_parecido"), resultado.get("similitud")
+def _oraciones_aporte(resultado: dict[str, Any]) -> str:
+    """Oración determinista de aporte: huecos que cubre y niveles débiles que refuerza."""
     faltantes = resultado.get("faltantes_que_cubre") or []
     debiles = resultado.get("debiles_que_refuerza") or []
-    if faltantes and debiles:
-        primera = (
-            f"Cubre huecos de tu colección: {_lista_natural(faltantes)}, y refuerza niveles "
-            f"que tenías débiles: {_lista_natural(debiles)}."
-        )
-    elif faltantes:
-        primera = f"Cubre huecos de tu colección: {_lista_natural(faltantes)}."
-    elif debiles:
-        primera = f"Refuerza niveles que tenías débiles: {_lista_natural(debiles)}."
-    else:
-        primera = "No cubre ni refuerza ningún nivel de tu colección."
-    oraciones = [primera]
-    if similar and similitud:
-        porcentaje = f"{round(similitud['total'] * 100)}%"
-        etiqueta = resultado.get("similitud_etiqueta")
-        detalle = f" ({etiqueta})" if etiqueta else ""
-        oraciones.append(
-            f"El más parecido de tu colección es **{similar['nombre']}**, "
-            f"con {porcentaje} de similitud{detalle}."
-        )
-    return " ".join(oraciones)
+    oraciones: list[str] = []
+    if faltantes:
+        titulo = "Cubre un hueco" if len(faltantes) == 1 else "Cubre huecos"
+        oraciones.append(f"{titulo}: {_lista_natural(faltantes, 4)}.")
+    if debiles:
+        titulo = "Refuerza un nivel débil" if len(debiles) == 1 else "Refuerza niveles débiles"
+        oraciones.append(f"{titulo}: {_lista_natural(debiles, 4)}.")
+    return " ".join(oraciones) or "No cubre huecos nuevos; se ubica en zonas que ya tienes."
+
+
+def _oracion_parecido(resultado: dict[str, Any]) -> str:
+    similar, similitud = resultado.get("juego_mas_parecido"), resultado.get("similitud")
+    if not (similar and similitud):
+        return ""
+    return f"Se parece en un {round(similitud['total'] * 100)}% a {similar['nombre']}."
+
+
+def _descripcion_experiencia(resultado: dict[str, Any]) -> str:
+    """Respaldo determinista de la oración del narrador: qué experiencia ofrece el juego."""
+    datos = resultado.get("experiencia_del_juego") or {}
+    partes: list[str] = []
+    if datos.get("nivel_peso"):
+        partes.append(f"de peso {datos['nivel_peso']}")
+    if datos.get("nivel_duracion"):
+        partes.append(f"de {datos['nivel_duracion']}")
+    texto = "Es un juego " + ", ".join(partes) if partes else "Es un juego"
+    mecanicas = datos.get("familias_mecanicas") or []
+    if mecanicas:
+        texto += f" con mecánicas de {_lista_natural(mecanicas, 3)}"
+    tematica = datos.get("familias_tematicas") or []
+    if tematica:
+        texto += f" y temática de {_lista_natural(tematica, 2)}"
+    return texto + "."
+
+
+def _cuerpo_evaluacion(resultado: dict[str, Any]) -> str:
+    """Plantilla de respaldo: aporte y parecido deterministas más la descripción del juego."""
+    partes = [_oraciones_aporte(resultado), _oracion_parecido(resultado)]
+    return " ".join(parte for parte in partes if parte) + " " + _descripcion_experiencia(resultado)
 
 
 def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
@@ -1337,7 +1372,10 @@ def _con_encabezado(respuesta: str, intent: str, resultados: list[dict[str, Any]
         or "juego" not in resultado
     ):
         return respuesta
-    return _encabezado_evaluacion(resultado) + "\n\n" + respuesta
+    deterministas = " ".join(
+        parte for parte in (_oraciones_aporte(resultado), _oracion_parecido(resultado)) if parte
+    )
+    return _encabezado_evaluacion(resultado) + "\n\n" + deterministas + " " + respuesta
 
 
 def _agregar_precio(respuesta: str, resultados: list[dict[str, Any]]) -> str:
@@ -1420,6 +1458,9 @@ _ETIQUETAS_CLAVES = {
     "nombre": "Nombre",
     "peso": "Peso",
     "promedio": "Promedio",
+    "experiencia_del_juego": "Experiencia del juego",
+    "familias_mecanicas": "Familias de mecánicas",
+    "familias_tematicas": "Familias temáticas",
     "nivel_peso": "Nivel de peso",
     "nivel_duracion": "Nivel de duración",
     "nivel_interaccion": "Nivel de interacción",
@@ -1781,12 +1822,12 @@ async def _narrar_llm(
         "Eres el narrador de Wise Dice. Responde en español, sin emojis. "
         "Nunca escribas veredictos, recomendaciones ni próximos pasos (veredicto, propongo, "
         "te recomiendo, vale la pena): el sistema los agrega. Para evaluar_compra no escribas "
-        "encabezado ni cierre: escribe una o dos oraciones en prosa. La primera dice qué hueco "
-        "cubre (Huecos que cubre) o qué nivel refuerza (Niveles que refuerza), solo si hay; la "
-        "segunda, a qué juego de la colección se parece más (Juego más parecido) con el "
-        "porcentaje de Similitud y su etiqueta Qué tan parecido. No enumeres Ya cubiertos: la "
-        "tarjeta de la evaluación ya lo muestra. No compares con toda la colección ni uses "
-        "calificativos propios. En los demás intents escribe de dos a cuatro oraciones "
+        "encabezado ni cierre: el sistema ya escribe el aporte a la colección y el parecido. "
+        "Escribe una sola oración en prosa que describa qué experiencia ofrece el juego, usando "
+        "solo Experiencia del juego (familias de mecánicas, familias temáticas, peso, duración, "
+        "jugadores e interacción). Sin números, sin veredicto, sin juicios sobre la colección y "
+        "sin mencionar huecos, similitud ni precio. No uses calificativos propios. "
+        "En los demás intents escribe de dos a cuatro oraciones "
         "en prosa, sin línea final de acción. No uses emojis ni markdown: nada de asteriscos, "
         "negritas, cursivas ni guiones largos. No pegues URLs. No enumeres mecánicas o categorías "
         "crudas: si hace falta, "

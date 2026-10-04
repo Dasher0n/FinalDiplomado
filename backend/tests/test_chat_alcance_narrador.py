@@ -111,7 +111,7 @@ def test_plantilla_de_respaldo_es_legible_y_pasa_el_critico(caso: str) -> None:
         resultados,
     )
 
-    assert 1 <= len(oraciones) <= 2
+    assert 2 <= len(oraciones) <= 4
     assert "{" not in plantilla and "[" not in plantilla and "_" not in plantilla
     assert chat_service._criticar_determinista(respuesta, resultados) == []
 
@@ -121,13 +121,15 @@ def test_plantilla_para_seti_y_catan_con_los_campos_reales() -> None:
     catan = chat_service._narrar("evaluar_compra", [CASOS["caso6"]])
 
     assert seti.startswith("**SETI: Search for Extraterrestrial Intelligence** aporta a tu")
-    assert "Cubre huecos de tu colección: Duración: más de 120 minutos y Peso: pesado." in seti
+    assert "Cubre huecos: Duración: más de 120 minutos y Peso: pesado." in seti
+    assert "Se parece en un 33% a King of Tokyo." in seti
     assert (
-        "El más parecido de tu colección es **King of Tokyo**, con 33% de similitud (distinto)."
-        in seti
-    )
-    assert "Cubre huecos de tu colección: Duración: 61 a 120 minutos, y refuerza" in catan
-    assert "con 52% de similitud (parecido)." in catan
+        "Es un juego de peso pesado, de más de 120 minutos con mecánicas de Control de área, "
+        "Gestión de mano y Motor y progresión y temática de Ciencia ficción y espacio."
+    ) in seti
+    assert "Cubre un hueco: Duración: 61 a 120 minutos." in catan
+    assert "Refuerza niveles débiles: Mecánicas: Negociación y diplomacia y Peso: medio." in catan
+    assert "Se parece en un 52% a Bohnanza." in catan
     # La tarjeta ya muestra lo que estaba cubierto: la plantilla no lo enumera.
     assert "Ya tenías" not in seti and "Ya tenías" not in catan
 
@@ -230,7 +232,7 @@ def test_plantilla_de_modern_art_no_dice_que_cubre_huecos() -> None:
 
     assert "pero refuerza tu colección" in plantilla and "pero cubre huecos" not in plantilla
     assert "Cubre huecos" not in plantilla
-    assert "Refuerza niveles que tenías débiles: Mecánicas: Subastas y pujas." in plantilla
+    assert "Refuerza un nivel débil: Mecánicas: Subastas y pujas." in plantilla
 
 
 @pytest.mark.parametrize(
@@ -254,3 +256,53 @@ def test_encabezado_de_cada_veredicto_coincide_con_las_listas(
     }
 
     assert chat_service._encabezado_evaluacion(resultado) == f"**Modern Art** {esperado}"
+
+
+SAGRADA = {
+    "estado": "encontrado",
+    "veredicto": "parecido",
+    "juego": {"nombre": "Sagrada"},
+    "juego_mas_parecido": {"nombre": "Point Salad"},
+    "similitud": {"total": 0.4801},
+    "similitud_etiqueta": "parecido",
+    "faltantes_que_cubre": [],
+    "debiles_que_refuerza": ["Interacción: ninguna"],
+    "ya_cubiertos": ["Jugadores: 2"],
+    "experiencia_del_juego": {
+        "familias_mecanicas": ["Lápiz y papel", "Dados y riesgo"],
+        "nivel_peso": "ligero",
+        "nivel_duracion": "31 a 60 minutos",
+    },
+}
+
+
+def test_texto_completo_de_sagrada_con_oraciones_deterministas_y_una_del_narrador() -> None:
+    narracion = "Es un juego ligero de dados y patrones, para armar una vidriera con calma."
+    resultados = [SAGRADA]
+
+    texto = chat_service._con_encabezado(narracion, "evaluar_compra", resultados)
+
+    assert texto == (
+        "**Sagrada** se parece a lo que ya tienes.\n\n"
+        "Refuerza un nivel débil: Interacción: ninguna. Se parece en un 48% a Point Salad. "
+        + narracion
+    )
+    vista = chat_service._presentar_respuesta(
+        chat_service._con_sugerencia_final(texto, "evaluar_compra", resultados),
+        "evaluar_compra",
+        resultados,
+    )
+    assert chat_service._criticar_determinista(vista, resultados) == []
+    # Respaldo si el crítico rechaza la oración del narrador.
+    assert chat_service._descripcion_experiencia(SAGRADA) == (
+        "Es un juego de peso ligero, de 31 a 60 minutos con mecánicas de Lápiz y papel y "
+        "Dados y riesgo."
+    )
+
+
+def test_sin_aporte_la_oracion_determinista_lo_dice() -> None:
+    sin_cambios = {**SAGRADA, "debiles_que_refuerza": []}
+
+    assert chat_service._oraciones_aporte(sin_cambios) == (
+        "No cubre huecos nuevos; se ubica en zonas que ya tienes."
+    )

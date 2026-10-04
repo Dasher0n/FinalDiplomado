@@ -79,7 +79,25 @@
     "nivel": "pesado",
     "estado": "faltante"
    }
-  ]
+  ],
+  "experiencia_del_juego": {
+   "familias_mecanicas": [
+    "Control de área",
+    "Gestión de mano",
+    "Motor y progresión",
+    "Movimiento y carreras"
+   ],
+   "familias_tematicas": [
+    "Ciencia ficción y espacio"
+   ],
+   "nivel_peso": "pesado",
+   "nivel_duracion": "más de 120 minutos",
+   "nivel_jugadores": [
+    "2",
+    "3 a 4"
+   ],
+   "nivel_interaccion": "directa"
+  }
  },
  "caso6": {
   "estado": "encontrado",
@@ -152,6 +170,24 @@
     "nivel": "61 a 120",
     "estado": "faltante"
    }
-  ]
+  ],
+  "experiencia_del_juego": {
+   "familias_mecanicas": [
+    "Dados y riesgo",
+    "Económico y mercado",
+    "Gestión de mano",
+    "Motor y progresión",
+    "Negociación y diplomacia"
+   ],
+   "familias_tematicas": [
+    "Economía, industria y ciudades"
+   ],
+   "nivel_peso": "medio",
+   "nivel_duracion": "61 a 120 minutos",
+   "nivel_jugadores": [
+    "3 a 4"
+   ],
+   "nivel_interaccion": "directa"
+  }
  }
 }
