@@ -1079,7 +1079,9 @@ def test_chat_reintenta_narrador_y_persiste_critic(
     assert response.status_code == 200
     payload = response.json()
     assert payload["answer"] == (
-        "📦 " + fixture["narrador_corregido"] + "\n\nPrecio de referencia: USD 55.00 "
+        "📦 "
+        + fixture["narrador_corregido"].replace("**", "")
+        + "\n\nPrecio de referencia: USD 55.00 "
         "(BoardGamePrices, 1 ene 2026).\n\n💡 ¿Quieres simular qué pasaría si lo vendes?"
     )
     assert payload["critic_passed"] is True

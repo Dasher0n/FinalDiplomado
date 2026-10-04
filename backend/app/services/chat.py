@@ -323,6 +323,19 @@ def _plan_determinista(
     )
 
 
+def _solo_nombre(mensaje: str) -> str | None:
+    """El mensaje es únicamente un nombre, sin otra intención ni pregunta."""
+    texto = mensaje.strip()
+    if "?" in texto or "¿" in texto:
+        return None
+    nombre = nombre_valido(texto)
+    if nombre is None or normalizar_nombre(nombre) != normalizar_nombre(texto):
+        return None
+    if _extraer_nombre_juego(mensaje) != nombre:
+        return None  # Una fórmula como "háblame de X" es otra intención.
+    return nombre if _plan_determinista(mensaje, None).intent == "detalle_juego" else None
+
+
 def _extraer_nombre_juego(mensaje: str) -> str | None:
     """Separa el título de juego de la formulación de la pregunta."""
     patrones = (
@@ -1308,6 +1321,13 @@ def _agregar_precio(respuesta: str, resultados: list[dict[str, Any]]) -> str:
     return f"{cuerpo}\n\n{linea}{separador}{sugerencia}" if separador else f"{respuesta}\n\n{linea}"
 
 
+def _sanear_narrador(texto: str) -> str:
+    """El narrador escribe prosa: sin markdown ni guiones largos o medios."""
+    texto = re.sub(r"\*+|__", "", texto)
+    texto = texto.replace(" \u2014 ", ", ").replace(" \u2013 ", ", ")
+    return texto.replace("\u2014", ",").replace("\u2013", ",")
+
+
 def _sanear_negritas(respuesta: str) -> str:
     """Evita que una línea con markdown incompleto afecte el resto de la respuesta."""
     return "\n".join(
@@ -1725,18 +1745,18 @@ async def _narrar_llm(
     from openai import AsyncOpenAI
 
     instrucciones = (
-        "Eres el narrador de Wise Dice. Responde en español y markdown breve, sin emojis. "
+        "Eres el narrador de Wise Dice. Responde en español, sin emojis. "
         "Nunca escribas veredictos, recomendaciones ni próximos pasos (veredicto, propongo, "
         "te recomiendo, vale la pena): el sistema los agrega. Para evaluar_compra no escribas "
-        "encabezado ni cierre: escribe de dos a cuatro viñetas cortas solo con estas formas: "
+        "encabezado ni cierre: escribe de dos a cuatro oraciones en prosa, solo con estas formas: "
         "qué huecos cubre (Huecos que cubre), qué refuerza (Niveles que refuerza), qué ya "
         "estaba cubierto (Ya cubiertos) y a qué juego de la colección se parece más "
         "(Juego más parecido) con el porcentaje de Similitud y su etiqueta Qué tan parecido. "
-        "Omite la viñeta de una lista vacía. No compares con toda la colección ni uses "
-        "calificativos propios. En los demás intents, la primera línea contiene el resumen "
-        "principal en negrita, seguida de dos a cuatro viñetas cortas, sin línea final de acción. "
-        "No uses emojis. Usa negritas solo para juegos y números clave, con una "
-        "negrita como máximo por viñeta. No pegues URLs. No enumeres mecánicas o categorías "
+        "Omite la forma de una lista vacía. No repitas la etiqueta «Ya cubiertos:» en cada línea. "
+        "No compares con toda la colección ni uses "
+        "calificativos propios. En los demás intents escribe de dos a cuatro oraciones "
+        "en prosa, sin línea final de acción. No uses emojis ni markdown: nada de asteriscos, "
+        "negritas, cursivas ni guiones largos. No pegues URLs. No enumeres mecánicas o categorías "
         "crudas: si hace falta, "
         "usa familias en español. Para detalle_juego, limita el texto al resumen: la tarjeta "
         "contiene portada, datos, precio y enlace. Si aparece Interpretación del título, "
@@ -1891,12 +1911,27 @@ async def responder(
     es_continuacion_en_ingles = bool(
         re.match(r"^el nombre en ingl[eé]s es:\s*.+$", solicitud.mensaje, re.IGNORECASE)
     )
+    continuacion_nombre: str | None = None
+    if (
+        pendiente
+        and not solicitud.game_id
+        and not es_continuacion_en_ingles
+        and chat_session.intent_pendiente in {"evaluar_compra", "detalle_juego"}
+    ):
+        candidato_nombre = _solo_nombre(solicitud.mensaje)
+        if candidato_nombre:
+            estado_nombre, _juegos = await _resolver(
+                CatalogoRepository(session), candidato_nombre, None, settings
+            )
+            if estado_nombre == "encontrado":
+                continuacion_nombre = candidato_nombre
+    omitir_planner = es_continuacion_en_ingles or continuacion_nombre is not None
     plan_llm: PlanLlm | None = None
     planner_error: str | None = None
     planner_llm_used = False
     planner_reintentado = False
     intentos_planner: list[dict[str, Any]] = []
-    if settings.llm_active and not es_continuacion_en_ingles:
+    if settings.llm_active and not omitir_planner:
         juego_foco = (
             await CatalogoRepository(session).obtener_juego(chat_session.juego_en_foco_id)
             if chat_session.juego_en_foco_id
@@ -1940,6 +1975,19 @@ async def responder(
             chat_session.intent_pendiente,
         )
         plan = _marcar_origen_determinista(plan, plan_llm)
+        if continuacion_nombre and chat_session.intent_pendiente:
+            plan = PlanLlm(
+                intent=chat_session.intent_pendiente,
+                steps=[
+                    PasoPlan(
+                        id="1",
+                        tool=chat_session.intent_pendiente,
+                        args={"nombre": continuacion_nombre},
+                    )
+                ],
+                origen_nombre="pendiente",
+                nombre_final=continuacion_nombre,
+            )
     plan = await _aplicar_cadena_respaldo_juego(
         plan,
         solicitud.mensaje,
@@ -1980,7 +2028,7 @@ async def responder(
     )
     await session.flush()
     await session.commit()  # El plan queda durable antes de cualquier tool.
-    if settings.llm_active and not es_continuacion_en_ingles:
+    if settings.llm_active and not omitir_planner:
         session.add(
             AgentStep(
                 user_id=user.id,
@@ -2059,7 +2107,7 @@ async def responder(
         origen_alias = None
         if solicitud.game_id and solicitud.game_id == juego_resuelto["id"]:
             origen_alias = "candidato" if solicitud.game_id in ids_candidatos else None
-        elif es_continuacion_en_ingles:
+        elif es_continuacion_en_ingles or continuacion_nombre:
             origen_alias = "ingles"
         if origen_alias and await _guardar_alias(
             session, user.id, perfil.id, nombre_pendiente, juego_resuelto["id"], origen_alias
@@ -2128,7 +2176,10 @@ async def responder(
         trazas.append(("narrator", "fallback", {"attempt": 0, "llm_used": False}))
 
     while not determinista:
-        texto = _con_encabezado(answer, plan.intent, resultados) if narrator_llm_used else answer
+        if narrator_llm_used:
+            texto = _con_encabezado(_sanear_narrador(answer), plan.intent, resultados)
+        else:
+            texto = answer
         vista_critica = _presentar_respuesta(
             _con_sugerencia_final(texto, plan.intent, resultados), plan.intent, resultados
         )
@@ -2241,8 +2292,8 @@ async def responder(
             chat_session.juego_en_foco_id = juego["id"]
     if any(resultado.get("estado") in {"ambiguo", "no_encontrado"} for resultado in resultados):
         chat_session.intent_pendiente = plan.intent
-    elif any(resultado.get("estado") == "encontrado" for resultado in resultados):
-        chat_session.intent_pendiente = None
+    else:
+        chat_session.intent_pendiente = None  # Otra pregunta descarta la pendiente.
     run.respuesta_final = answer
     run.estado = "completed"
     run.critic_passed = critic_passed
