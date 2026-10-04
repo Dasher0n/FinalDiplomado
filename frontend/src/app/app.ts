@@ -632,7 +632,16 @@ Chart.defaults.color = "#4d3727";
     @if (vista() === "chat") {
       <section class="chat-screen mx-auto max-w-[860px] px-4 py-7">
         <p class="eyebrow">Asistente de ludoteca · {{ etiquetaPerfil() }}</p>
-        <h2 class="font-serif text-4xl">Pregunta a Wise Dice</h2>
+        <div class="chat-cabecera">
+          <h2 class="font-serif text-4xl">Pregunta a Wise Dice</h2>
+          <button
+            class="chip"
+            [disabled]="chatEsperando()"
+            (click)="nuevaConversacion()"
+          >
+            Nueva conversación
+          </button>
+        </div>
         <article class="chat-card mt-6">
           @for (mensaje of mensajesChat(); track $index) {
             @if (mensaje.role === "user") {
@@ -956,14 +965,7 @@ export class App {
       bienvenida?: boolean;
       respuesta?: ChatRespuesta;
     }[]
-  >([
-    {
-      role: "assistant",
-      texto:
-        "Hola, soy Wise Dice. Puedo ayudarte a descubrir huecos, evaluar compras y elegir qué jugar hoy.",
-      bienvenida: true,
-    },
-  ]);
+  >([this.mensajeBienvenida()]);
   protected readonly chatEsperando = signal(false);
   protected readonly chatError = signal(false);
   private chatSessionId: string | undefined;
@@ -1007,6 +1009,27 @@ export class App {
     this.vista.set(vista);
     if (vista === "cobertura") await this.cargarCobertura();
     if (vista === "chat") await this.cargarSugerencias();
+  }
+
+  private mensajeBienvenida(): {
+    role: "assistant";
+    texto: string;
+    bienvenida: true;
+  } {
+    return {
+      role: "assistant",
+      texto:
+        "Hola, soy Wise Dice. Puedo ayudarte a descubrir huecos, evaluar compras y elegir qué jugar hoy.",
+      bienvenida: true,
+    };
+  }
+
+  /** Empieza limpio: nueva sesión (sin foco ni pendientes), historial vacío y sugerencias nuevas. */
+  protected async nuevaConversacion(): Promise<void> {
+    this.chatSessionId = undefined;
+    this.chatError.set(false);
+    this.mensajesChat.set([this.mensajeBienvenida()]);
+    await this.cargarSugerencias();
   }
 
   /** Pide tres preguntas nuevas al backend mientras la conversación no ha empezado. */

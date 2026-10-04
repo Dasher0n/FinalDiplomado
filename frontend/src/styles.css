@@ -1350,6 +1350,14 @@ main > section h2.font-serif::after {
 
 /* ===== Chat ===== */
 
+.chat-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.8rem 1rem;
+}
+
 .chat-card-cover {
   float: left;
   width: 3.7rem;
