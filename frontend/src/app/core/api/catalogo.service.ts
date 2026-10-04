@@ -13,6 +13,8 @@ export type EstaNocheRespuesta = components["schemas"]["EstaNocheRespuesta"];
 export type VentaImpactoRespuesta =
   components["schemas"]["VentaImpactoRespuesta"];
 export type ChatRespuesta = components["schemas"]["ChatRespuesta"];
+export type SugerenciasRespuesta =
+  components["schemas"]["SugerenciasRespuesta"];
 
 export interface Perfil {
   id: string;
@@ -118,5 +120,11 @@ export class CatalogoService {
       { mensaje, session_id: sessionId, game_id: gameId },
       { params: { perfil } },
     );
+  }
+
+  sugerencias(perfil: string) {
+    return this.http.get<SugerenciasRespuesta>("/api/v1/chat/suggestions", {
+      params: { perfil },
+    });
   }
 }

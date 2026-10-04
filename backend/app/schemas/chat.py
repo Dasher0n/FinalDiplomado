@@ -58,3 +58,7 @@ class RunResumen(BaseModel):
 
 class RunDetalle(ChatRespuesta):
     pregunta: str
+
+
+class SugerenciasRespuesta(BaseModel):
+    preguntas: list[str]

@@ -3,10 +3,12 @@
 from fastapi import APIRouter, Request
 
 from app.api.deps import CurrentProfile, CurrentUser, DbSession
+from app.api.v1.engine import _coleccion
 from app.core.config import settings
 from app.db.models import AgentRun
-from app.schemas.chat import ChatRespuesta, ChatSolicitud, RunResumen
+from app.schemas.chat import ChatRespuesta, ChatSolicitud, RunResumen, SugerenciasRespuesta
 from app.services.chat import listar_runs, responder
+from app.services.sugerencias import generar_sugerencias
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -20,6 +22,15 @@ async def conversar(
     perfil: CurrentProfile,
 ) -> ChatRespuesta:
     return await responder(session, request, user, perfil, solicitud, settings)
+
+
+@router.get("/suggestions", response_model=SugerenciasRespuesta)
+async def sugerencias(
+    session: DbSession, user: CurrentUser, perfil: CurrentProfile
+) -> SugerenciasRespuesta:
+    """Tres preguntas distintas en cada carga; la de compra evita juegos de la colección activa."""
+    coleccion = await _coleccion(session, user, perfil.id)
+    return SugerenciasRespuesta(preguntas=generar_sugerencias({juego.id for juego in coleccion}))
 
 
 @router.get("/runs", response_model=list[RunResumen])

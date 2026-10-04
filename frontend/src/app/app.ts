@@ -1009,6 +1009,7 @@ export class App {
     }
     void this.cargarPerfiles();
     void this.cargarColeccion();
+    void this.cargarSugerencias();
   }
 
   protected async cambiarPerfil(perfil: string): Promise<void> {
@@ -1020,6 +1021,7 @@ export class App {
     this.evaluacionDetalle.set(null);
     await this.cargarColeccion();
     if (this.vista() === "cobertura") await this.cargarCobertura();
+    await this.cargarSugerencias();
   }
 
   protected async abrirLudoteca(perfil: string): Promise<void> {
@@ -1030,6 +1032,20 @@ export class App {
   protected async abrir(vista: string): Promise<void> {
     this.vista.set(vista);
     if (vista === "cobertura") await this.cargarCobertura();
+    if (vista === "chat") await this.cargarSugerencias();
+  }
+
+  /** Pide tres preguntas nuevas al backend mientras la conversación no ha empezado. */
+  private async cargarSugerencias(): Promise<void> {
+    if (this.mensajesChat().length > 1) return;
+    try {
+      const respuesta = await firstValueFrom(
+        this.api.sugerencias(this.perfilActivo()),
+      );
+      this.preguntasSugeridas.set(respuesta.preguntas);
+    } catch {
+      // Se conservan las preguntas locales de respaldo.
+    }
   }
 
   protected async buscar(texto: string): Promise<void> {
@@ -1500,16 +1516,13 @@ export class App {
     );
   }
 
+  /** Respaldo si el backend no responde: tres preguntas fijas. */
   private elegirPreguntasSugeridas(): string[] {
-    const banco = [
+    return [
       "¿Qué tal entraría SETI en la colección?",
-      "Tengo ganas de comprar Wyrmspan, ¿vale la pena?",
       "¿Qué le falta a mi colección?",
-      "Quiero un plan de 3 juegos para cubrir huecos",
       "Somos 6 y tenemos 45 minutos, ¿qué saco?",
-      "¿Me conviene SETI?",
     ];
-    return [...banco].sort(() => Math.random() - 0.5).slice(0, 3);
   }
 
   @HostListener("window:resize")

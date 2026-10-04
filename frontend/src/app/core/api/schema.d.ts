@@ -243,6 +243,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sugerencias
+         * @description Tres preguntas distintas en cada carga; la de compra evita juegos de la colección activa.
+         */
+        get: operations["chat_sugerencias"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/runs": {
         parameters: {
             query?: never;
@@ -889,6 +909,11 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** SugerenciasRespuesta */
+        SugerenciasRespuesta: {
+            /** Preguntas */
+            preguntas: string[];
+        };
         /** TarjetaChat */
         TarjetaChat: {
             /** Tipo */
@@ -1376,6 +1401,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatRespuesta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_sugerencias: {
+        parameters: {
+            query?: {
+                perfil?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SugerenciasRespuesta"];
                 };
             };
             /** @description Validation Error */
