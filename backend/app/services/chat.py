@@ -1190,21 +1190,22 @@ def _encabezado_evaluacion(resultado: dict[str, Any]) -> str:
 
 
 def _cuerpo_evaluacion(resultado: dict[str, Any]) -> str:
-    """De dos a cuatro oraciones con las mismas formas que el narrador."""
+    """Una o dos oraciones con las mismas formas que el narrador."""
     similar, similitud = resultado.get("juego_mas_parecido"), resultado.get("similitud")
-    oraciones: list[str] = []
     faltantes = resultado.get("faltantes_que_cubre") or []
     debiles = resultado.get("debiles_que_refuerza") or []
-    cubiertos = resultado.get("ya_cubiertos") or []
-    oraciones.append(
-        f"Cubre huecos de tu colección: {_lista_natural(faltantes)}."
-        if faltantes
-        else "No cubre ningún hueco de tu colección."
-    )
-    if debiles:
-        oraciones.append(f"Refuerza niveles que tenías débiles: {_lista_natural(debiles)}.")
-    if cubiertos:
-        oraciones.append(f"Ya tenías cubiertos niveles como {_lista_natural(cubiertos)}.")
+    if faltantes and debiles:
+        primera = (
+            f"Cubre huecos de tu colección: {_lista_natural(faltantes)}, y refuerza niveles "
+            f"que tenías débiles: {_lista_natural(debiles)}."
+        )
+    elif faltantes:
+        primera = f"Cubre huecos de tu colección: {_lista_natural(faltantes)}."
+    elif debiles:
+        primera = f"Refuerza niveles que tenías débiles: {_lista_natural(debiles)}."
+    else:
+        primera = "No cubre ni refuerza ningún nivel de tu colección."
+    oraciones = [primera]
     if similar and similitud:
         porcentaje = f"{round(similitud['total'] * 100)}%"
         etiqueta = resultado.get("similitud_etiqueta")
@@ -1213,7 +1214,7 @@ def _cuerpo_evaluacion(resultado: dict[str, Any]) -> str:
             f"El más parecido de tu colección es **{similar['nombre']}**, "
             f"con {porcentaje} de similitud{detalle}."
         )
-    return " ".join(oraciones[:4])
+    return " ".join(oraciones)
 
 
 def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
@@ -1765,12 +1766,11 @@ async def _narrar_llm(
         "Eres el narrador de Wise Dice. Responde en español, sin emojis. "
         "Nunca escribas veredictos, recomendaciones ni próximos pasos (veredicto, propongo, "
         "te recomiendo, vale la pena): el sistema los agrega. Para evaluar_compra no escribas "
-        "encabezado ni cierre: escribe de dos a cuatro oraciones en prosa, solo con estas formas: "
-        "qué huecos cubre (Huecos que cubre), qué refuerza (Niveles que refuerza), qué ya "
-        "estaba cubierto (Ya cubiertos) y a qué juego de la colección se parece más "
-        "(Juego más parecido) con el porcentaje de Similitud y su etiqueta Qué tan parecido. "
-        "Omite la forma de una lista vacía. No repitas la etiqueta «Ya cubiertos:» en cada línea. "
-        "No compares con toda la colección ni uses "
+        "encabezado ni cierre: escribe una o dos oraciones en prosa. La primera dice qué hueco "
+        "cubre (Huecos que cubre) o qué nivel refuerza (Niveles que refuerza), solo si hay; la "
+        "segunda, a qué juego de la colección se parece más (Juego más parecido) con el "
+        "porcentaje de Similitud y su etiqueta Qué tan parecido. No enumeres Ya cubiertos: la "
+        "tarjeta de la evaluación ya lo muestra. No compares con toda la colección ni uses "
         "calificativos propios. En los demás intents escribe de dos a cuatro oraciones "
         "en prosa, sin línea final de acción. No uses emojis ni markdown: nada de asteriscos, "
         "negritas, cursivas ni guiones largos. No pegues URLs. No enumeres mecánicas o categorías "

@@ -111,7 +111,7 @@ def test_plantilla_de_respaldo_es_legible_y_pasa_el_critico(caso: str) -> None:
         resultados,
     )
 
-    assert 2 <= len(oraciones) <= 4
+    assert 1 <= len(oraciones) <= 2
     assert "{" not in plantilla and "[" not in plantilla and "_" not in plantilla
     assert chat_service._criticar_determinista(respuesta, resultados) == []
 
@@ -120,19 +120,16 @@ def test_plantilla_para_seti_y_catan_con_los_campos_reales() -> None:
     seti = chat_service._narrar("evaluar_compra", [CASOS["caso4"]])
     catan = chat_service._narrar("evaluar_compra", [CASOS["caso6"]])
 
-    assert seti.startswith(
-        "**SETI: Search for Extraterrestrial Intelligence** aporta a tu colección."
-    )
+    assert seti.startswith("**SETI: Search for Extraterrestrial Intelligence** aporta a tu")
     assert "Cubre huecos de tu colección: Duración: más de 120 minutos y Peso: pesado." in seti
     assert (
         "El más parecido de tu colección es **King of Tokyo**, con 33% de similitud (distinto)."
         in seti
     )
-    assert (
-        "Refuerza niveles que tenías débiles: Mecánicas: Negociación y diplomacia y Peso: medio."
-        in catan
-    )
+    assert "Cubre huecos de tu colección: Duración: 61 a 120 minutos, y refuerza" in catan
     assert "con 52% de similitud (parecido)." in catan
+    # La tarjeta ya muestra lo que estaba cubierto: la plantilla no lo enumera.
+    assert "Ya tenías" not in seti and "Ya tenías" not in catan
 
 
 def test_textos_deterministas_de_confirmacion_y_no_encontrado_avisan_del_ingles() -> None:
@@ -232,7 +229,7 @@ def test_plantilla_de_modern_art_no_dice_que_cubre_huecos() -> None:
     plantilla = chat_service._narrar("evaluar_compra", [MODERN_ART])
 
     assert "pero refuerza tu colección" in plantilla and "pero cubre huecos" not in plantilla
-    assert "No cubre ningún hueco de tu colección." in plantilla
+    assert "Cubre huecos" not in plantilla
     assert "Refuerza niveles que tenías débiles: Mecánicas: Subastas y pujas." in plantilla
 
 

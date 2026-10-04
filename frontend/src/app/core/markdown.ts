@@ -1,10 +1,17 @@
 function escapar(texto: string): string {
-  return texto.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;");
+  return texto
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;");
 }
 
 function enLinea(texto: string): string {
   return texto
-    .replace(/\[([^\]]+)]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(
+      /\[([^\]]+)]\((https?:\/\/[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener">$1</a>',
+    )
     .replace(/\*\*(.+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
 }
@@ -24,7 +31,9 @@ export function renderMarkdown(source: string): string {
     const numero = texto.match(/^\d+\.\s+(.+)$/);
     if (encabezado) {
       cerrarLista();
-      salida.push(`<h${encabezado[1].length}>${enLinea(encabezado[2])}</h${encabezado[1].length}>`);
+      salida.push(
+        `<h${encabezado[1].length}>${enLinea(encabezado[2])}</h${encabezado[1].length}>`,
+      );
     } else if (elemento || numero) {
       const tipo = numero ? "ol" : "ul";
       if (lista !== tipo) {

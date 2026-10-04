@@ -35,6 +35,13 @@ import {
   ChatRespuesta,
 } from "./core/api/catalogo.service";
 import { primeraMayuscula } from "./core/etiquetas";
+import {
+  Aporte,
+  AporteColeccionComponent,
+  EstadoNivel,
+  SelloVeredictoComponent,
+  construirAporte,
+} from "./aporte/aporte";
 import { LogoComponent } from "./logo/logo";
 import { renderMarkdown } from "./core/markdown";
 
@@ -57,7 +64,12 @@ Chart.defaults.color = "#4d3727";
 @Component({
   selector: "app-root",
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, LogoComponent],
+  imports: [
+    DecimalPipe,
+    LogoComponent,
+    SelloVeredictoComponent,
+    AporteColeccionComponent,
+  ],
   template: ` <main class="min-h-screen">
     <header class="wise-header text-[#f8f1e5]">
       <div class="mx-auto flex max-w-7xl items-center justify-between">
@@ -672,18 +684,13 @@ Chart.defaults.color = "#4d3727";
                             <p>{{ ficha }}</p>
                           }
                           @if (tarjetaVeredicto(tarjeta); as veredicto) {
-                            <p>
-                              <span class="veredicto"
-                                ><span
-                                  class="sello"
-                                  aria-hidden="true"
-                                  [attr.data-veredicto]="veredicto"
-                                ></span
-                                ><b class="veredicto-texto">{{
-                                  etiqueta(veredicto)
-                                }}</b></span
-                              >
-                            </p>
+                            <app-sello-veredicto
+                              [veredicto]="veredicto"
+                              [texto]="etiqueta(veredicto)"
+                            />
+                            @if (tarjetaAporte(tarjeta); as aporteJuego) {
+                              <app-aporte-coleccion [aporte]="aporteJuego" />
+                            }
                           }
                           @if (tarjetaPrecio(tarjeta); as precio) {
                             <p>{{ precio }}</p>
@@ -806,16 +813,10 @@ Chart.defaults.color = "#4d3727";
               }
               @if (evaluacionDetalle()) {
                 <div class="resultado-evaluacion mt-4">
-                  <span class="veredicto"
-                    ><span
-                      class="sello"
-                      aria-hidden="true"
-                      [attr.data-veredicto]="evaluacionDetalle()!.veredicto"
-                    ></span
-                    ><b class="veredicto-texto">{{
-                      etiqueta(evaluacionDetalle()!.veredicto)
-                    }}</b></span
-                  >
+                  <app-sello-veredicto
+                    [veredicto]="evaluacionDetalle()!.veredicto"
+                    [texto]="etiqueta(evaluacionDetalle()!.veredicto)"
+                  />
                   <p>
                     Más parecido:
                     {{
@@ -824,36 +825,9 @@ Chart.defaults.color = "#4d3727";
                     }}
                   </p>
                   <p>{{ evaluacionDetalle()!.veredicto_razones.join(" ") }}</p>
-                  @if (
-                    aporte(seleccionado()!, evaluacionDetalle()!);
-                    as aporteJuego
-                  ) {
-                    <h4 class="aporte-titulo">Qué aporta a tu colección</h4>
-                    <ul class="aporte-leyenda" aria-label="Leyenda">
-                      <li class="nivel-chip nivel-hueco">Cubre un hueco</li>
-                      <li class="nivel-chip nivel-refuerzo">
-                        Refuerza un nivel débil
-                      </li>
-                      <li class="nivel-chip nivel-previo">Ya lo tenías</li>
-                    </ul>
-                    @for (eje of aporteJuego.conCambio; track eje.eje) {
-                      <div class="aporte-eje">
-                        <span class="aporte-eje-nombre">{{ eje.eje }}</span>
-                        <span class="aporte-eje-fichas">
-                          @for (nivel of eje.niveles; track nivel.texto) {
-                            <span class="nivel-chip" [class]="nivel.clase">{{
-                              nivel.texto
-                            }}</span>
-                          }
-                        </span>
-                      </div>
-                    }
-                    @if (aporteJuego.sinCambio.length) {
-                      <p class="aporte-sin-cambio">
-                        Sin cambios en: {{ aporteJuego.sinCambio.join(", ") }}
-                      </p>
-                    }
-                  }
+                  <app-aporte-coleccion
+                    [aporte]="aporte(seleccionado()!, evaluacionDetalle()!)"
+                  />
                   @if (evaluacionDetalle()!.similares.length) {
                     <p class="mt-3 text-sm font-semibold">
                       Los 3 más parecidos
@@ -1352,16 +1326,7 @@ export class App {
     return niveles.map((nivel) => `${nivel.eje}: ${nivel.nivel}`).join(", ");
   }
   /** Niveles del juego por eje, con su estado frente a la colección, para la ficha. */
-  protected aporte(
-    juego: JuegoDetalle,
-    evaluacion: EvaluarRespuesta,
-  ): {
-    conCambio: {
-      eje: string;
-      niveles: { texto: string; clase: string }[];
-    }[];
-    sinCambio: string[];
-  } | null {
+  protected aporte(juego: JuegoDetalle, evaluacion: EvaluarRespuesta): Aporte {
     const estados = new Map(
       evaluacion.niveles_que_cubre.map((nivel) => [
         `${nivel.eje}|${nivel.nivel}`,
@@ -1376,36 +1341,47 @@ export class App {
       ["Mecánicas", (juego.familias_mecanicas ?? []) as string[]],
       ["Temática", (juego.familias_tematicas ?? []) as string[]],
     ];
-    const conCambio: {
-      eje: string;
-      niveles: { texto: string; clase: string }[];
-    }[] = [];
-    const sinCambio: string[] = [];
-    for (const [eje, niveles] of ejes) {
-      if (!niveles.length) continue;
-      const fichas = niveles.map((nivel) => {
-        const estado = estados.get(`${eje}|${nivel}`);
-        return {
-          texto: eje === "Duración" ? `${nivel} min` : nivel,
-          clase:
-            estado === "faltante"
-              ? "nivel-hueco"
+    return construirAporte(
+      ejes.flatMap(([eje, niveles]) =>
+        niveles.map((nivel) => {
+          const estado = estados.get(`${eje}|${nivel}`);
+          return {
+            eje,
+            texto: eje === "Duración" ? `${nivel} min` : nivel,
+            estado: (estado === "faltante"
+              ? "hueco"
               : estado === "debil"
-                ? "nivel-refuerzo"
-                : "nivel-previo",
-        };
-      });
-      if (fichas.some((ficha) => ficha.clase !== "nivel-previo")) {
-        conCambio.push({ eje, niveles: fichas });
-      } else {
-        sinCambio.push(eje);
-      }
+                ? "refuerzo"
+                : "previo") as EstadoNivel,
+          };
+        }),
+      ),
+    );
+  }
+  /** Lo mismo para la tarjeta de evaluación del chat, a partir de las listas del resultado. */
+  protected tarjetaAporte(
+    tarjeta: NonNullable<ChatRespuesta["tarjetas"]>[number],
+  ): Aporte | null {
+    const listas: [string, EstadoNivel][] = [
+      ["faltantes_que_cubre", "hueco"],
+      ["debiles_que_refuerza", "refuerzo"],
+      ["ya_cubiertos", "previo"],
+    ];
+    if (!listas.some(([clave]) => Array.isArray(tarjeta.datos[clave]))) {
+      return null;
     }
-    // Primero los ejes con algo nuevo y, dentro de ellos, los huecos antes que los refuerzos.
-    const peso = (eje: { niveles: { clase: string }[] }) =>
-      eje.niveles.some((nivel) => nivel.clase === "nivel-hueco") ? 0 : 1;
-    conCambio.sort((a, b) => peso(a) - peso(b));
-    return { conCambio, sinCambio };
+    return construirAporte(
+      listas.flatMap(([clave, estado]) =>
+        ((tarjeta.datos[clave] as string[] | undefined) ?? []).map((texto) => {
+          const corte = texto.indexOf(": ");
+          return {
+            eje: texto.slice(0, corte),
+            texto: texto.slice(corte + 2).replace(/ minutos$/, " min"),
+            estado,
+          };
+        }),
+      ),
+    );
   }
   protected banderas(juego: JuegoDetalle): string[] {
     return [

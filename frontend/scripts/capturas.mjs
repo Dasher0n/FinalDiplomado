@@ -71,6 +71,20 @@ async function abrirPagina(navegador, ancho, perfil) {
       body: JSON.stringify(respuestaChat),
     });
   });
+  // Preguntas sugeridas fijas: el backend las elige al azar en cada carga.
+  await pagina.route("**/api/v1/chat/suggestions**", async (ruta) => {
+    await ruta.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        preguntas: [
+          "¿Qué tal entraría SETI en la colección?",
+          "¿Qué le falta a mi colección?",
+          "Somos 6 y tenemos 45 minutos, ¿qué saco?",
+        ],
+      }),
+    });
+  });
   await pagina.goto(base);
   await pagina.waitForLoadState("networkidle");
   const selector = pagina.locator(".profile-selector select");
