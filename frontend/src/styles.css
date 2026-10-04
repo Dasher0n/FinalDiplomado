@@ -1330,12 +1330,12 @@ main > section h2.font-serif::before {
   vertical-align: -0.14em;
 }
 main > section h2.font-serif::after {
-  width: 10rem;
+  width: 14rem;
   height: 20px;
   margin-top: 0.6rem;
   background:
     var(--dado-3) left center / 20px 20px no-repeat,
-    linear-gradient(90deg, var(--laton-500), transparent) 30px center / calc(100% - 30px) 2px no-repeat;
+    linear-gradient(90deg, var(--laton-300), var(--laton-500) 55%, transparent) 30px center / calc(100% - 30px) 3px no-repeat;
 }
 
 /* Brillo cálido de vela sobre la parte alta de los estantes */
@@ -1345,9 +1345,9 @@ main > section h2.font-serif::after {
   inset: 0;
   background: radial-gradient(
     ellipse 75% 55% at 50% -8%,
-    rgb(255 205 125 / 34%),
-    rgb(255 170 70 / 11%) 48%,
-    transparent 74%
+    rgb(255 205 125 / 52%),
+    rgb(255 170 70 / 18%) 50%,
+    transparent 78%
   );
   content: "";
   pointer-events: none;
