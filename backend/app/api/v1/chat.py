@@ -51,7 +51,7 @@ async def run(run_id: str, session: DbSession, user: CurrentUser) -> ChatRespues
         intent=item.intent or "general",
         plan=plan["steps"],
         answer=item.respuesta_final or "",
-        critic_passed=bool(item.critic_passed),
+        critic_passed=item.critic_passed,
         critic_attempts=item.critic_attempts,
         critic_findings=item.critic_findings or [],
         llm_used=bool(item.modelo),

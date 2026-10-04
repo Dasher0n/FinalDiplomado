@@ -105,6 +105,10 @@ def entorno() -> Generator[tuple[TestClient, Any]]:
                 (CRIATURAS_ID, "Wondrous Creatures", 7342),
                 (FALSO_POSITIVO_ID, "Agricola: All Creatures", 9000),
                 ("17785", "Seti", 47),
+                ("900001", "Unstable Unicorns", 30000),
+                ("900002", "Unstable Unicorns: NSFW Base Game", 9000),
+                ("900003", "Unstable Unicorns: Chaos", 800),
+                ("900004", "Beasts of Balance", 5000),
             ]
             # Las filas vectoriales 3 en adelante no se evalúan: estos juegos solo son candidatos.
             for fila, (id_juego, nombre, votos) in enumerate(extras, start=3):

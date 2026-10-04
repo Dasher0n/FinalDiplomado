@@ -665,32 +665,25 @@ async def _resolver_con_traduccion(
     vistos: set[str] = set()
     for titulo_original in titulos:
         titulo = nombre_valido(titulo_original)
-        if titulo is None:
+        consulta = normalizar_nombre(titulo) if titulo else ""
+        if not consulta:
             continue
-        consulta = normalizar_nombre(titulo)
-        encontrados = [
-            juego
-            for juego in juegos_catalogo
-            if consulta
-            in {normalizar_nombre(juego.nombre), normalizar_nombre(juego.nombre.split(":", 1)[0])}
-        ]
-        if not encontrados and consulta:
-            mejor = max(
-                (
-                    (fuzz.WRatio(consulta, normalizar_nombre(juego.nombre)), juego)
-                    for juego in juegos_catalogo
-                ),
-                default=None,
-                key=lambda item: (item[0], item[1].users_rated or 0),
-            )
-            encontrados = [mejor[1]] if mejor and mejor[0] >= 90 else []
-        coincidencias.append(
-            {"propuesta": titulo, "coincidencias": [juego.id for juego in encontrados]}
+        # Un solo candidato por título propuesto: su mejor coincidencia con WRatio >= 90.
+        mejor = max(
+            (
+                (fuzz.WRatio(consulta, normalizar_nombre(juego.nombre)), juego)
+                for juego in juegos_catalogo
+            ),
+            default=None,
+            key=lambda item: (item[0], item[1].users_rated or 0),
         )
-        for juego in encontrados:
-            if juego.id not in vistos:
-                vistos.add(juego.id)
-                candidatos.append(juego)
+        encontrado = mejor[1] if mejor and mejor[0] >= 90 else None
+        coincidencias.append(
+            {"propuesta": titulo, "coincidencias": [encontrado.id] if encontrado else []}
+        )
+        if encontrado and encontrado.id not in vistos and len(candidatos) < 3:
+            vistos.add(encontrado.id)
+            candidatos.append(encontrado)
     traza = {
         "llm_called": True,
         "traducciones_literales": literales,
@@ -876,6 +869,12 @@ def _motivo_regla_exacta(juego: Game, parecido: Game) -> str:
     return "reimplementa"
 
 
+def _es_respuesta_determinista(intent: str, resultados: list[dict[str, Any]]) -> bool:
+    if intent == "general" and not resultados:
+        return True
+    return bool(resultados) and resultados[0].get("estado") in {"ambiguo", "no_encontrado"}
+
+
 def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
     if intent == "reglas":
         return "Las consultas de reglas llegarán en una versión próxima."
@@ -885,17 +884,12 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
         return "¿De qué juego me hablas? Escríbeme su nombre."
     resultado = resultados[0] if resultados else {}
     if resultado.get("estado") == "ambiguo":
-        return (
-            "**Necesito confirmar el juego**\n\n- 🎲 Encontré títulos parecidos en el catálogo.\n"
-            "- Elige una sugerencia o escribe el nombre en inglés.\n\n"
-            "💡 ¿Quieres evaluar otro juego?"
-        )
+        return "**¿Te refieres a…?**\n\n- Elige una de las opciones o escribe el nombre en inglés."
     if resultado.get("estado") == "no_encontrado":
         return (
             "**No encontré ese juego**\n\n"
             "- 🎲 No hay una coincidencia segura en el catálogo local.\n"
-            "- Escribe el nombre en inglés para intentarlo de nuevo.\n\n"
-            "💡 ¿Quieres evaluar otro juego?"
+            "- Escribe el nombre en inglés para intentarlo de nuevo."
         )
     if intent == "evaluar_compra":
         juego, similar = resultado["juego"], resultado.get("juego_mas_parecido")
@@ -1640,6 +1634,10 @@ async def responder(
     critic_attempts = 0
     trazas: list[tuple[str, str, dict[str, Any]]] = []
     narrativa_llm_permitida = plan.intent not in {"reglas", "fuera_de_dominio", "general"}
+    # Aclaración y confirmación de candidatos son texto determinista: sin narrador ni crítico.
+    determinista = _es_respuesta_determinista(plan.intent, resultados)
+    if determinista:
+        narrativa_llm_permitida = False
     if settings.llm_active and narrativa_llm_permitida:
         try:
             answer = await _narrar_llm(settings, resultados, solicitud.mensaje)
@@ -1655,10 +1653,14 @@ async def responder(
                     {"llm_used": False, "modelo": settings.llm_model, "error": str(error)[:300]},
                 )
             )
+    elif determinista:
+        trazas.append(("narrator", "omitido", {"llm_used": False, "motivo": "determinista"}))
+        trazas.append(("critic", "omitido", {"llm_used": False, "motivo": "determinista"}))
+        answer = _presentar_respuesta(answer, plan.intent, resultados)
     else:
         trazas.append(("narrator", "fallback", {"attempt": 0, "llm_used": False}))
 
-    while True:
+    while not determinista:
         answer = _presentar_respuesta(
             _con_sugerencia_final(answer, plan.intent, resultados), plan.intent, resultados
         )
@@ -1692,7 +1694,7 @@ async def responder(
                     "attempt": critic_attempts,
                     "llm_used": critic_llm_used,
                     "modelo": settings.llm_model_fast,
-                    "findings": critic_findings,
+                    "findings": list(critic_findings),
                 },
             )
         )
@@ -1746,7 +1748,7 @@ async def responder(
                 )
             )
 
-    critic_passed = not critic_findings
+    critic_passed = None if determinista else not critic_findings
     tarjetas = [
         TarjetaChat(tipo=paso.tool, datos=resultado)
         for paso, resultado in zip(plan.steps, resultados, strict=True)

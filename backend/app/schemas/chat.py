@@ -41,7 +41,7 @@ class ChatRespuesta(BaseModel):
     tarjetas: list[TarjetaChat] = Field(default_factory=list)
     candidatos: list[CandidatoChat] = Field(default_factory=list)
     sugerir_nombre_ingles: bool = False
-    critic_passed: bool
+    critic_passed: bool | None = None
     critic_attempts: int = 0
     critic_findings: list[dict[str, str]] = Field(default_factory=list)
     llm_used: bool

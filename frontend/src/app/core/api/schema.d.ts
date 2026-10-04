@@ -325,7 +325,9 @@ export interface components {
             endpoints_habilitados: string[];
             /** Modelos Llm */
             modelos_llm: {
-                [key: string]: boolean;
+                [key: string]: {
+                    [key: string]: string | boolean;
+                };
             };
             /** Error Modelos Llm */
             error_modelos_llm?: string | null;
@@ -352,7 +354,7 @@ export interface components {
              */
             sugerir_nombre_ingles: boolean;
             /** Critic Passed */
-            critic_passed: boolean;
+            critic_passed?: boolean | null;
             /**
              * Critic Attempts
              * @default 0
