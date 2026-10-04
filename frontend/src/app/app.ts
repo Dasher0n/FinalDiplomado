@@ -667,7 +667,13 @@ Chart.defaults.color = "#4d3727";
                             <p>{{ ficha }}</p>
                           }
                           @if (tarjetaVeredicto(tarjeta); as veredicto) {
-                            <p>{{ etiqueta(veredicto) }}</p>
+                            <p>
+                              <span
+                                class="sello"
+                                [attr.data-veredicto]="veredicto"
+                                >{{ etiqueta(veredicto) }}</span
+                              >
+                            </p>
                           }
                           @if (tarjetaPrecio(tarjeta); as precio) {
                             <p>{{ precio }}</p>
