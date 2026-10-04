@@ -1542,3 +1542,24 @@ main > section h2.font-serif::after {
     grid-column: span 2;
   }
 }
+
+.ficha-cuerpo::after {
+  display: block;
+  clear: both;
+  content: "";
+}
+.ficha-portada {
+  float: left;
+  width: 250px;
+  margin: 0 1.6rem 1rem 0;
+}
+.ficha-modal .resultado-evaluacion {
+  display: flow-root;
+}
+@media (max-width: 640px) {
+  .ficha-portada {
+    float: none;
+    width: min(260px, 70%);
+    margin: 0 auto 1rem;
+  }
+}

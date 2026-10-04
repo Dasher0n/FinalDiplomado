@@ -767,7 +767,7 @@ Chart.defaults.color = "#4d3727";
           <button class="float-right text-2xl" (click)="seleccionado.set(null)">
             ×
           </button>
-          <div class="grid gap-6 sm:grid-cols-[250px_1fr]">
+          <div class="ficha-cuerpo">
             @if (seleccionado()!.imagen_url) {
               <img
                 class="ficha-portada"
