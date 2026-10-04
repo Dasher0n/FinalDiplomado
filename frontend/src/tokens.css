@@ -83,6 +83,14 @@
     transparent
   );
   --placa-laton: linear-gradient(135deg, #f1d68e, #d9b457 50%, #c9a03f);
+  --sombra-capas:
+    0 1px 2px rgb(10 5 2 / 28%), 0 6px 14px -2px rgb(10 5 2 / 32%),
+    0 18px 36px -10px rgb(10 5 2 / 38%);
+  --sombra-elevada:
+    0 2px 4px rgb(10 5 2 / 30%), 0 12px 22px -4px rgb(10 5 2 / 36%),
+    0 26px 44px -12px rgb(10 5 2 / 42%);
+  --radio-hoja: 16px;
+  --radio-campo: 12px;
   --sombra-hoja:
     0 1px 0 rgb(255 255 255 / 55%) inset, 0 6px 16px rgb(10 5 2 / 38%);
 }

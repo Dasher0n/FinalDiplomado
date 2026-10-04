@@ -128,7 +128,7 @@ Chart.defaults.color = "#4d3727";
             </details>
           </div>
         </div>
-        <section class="panel mb-5 table-filter">
+        <section class="panel rollo table-filter">
           <h3 class="font-serif text-2xl">¿Qué jugamos?</h3>
           <div class="mt-3 flex flex-wrap gap-3">
             <label
@@ -179,7 +179,7 @@ Chart.defaults.color = "#4d3727";
           }
         </section>
         @if (modo() === "estantes") {
-          <section class="panel">
+          <section class="panel rollo">
             <div class="flex flex-wrap gap-3">
               <label class="grow"
                 >Busca en el catálogo<input

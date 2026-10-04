@@ -1074,3 +1074,242 @@ dd {
   margin: 0;
   font-weight: 600;
 }
+
+/* ================= Forma moderna (segunda pasada) =================
+   Esquinas redondeadas, sombras en capas y botones de píldora. Esta capa sustituye la forma
+   de la primera pasada sin cambiar paleta ni tipografías. */
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: 0.015em;
+}
+.eyebrow {
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+main > section.mx-auto {
+  padding-top: 2.6rem;
+  padding-bottom: 3.5rem;
+}
+main > section h2.font-serif {
+  margin-top: 0.25rem;
+}
+.screen-intro {
+  margin-top: 1rem;
+  line-height: 1.6;
+}
+
+.panel,
+.chat-card,
+.ficha-modal {
+  border: 1px solid rgb(134 100 31 / 45%);
+  border-radius: var(--radio-hoja);
+  box-shadow: var(--sombra-capas);
+}
+.panel {
+  padding: 1.5rem 1.6rem;
+}
+.recommendation,
+.resultado-evaluacion,
+.coverage,
+.result,
+.game-tooltip {
+  border-radius: 12px;
+}
+.recommendation,
+.coverage,
+.result {
+  box-shadow: 0 1px 2px rgb(42 28 19 / 18%), 0 4px 10px -4px rgb(42 28 19 / 22%);
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease,
+    background-color 200ms ease;
+}
+.recommendation:hover,
+.coverage:hover,
+.result:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgb(42 28 19 / 22%), 0 12px 20px -6px rgb(42 28 19 / 32%);
+}
+
+/* Campos: etiqueta pequeña arriba, relleno de pergamino y sombra interior leve */
+.panel label,
+.ficha-modal label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--texto-suave);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.input {
+  min-height: 2.6rem;
+  margin-top: 0 !important;
+  border: 1px solid rgb(134 100 31 / 55%);
+  border-radius: var(--radio-campo);
+  background: var(--superficie-clara);
+  box-shadow: inset 0 2px 4px rgb(42 28 19 / 14%);
+  color: var(--texto);
+  font-size: 1rem;
+  font-weight: 400;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.input:hover {
+  border-color: var(--laton-600);
+}
+.input:focus-visible {
+  border-color: var(--laton-500);
+  box-shadow:
+    inset 0 2px 4px rgb(42 28 19 / 14%),
+    0 0 0 3px rgb(224 185 92 / 55%);
+  outline: none;
+}
+
+/* Botones: principal de latón en píldora y secundario con contorno de latón */
+.primary,
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 2.6rem;
+  padding: 0.5rem 1.25rem;
+  border-radius: 999px;
+  font-family: var(--fuente-lectura);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0;
+  text-transform: none;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease,
+    filter 180ms ease;
+}
+.primary {
+  border: 1px solid var(--laton-600);
+  background: linear-gradient(180deg, #f3dc9c 0%, #dcb85e 55%, #c9a03f 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 65%),
+    0 1px 2px rgb(42 28 19 / 45%),
+    0 8px 14px -6px rgb(42 28 19 / 50%);
+  color: var(--tinta-900);
+}
+.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f6e3ad 0%, #e2c070 55%, #d0a948 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 70%),
+    0 2px 3px rgb(42 28 19 / 45%),
+    0 14px 20px -8px rgb(42 28 19 / 55%);
+  transform: translateY(-2px);
+}
+.primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+.chip {
+  border: 1.5px solid var(--laton-600);
+  background: transparent;
+  color: var(--laton-700);
+}
+.chip:hover:not(:disabled) {
+  background: rgb(224 185 92 / 22%);
+  transform: translateY(-1px);
+}
+.chip.active {
+  border-color: var(--laton-600);
+  background: linear-gradient(180deg, #f3dc9c, #dcb85e);
+  color: var(--tinta-900);
+}
+.level-chip {
+  border-radius: 999px;
+}
+.self-end {
+  align-self: flex-end;
+}
+
+/* Pestañas y cabecera */
+.wise-nav button {
+  border-radius: 14px 14px 0 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+.brand-plate {
+  border-radius: 12px;
+}
+.shelf-plaque {
+  border-radius: 8px;
+}
+
+/* Chat */
+.bubble {
+  border-radius: 6px 20px 20px 20px;
+  box-shadow: var(--sombra-capas);
+}
+.bubble.user {
+  border-radius: 20px 6px 20px 20px;
+}
+.ficha-modal {
+  border-radius: 20px !important;
+  box-shadow: var(--sombra-elevada);
+}
+
+/* Paneles como pergaminos enrollados: rollo arriba y abajo dibujado con CSS */
+.rollo {
+  position: relative;
+  margin-block: 2.4rem;
+  padding-block: 2.4rem;
+  border-radius: 8px;
+}
+.rollo::before,
+.rollo::after {
+  position: absolute;
+  right: -14px;
+  left: -14px;
+  z-index: 2;
+  height: 26px;
+  border-radius: 13px;
+  background:
+    radial-gradient(circle at 13px 50%, var(--laton-700) 0 4px, transparent 5px),
+    radial-gradient(circle at calc(100% - 13px) 50%, var(--laton-700) 0 4px, transparent 5px),
+    linear-gradient(
+      180deg,
+      #f8ecc9 0%,
+      #e6d3a3 30%,
+      #c4a56a 68%,
+      #8f7340 100%
+    );
+  box-shadow:
+    inset 0 0 0 1px rgb(106 78 23 / 55%),
+    0 4px 8px rgb(10 5 2 / 45%);
+  content: "";
+  pointer-events: none;
+}
+.rollo::before {
+  top: -13px;
+}
+.rollo::after {
+  bottom: -13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+  .primary:hover:not(:disabled),
+  .chip:hover:not(:disabled),
+  .recommendation:hover,
+  .coverage:hover,
+  .result:hover {
+    transform: none;
+  }
+}
