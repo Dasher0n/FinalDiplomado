@@ -1,0 +1,87 @@
+{
+ "intent_descriptivo": {
+  "intent": "Evaluar si el juego propuesto es una buena compra respecto a la colección existente",
+  "steps": [
+   {
+    "id": "paso_1",
+    "tool": "evaluar_compra",
+    "args": {
+     "nombre": "Criaturas maravillosas",
+     "game_id": null,
+     "n": null,
+     "average_min": null,
+     "users_rated_min": null,
+     "ejes_ignorados": null,
+     "jugadores": null,
+     "minutos": null,
+     "edad_minima": null
+    },
+    "depends_on": []
+   }
+  ]
+ },
+ "steps_vacios_con_frase_libre": {
+  "intent": "El usuario pregunta si un juego sería buena compra, pero no especifica el título. No se puede planificar ninguna tool.",
+  "steps": []
+ },
+ "nombre_null_en_evaluar_compra": {
+  "intent": "evaluar_compra",
+  "steps": [
+   {
+    "id": "paso1",
+    "tool": "evaluar_compra",
+    "args": {
+     "nombre": null,
+     "game_id": null,
+     "n": null,
+     "average_min": null,
+     "users_rated_min": null,
+     "ejes_ignorados": null,
+     "jugadores": null,
+     "minutos": null,
+     "edad_minima": null
+    },
+    "depends_on": []
+   }
+  ]
+ },
+ "plan_inventado": {
+  "intent": "evaluar posible compra de un juego no especificado",
+  "steps": [
+   {
+    "id": "paso1",
+    "tool": "ver_coleccion",
+    "args": {
+     "nombre": null,
+     "game_id": null,
+     "n": null,
+     "average_min": null,
+     "users_rated_min": null,
+     "ejes_ignorados": null,
+     "jugadores": null,
+     "minutos": null,
+     "edad_minima": null
+    },
+    "depends_on": []
+   },
+   {
+    "id": "paso2",
+    "tool": "que_me_falta",
+    "args": {
+     "nombre": null,
+     "game_id": null,
+     "n": null,
+     "average_min": null,
+     "users_rated_min": null,
+     "ejes_ignorados": null,
+     "jugadores": null,
+     "minutos": null,
+     "edad_minima": null
+    },
+    "depends_on": [
+     "paso1"
+    ]
+   }
+  ]
+ }
+}

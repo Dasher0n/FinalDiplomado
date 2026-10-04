@@ -7,7 +7,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from rapidfuzz import fuzz
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -94,6 +94,27 @@ class PlanLlm(BaseModel):
     motivo_descarte: str | None = None
 
 
+_ToolLlm = Literal[
+    "ver_coleccion",
+    "detalle_juego",
+    "evaluar_compra",
+    "que_me_falta",
+    "que_compro",
+    "que_saco_hoy",
+]
+_IntentLlm = Literal[
+    "evaluar_compra",
+    "que_me_falta",
+    "que_compro",
+    "que_saco_hoy",
+    "detalle_juego",
+    "coleccion",
+    "reglas",
+    "fuera_de_dominio",
+    "general",
+]
+
+
 class _ArgsPlanLlm(BaseModel):
     """Argumentos cerrados para impedir que el plan invente parametros de tools."""
 
@@ -109,36 +130,20 @@ class _ArgsPlanLlm(BaseModel):
     minutos: float | None = None
     edad_minima: int | None = None
 
-    @field_validator("nombre")
-    @classmethod
-    def validar_nombre(cls, valor: str | None) -> str | None:
-        if valor is None:
-            return None
-        nombre = nombre_valido(valor)
-        if nombre is None:
-            raise ValueError("nombre debe contener un título de juego válido")
-        return nombre
-
 
 class _PasoPlanLlm(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    tool: str
+    tool: _ToolLlm
     args: _ArgsPlanLlm = Field(default_factory=_ArgsPlanLlm)
     depends_on: list[str] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def exigir_nombre_para_tool_de_juego(self) -> _PasoPlanLlm:
-        if self.tool in {"detalle_juego", "evaluar_compra"} and self.args.nombre is None:
-            raise ValueError(f"{self.tool} requiere un nombre de juego válido")
-        return self
 
 
 class _PlanRespuestaLlm(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    intent: str
+    intent: _IntentLlm
     steps: list[_PasoPlanLlm] = Field(default_factory=list)
 
 
@@ -493,6 +498,10 @@ def _validar_plan(plan: PlanLlm | None, max_pasos: int) -> PlanLlm | None:
             for argumento in ("jugadores", "minutos")
         ):
             return None
+    if plan.intent in {"evaluar_compra", "detalle_juego"} and not any(
+        paso.tool == plan.intent for paso in plan.steps
+    ):
+        return None
     dependencias = {paso.id: set(paso.depends_on) for paso in plan.steps}
     visitados: set[str] = set()
     activos: set[str] = set()
@@ -512,6 +521,31 @@ def _validar_plan(plan: PlanLlm | None, max_pasos: int) -> PlanLlm | None:
     if any(tiene_ciclo(paso.id) for paso in plan.steps):
         return None
     return plan
+
+
+def _causa_plan_invalido(plan: PlanLlm, max_pasos: int) -> str:
+    """Explica al planner el motivo real por el que su plan no se aceptó."""
+    if plan.intent not in _INTENTS:
+        return f"intent '{plan.intent[:60]}' no es válido; usa uno de: {sorted(_INTENTS)}."
+    if len(plan.steps) > max_pasos:
+        return f"el plan tiene más de {max_pasos} pasos."
+    for paso in plan.steps:
+        if paso.tool not in _TOOLS:
+            return f"la tool '{paso.tool}' no existe en el manifiesto."
+        if (
+            paso.tool in {"detalle_juego", "evaluar_compra"}
+            and paso.args.get("game_id") is None
+            and nombre_valido(paso.args.get("nombre")) is None
+        ):
+            return (
+                f"{paso.tool} requiere nombre o game_id. Si la persona no cita un título y no "
+                "hay juego en foco, usa intent general con steps vacío."
+            )
+    if plan.intent in {"evaluar_compra", "detalle_juego"} and not any(
+        paso.tool == plan.intent for paso in plan.steps
+    ):
+        return f"el intent {plan.intent} requiere un paso con la tool {plan.intent}."
+    return "el plan no cumple las reglas del manifiesto."
 
 
 def _niveles_plan(pasos: list[PasoPlan]) -> list[list[PasoPlan]]:
@@ -550,6 +584,7 @@ async def _plan_llm(
     resumen: str,
     error_validacion: str | None = None,
     intentos: list[dict[str, Any]] | None = None,
+    foco: str | None = None,
 ) -> PlanLlm | None:
     """Usa Responses.parse solo cuando la configuracion habilita explícitamente el LLM."""
     if not settings.llm_active:
@@ -564,11 +599,13 @@ async def _plan_llm(
     )
     try:
         respuesta = await _parse_plan(
-            cliente, settings, manifest, mensaje, resumen, error_validacion
+            cliente, settings, manifest, mensaje, resumen, error_validacion, foco
         )
     except Exception as error:
         if intentos is not None:
             intentos.append({"salida_cruda": None, "error": _resumir_error_planner(error)})
+        if isinstance(error, ValidationError):
+            raise ValueError(_causa_validacion_esquema(error)) from error
         raise
     parsed = respuesta.output_parsed
     if intentos is not None:
@@ -591,6 +628,14 @@ async def _plan_llm(
     )
 
 
+def _causa_validacion_esquema(error: ValidationError) -> str:
+    detalles = "; ".join(
+        f"{'.'.join(str(parte) for parte in item['loc'])}: {item['msg']}"
+        for item in error.errors(include_url=False)
+    )
+    return f"La salida no cumple el esquema ({detalles})"[:300]
+
+
 async def _parse_plan(
     cliente: Any,
     settings: Settings,
@@ -598,6 +643,7 @@ async def _parse_plan(
     mensaje: str,
     resumen: str,
     error_validacion: str | None,
+    foco: str | None,
 ) -> Any:
     return await cliente.responses.parse(
         model=settings.llm_model_fast,
@@ -607,6 +653,11 @@ async def _parse_plan(
             f"{manifest}\nFormulaciones naturales: {_EJEMPLOS_INTENT}\n"
             "Para un juego, el argumento nombre debe conservar exactamente el título citado por "
             "la persona, sin traducirlo ni sustituirlo por otro título. "
+            "El intent debe ser uno de los valores permitidos, nunca una descripción. "
+            "Si la persona dice 'ese' o 'este', usa el game_id del juego en foco; si cita un "
+            "título, cópialo exacto en nombre; si no cita título y no hay juego en foco, usa "
+            "intent general con steps vacío.\n"
+            f"Juego en foco: {foco or 'ninguno'}\n"
             f"Contexto de colección e historial reciente: {resumen}\n"
             + (
                 f"El intento anterior no fue válido: {error_validacion}. Corrige el plan.\n"
@@ -1520,37 +1571,39 @@ async def responder(
     planner_reintentado = False
     intentos_planner: list[dict[str, Any]] = []
     if settings.llm_active and not es_continuacion_en_ingles:
-        try:
-            plan_llm = await _plan_llm(settings, solicitud.mensaje, resumen, None, intentos_planner)
-            planner_llm_used = plan_llm is not None
-            if (
-                plan_llm is not None
-                and _validar_plan(plan_llm, settings.llm_max_plan_steps) is None
-            ):
-                planner_reintentado = True
-                planner_error = (
-                    "El plan debe incluir un nombre de juego válido o un game_id válido."
-                )
-                if intentos_planner:
-                    intentos_planner[-1]["error"] = planner_error
-                plan_llm = await _plan_llm(
-                    settings, solicitud.mensaje, resumen, planner_error, intentos_planner
-                )
-                planner_llm_used = planner_llm_used or plan_llm is not None
-        except ValueError as error:
-            planner_reintentado = True
-            planner_error = str(error)[:300]
+        juego_foco = (
+            await CatalogoRepository(session).obtener_juego(chat_session.juego_en_foco_id)
+            if chat_session.juego_en_foco_id
+            else None
+        )
+        foco_texto = f"{juego_foco.nombre} (id {juego_foco.id})" if juego_foco else None
+        causa: str | None = None
+        for intento in range(2):  # Un intento y, a lo sumo, un reintento con la causa real.
+            planner_reintentado = intento == 1
             try:
                 plan_llm = await _plan_llm(
-                    settings, solicitud.mensaje, resumen, planner_error, intentos_planner
+                    settings, solicitud.mensaje, resumen, causa, intentos_planner, foco_texto
                 )
                 planner_llm_used = planner_llm_used or plan_llm is not None
-            except Exception as retry_error:  # noqa: BLE001
-                planner_error = str(retry_error)[:300]
+                causa = None
+                if plan_llm is not None and (
+                    _validar_plan(plan_llm, settings.llm_max_plan_steps) is None
+                ):
+                    causa = _causa_plan_invalido(plan_llm, settings.llm_max_plan_steps)
+                    if intentos_planner:
+                        intentos_planner[-1]["error"] = causa
+            except ValueError as error:
                 plan_llm = None
-        except Exception as error:  # noqa: BLE001
-            planner_error = str(error)[:300]
-            plan_llm = None
+                causa = str(error)[:300]
+            except Exception as error:  # noqa: BLE001
+                planner_error = str(error)[:300]
+                plan_llm = None
+                break
+            if causa is None:
+                break
+            planner_error = causa
+        if causa is None and planner_error is not None and plan_llm is not None:
+            planner_error = None
     plan = _validar_plan(plan_llm, settings.llm_max_plan_steps)
     llm_used = plan is not None
     if plan is None:
