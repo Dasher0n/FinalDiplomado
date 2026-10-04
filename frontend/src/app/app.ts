@@ -288,7 +288,7 @@ Chart.defaults.color = "#4d3727";
               </button>
             </div>
             @if (!noche()) {
-              <p class="mt-4 text-sm text-stone-600">
+              <p class="vacio mt-4 text-sm">
                 Aún no hay resultados. Busca una combinación para esta noche.
               </p>
             } @else {
@@ -466,6 +466,14 @@ Chart.defaults.color = "#4d3727";
                   </article>
                 }
               </div>
+            </section>
+          }
+          @if (!plan()) {
+            <section class="panel bento-vacio">
+              <p class="vacio">
+                Aún no hay un plan. Elige cuántos juegos quieres y pulsa «Crear
+                plan».
+              </p>
             </section>
           }
           @if (plan()) {
@@ -668,10 +676,15 @@ Chart.defaults.color = "#4d3727";
                           }
                           @if (tarjetaVeredicto(tarjeta); as veredicto) {
                             <p>
-                              <span
-                                class="sello"
-                                [attr.data-veredicto]="veredicto"
-                                >{{ etiqueta(veredicto) }}</span
+                              <span class="veredicto"
+                                ><span
+                                  class="sello"
+                                  aria-hidden="true"
+                                  [attr.data-veredicto]="veredicto"
+                                ></span
+                                ><b class="veredicto-texto">{{
+                                  etiqueta(veredicto)
+                                }}</b></span
                               >
                             </p>
                           }
@@ -796,10 +809,15 @@ Chart.defaults.color = "#4d3727";
               }
               @if (evaluacionDetalle()) {
                 <div class="resultado-evaluacion mt-4">
-                  <b
-                    class="sello"
-                    [attr.data-veredicto]="evaluacionDetalle()!.veredicto"
-                    >{{ etiqueta(evaluacionDetalle()!.veredicto) }}</b
+                  <span class="veredicto"
+                    ><span
+                      class="sello"
+                      aria-hidden="true"
+                      [attr.data-veredicto]="evaluacionDetalle()!.veredicto"
+                    ></span
+                    ><b class="veredicto-texto">{{
+                      etiqueta(evaluacionDetalle()!.veredicto)
+                    }}</b></span
                   >
                   <p>
                     Más parecido:

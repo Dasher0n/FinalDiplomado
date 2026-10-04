@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./tokens.css";
+@import "./ilustraciones.css";
 @import "@fontsource/cinzel/latin-600.css";
 @import "@fontsource/cinzel/latin-700.css";
 @import "@fontsource/source-serif-4/latin-400.css";
@@ -24,6 +25,8 @@ body {
   color: var(--texto-sobre-nogal);
   background:
     var(--vineta) fixed,
+    var(--astrolabio) right -220px top 100px / 780px no-repeat fixed,
+    var(--cielo) 0 0 / 640px fixed,
     var(--grano),
     var(--fondo-pagina);
   -webkit-font-smoothing: antialiased;
@@ -1311,5 +1314,114 @@ main > section h2.font-serif {
   .coverage:hover,
   .result:hover {
     transform: none;
+  }
+}
+
+/* ================= Elementos ilustrados ================= */
+/* Dado de hueso junto al título y al final del separador de latón */
+main > section h2.font-serif::before {
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 0.6rem;
+  background: var(--dado-5) center / contain no-repeat;
+  content: "";
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 55%));
+  vertical-align: -0.14em;
+}
+main > section h2.font-serif::after {
+  width: 10rem;
+  height: 20px;
+  margin-top: 0.6rem;
+  background:
+    var(--dado-3) left center / 20px 20px no-repeat,
+    linear-gradient(90deg, var(--laton-500), transparent) 30px center / calc(100% - 30px) 2px no-repeat;
+}
+
+/* Brillo cálido de vela sobre la parte alta de los estantes */
+.bookcase::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 75% 55% at 50% -8%,
+    rgb(255 205 125 / 34%),
+    rgb(255 170 70 / 11%) 48%,
+    transparent 74%
+  );
+  content: "";
+  pointer-events: none;
+}
+
+/* Sello de lacre circular de borde irregular con un ícono al centro */
+.veredicto {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.3rem 0;
+}
+.veredicto-texto {
+  font-family: var(--fuente-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+.sello {
+  --sello-img: var(--sello-parecido);
+  --sello-icono: var(--icono-parecido);
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: var(--sello-img) center / contain no-repeat;
+  box-shadow: none;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 40%));
+  font-size: 0;
+}
+.sello::after {
+  position: absolute;
+  inset: 22%;
+  background: var(--sello-icono) center / contain no-repeat;
+  content: "";
+}
+.sello[data-veredicto="aporta"] {
+  --sello-img: var(--sello-aporta);
+  --sello-icono: var(--icono-aporta);
+}
+.sello[data-veredicto="redundante"] {
+  --sello-img: var(--sello-redundante);
+  --sello-icono: var(--icono-redundante);
+}
+
+/* Estados vacíos con un dado de hueso */
+.vacio {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0;
+  color: var(--texto-suave);
+}
+.vacio::before {
+  flex: none;
+  width: 3.4rem;
+  height: 3.4rem;
+  background: var(--dado-6) center / contain no-repeat;
+  content: "";
+  filter: drop-shadow(0 3px 3px rgb(42 28 19 / 45%));
+}
+
+@media (max-width: 640px) {
+  body {
+    background:
+      var(--vineta) fixed,
+      var(--astrolabio) right -200px top 70px / 440px no-repeat fixed,
+      var(--cielo) 0 0 / 420px fixed,
+      var(--grano),
+      var(--fondo-pagina);
   }
 }
