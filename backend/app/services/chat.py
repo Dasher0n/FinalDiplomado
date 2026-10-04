@@ -306,23 +306,91 @@ def _plan_determinista(
 
 def _extraer_nombre_juego(mensaje: str) -> str | None:
     """Separa el título de juego de la formulación de la pregunta."""
-    continuacion = re.match(r"^[¿¡]?\s*y\s+(?P<nombre>.+?)[?!.]*$", mensaje, re.IGNORECASE)
-    if continuacion:
-        return nombre_valido(continuacion.group("nombre"))
     patrones = (
-        r"\b(?:comprar|compra|evaluar|evalúa)\s+(?:el juego\s+)?(?P<nombre>.+?)(?=[,;.!?¿]|$)",
-        r"\bvale la pena\s+(?P<nombre>.+?)(?=[,;.!?¿]|$)",
-        r"\b(?:qu[eé]\s+tal\s+entrar[ií]a|me\s+conviene|deber[ií]a\s+comprar)\s+(?P<nombre>.+?)(?=\s+(?:en\s+(?:la\s+colecci[oó]n|mi\s+ludoteca)|para\s+mi\s+caf[eé])|[,;.!?¿]|$)",
-        r"\b(?P<nombre>.+?)(?=\s+(?:es\s+una\s+buena\s+compra|vale\s+la\s+pena|me\s+conviene)|[,;.!?¿]|$)",
-        r"\by\s+(?P<nombre>.+?)(?=[,;.!?¿]|$)",
+        r"^.*?\bcomprar\s+(?P<nombre>.+?),\s*[¿¡]?\s*vale\s+la\s+pena[?!.]*$",
+        r"^(?P<nombre>.+?)\s+(?:(?:ser[ií]a\s+)?una|es)\s+buena\s+compra[?!.]*$",
+        r"^(?P<nombre>.+?)\s+vale\s+la\s+pena[?!.]*$",
+        r"^vale\s+la\s+pena\s+(?P<nombre>.+?)[?!.]*$",
+        r"^(?:qu[eé]|c[oó]mo)\s+tal\s+(?:entrar[ií]a\s+)?(?P<nombre>.+?)(?:\s+en\s+la\s+colecci[oó]n)?[?!.]*$",
+        r"^c[oó]mo\s+entrar[ií]a\s+(?P<nombre>.+?)[?!.]*$",
+        r"^(?:deber[ií]a\s+comprar|me\s+conviene|conviene\s+comprar)\s+(?P<nombre>.+?)[?!.]*$",
+        r"^(?:h[aá]blame\s+de|detalle\s+de|info\s+de)\s+(?P<nombre>.+?)[?!.]*$",
+        r"^y\s+(?P<nombre>.+?)[?!.]*$",
     )
+    texto = mensaje.strip(" \t\r\n¿¡")
+    if re.fullmatch(r"(?:ser[ií]a\s+)?(?:una\s+)?buena\s+compra[?!.]*", texto, re.IGNORECASE):
+        return None
+    if re.fullmatch(r"y\s+(?:este|ese|esto|eso)\s+vale\s+la\s+pena[?!.]*", texto, re.IGNORECASE):
+        return None
     for patron in patrones:
-        coincidencia = re.search(patron, mensaje, re.IGNORECASE)
+        coincidencia = re.fullmatch(patron, texto, re.IGNORECASE)
         if coincidencia:
             nombre = nombre_valido(coincidencia.group("nombre"))
             if nombre:
                 return nombre
-    return nombre_valido(mensaje)
+    if re.fullmatch(r"[\w\s:'\-«»“”]{2,80}", texto, re.UNICODE):
+        return nombre_valido(texto)
+    return None
+
+
+def _nombre_anclado(nombre: str, mensaje: str, juego_en_foco: Game | None) -> bool:
+    consulta = normalizar_nombre(nombre)
+    if not consulta:
+        return False
+    if fuzz.partial_ratio(consulta, normalizar_nombre(mensaje)) >= 90:
+        return True
+    return juego_en_foco is not None and consulta in {
+        normalizar_nombre(juego_en_foco.nombre),
+        normalizar_nombre(juego_en_foco.nombre.split(":", maxsplit=1)[0]),
+    }
+
+
+async def _aplicar_cadena_respaldo_juego(
+    plan: PlanLlm,
+    mensaje: str,
+    repo: CatalogoRepository,
+    juego_en_foco_id: str | None,
+    intent_pendiente: str | None,
+) -> PlanLlm:
+    """Ancla los títulos antes de permitir cualquier tool que reciba un juego."""
+    juego_en_foco = await repo.obtener_juego(juego_en_foco_id) if juego_en_foco_id else None
+    paso_juego = next(
+        (paso for paso in plan.steps if paso.tool in {"detalle_juego", "evaluar_compra"}), None
+    )
+    nombre_regex = _extraer_nombre_juego(mensaje)
+    if paso_juego is None and plan.intent not in {"general", "detalle_juego", "evaluar_compra"}:
+        return plan
+    if paso_juego is None and nombre_regex is None:
+        return plan
+    tool = paso_juego.tool if paso_juego else "detalle_juego"
+    intent = plan.intent if paso_juego else "detalle_juego"
+    if paso_juego and paso_juego.args.get("game_id"):
+        juego = await repo.obtener_juego(paso_juego.args["game_id"])
+        if juego is not None:
+            return plan
+    nombre_planner = nombre_valido(paso_juego.args.get("nombre")) if paso_juego else None
+    if (
+        nombre_planner
+        and fuzz.partial_ratio(normalizar_nombre(nombre_planner), normalizar_nombre(mensaje)) >= 90
+    ):
+        nombre = nombre_planner
+    elif nombre_regex:
+        nombre = nombre_regex
+    elif nombre_planner and _nombre_anclado(nombre_planner, mensaje, juego_en_foco):
+        nombre = nombre_planner
+    elif intent_pendiente in {"evaluar_compra", "detalle_juego"} and juego_en_foco:
+        return PlanLlm(
+            intent=intent_pendiente,
+            steps=[PasoPlan(id="1", tool=intent_pendiente, args={"game_id": juego_en_foco.id})],
+        )
+    elif juego_en_foco:
+        return PlanLlm(
+            intent=tool,
+            steps=[PasoPlan(id="1", tool=tool, args={"game_id": juego_en_foco.id})],
+        )
+    else:
+        return PlanLlm(intent="general")
+    return PlanLlm(intent=intent, steps=[PasoPlan(id="1", tool=tool, args={"nombre": nombre})])
 
 
 def _validar_plan(plan: PlanLlm | None, max_pasos: int) -> PlanLlm | None:
@@ -723,7 +791,7 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
     if intent == "fuera_de_dominio":
         return "Mi experiencia se limita al análisis y recomendación de juegos de mesa."
     if intent == "general" and not resultados:
-        return "**Necesito el nombre del juego**\n\nEscribe el título que quieres consultar."
+        return "¿De qué juego me hablas? Escríbeme su nombre."
     resultado = resultados[0] if resultados else {}
     if resultado.get("estado") == "ambiguo":
         return (
@@ -1360,6 +1428,13 @@ async def responder(
         chat_session.juego_en_foco_id,
         chat_session.intent_pendiente,
     )
+    plan = await _aplicar_cadena_respaldo_juego(
+        plan,
+        solicitud.mensaje,
+        CatalogoRepository(session),
+        chat_session.juego_en_foco_id,
+        chat_session.intent_pendiente,
+    )
     if _validar_plan(plan, settings.llm_max_plan_steps) is None:
         plan = PlanLlm(intent="general")
     plan = await _validar_plan_con_juego(
@@ -1450,7 +1525,7 @@ async def responder(
     critic_findings: list[str | dict[str, str]] = []
     critic_attempts = 0
     trazas: list[tuple[str, str, dict[str, Any]]] = []
-    narrativa_llm_permitida = plan.intent not in {"reglas", "fuera_de_dominio"}
+    narrativa_llm_permitida = plan.intent not in {"reglas", "fuera_de_dominio", "general"}
     if settings.llm_active and narrativa_llm_permitida:
         try:
             answer = await _narrar_llm(settings, resultados, solicitud.mensaje)

@@ -109,6 +109,122 @@ def test_extraer_nombre_recorta_colas_de_contexto() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "mensaje",
+    [
+        '"Catan" sería una buena compra',
+        '"Catan" es buena compra',
+        '"Catan" vale la pena',
+        'vale la pena "Catan"',
+        'qué tal "Catan"',
+        'qué tal entraría "Catan" en la colección',
+        'cómo entraría "Catan"',
+        'debería comprar "Catan"',
+        'me conviene "Catan"',
+        'conviene comprar "Catan"',
+        'háblame de "Catan"',
+        'detalle de "Catan"',
+        'info de "Catan"',
+        "Catan",
+    ],
+)
+def test_extraer_nombre_cubre_formulaciones_de_compra_y_detalle(mensaje: str) -> None:
+    assert chat_service._extraer_nombre_juego(mensaje) == "Catan"
+
+
+@pytest.mark.asyncio
+async def test_cadena_respaldo_descarta_nombre_del_planner_no_anclado() -> None:
+    catan = SimpleNamespace(id="13", nombre="Catan")
+
+    class CatalogoPrueba:
+        async def obtener_juego(self, game_id: str) -> Any:
+            return catan if game_id == "13" else None
+
+    plan = chat_service.PlanLlm(
+        intent="evaluar_compra",
+        steps=[chat_service.PasoPlan(id="1", tool="evaluar_compra", args={"nombre": "Wyrmspan"})],
+    )
+    resuelto = await chat_service._aplicar_cadena_respaldo_juego(
+        plan, "¿Qué tal Catan?", CatalogoPrueba(), None, None
+    )
+
+    assert resuelto.steps[0].args == {"nombre": "Catan"}
+
+
+@pytest.mark.asyncio
+async def test_cadena_respaldo_usa_intencion_pendiente_y_foco() -> None:
+    catan = SimpleNamespace(id="13", nombre="Catan")
+
+    class CatalogoPrueba:
+        async def obtener_juego(self, game_id: str) -> Any:
+            return catan if game_id == "13" else None
+
+    plan = chat_service.PlanLlm(
+        intent="evaluar_compra",
+        steps=[chat_service.PasoPlan(id="1", tool="evaluar_compra")],
+    )
+    resuelto = await chat_service._aplicar_cadena_respaldo_juego(
+        plan, "¿sería una buena compra?", CatalogoPrueba(), "13", "evaluar_compra"
+    )
+
+    assert resuelto.steps[0].args == {"game_id": "13"}
+
+
+@pytest.mark.asyncio
+async def test_cadena_respaldo_usa_foco_para_referencia_generica() -> None:
+    catan = SimpleNamespace(id="13", nombre="Catan")
+
+    class CatalogoPrueba:
+        async def obtener_juego(self, game_id: str) -> Any:
+            return catan if game_id == "13" else None
+
+    plan = chat_service._plan_determinista("¿y ese vale la pena?", None, "13")
+    resuelto = await chat_service._aplicar_cadena_respaldo_juego(
+        plan, "¿y ese vale la pena?", CatalogoPrueba(), "13", "evaluar_compra"
+    )
+
+    assert resuelto.steps[0].args == {"game_id": "13"}
+
+
+@pytest.mark.asyncio
+async def test_cadena_respaldo_prioriza_nombre_del_mensaje_sobre_foco() -> None:
+    catan = SimpleNamespace(id="13", nombre="Catan")
+
+    class CatalogoPrueba:
+        async def obtener_juego(self, game_id: str) -> Any:
+            return catan if game_id == "13" else None
+
+    plan = chat_service.PlanLlm(
+        intent="evaluar_compra",
+        steps=[chat_service.PasoPlan(id="1", tool="evaluar_compra", args={"nombre": "Catan"})],
+    )
+    resuelto = await chat_service._aplicar_cadena_respaldo_juego(
+        plan, "¿Vale la pena SETI?", CatalogoPrueba(), "13", "evaluar_compra"
+    )
+
+    assert resuelto.steps[0].args == {"nombre": "SETI"}
+
+
+@pytest.mark.asyncio
+async def test_cadena_respaldo_pide_aclaracion_sin_nombre_ni_ancla() -> None:
+    class CatalogoPrueba:
+        async def obtener_juego(self, _game_id: str) -> None:
+            return None
+
+    plan = chat_service.PlanLlm(
+        intent="evaluar_compra",
+        steps=[chat_service.PasoPlan(id="1", tool="evaluar_compra")],
+    )
+    resuelto = await chat_service._aplicar_cadena_respaldo_juego(
+        plan, "¿sería una buena compra?", CatalogoPrueba(), None, None
+    )
+
+    assert resuelto.intent == "general"
+    assert resuelto.steps == []
+    respuesta = chat_service._narrar(resuelto.intent, [])
+    assert respuesta == "¿De qué juego me hablas? Escríbeme su nombre."
+
+
 @pytest.mark.asyncio
 async def test_nombre_inventado_no_se_resuelve_por_coincidencia_aproximada() -> None:
     class CatalogoPrueba:
