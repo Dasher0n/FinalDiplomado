@@ -365,8 +365,27 @@ Chart.defaults.color = "#4d3727";
             opciones.
           </p>
         </details>
-        <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-          <section class="panel coverage-summary">
+        <div class="bento mt-6">
+          <section class="panel bento-resumen">
+            <h3 class="font-serif text-xl">Resumen</h3>
+            @if (cobertura()) {
+              <ul class="meter-list">
+                @for (eje of ejes(); track eje.nombre) {
+                  <li>
+                    <span class="meter-label"
+                      ><span>{{ eje.nombre }}</span
+                      ><b>{{ eje.valor.porcentaje }}%</b></span
+                    >
+                    <span class="meter" aria-hidden="true"
+                      ><i [style.width.%]="eje.valor.porcentaje"></i
+                    ></span>
+                  </li>
+                }
+              </ul>
+            }
+          </section>
+          <section class="panel bento-radar coverage-summary">
+            <h3 class="font-serif text-xl">Radar</h3>
             <div class="coverage-radar coverage-radar-small">
               <canvas
                 id="radar-cobertura"
@@ -374,7 +393,8 @@ Chart.defaults.color = "#4d3727";
               ></canvas>
             </div>
           </section>
-          <section class="panel">
+          <section class="panel bento-controles">
+            <h3 class="font-serif text-xl">Plan de compra</h3>
             <div class="mt-3 flex flex-wrap items-end gap-3">
               <label
                 >Número de juegos<input
@@ -427,8 +447,11 @@ Chart.defaults.color = "#4d3727";
               Cada alternativa usa cobertura pendiente por juego. B y C no
               repiten juegos de las opciones anteriores.
             </p>
-            @if (cobertura()) {
-              <div class="mt-4 grid gap-3 sm:grid-cols-2">
+          </section>
+          @if (cobertura()) {
+            <section class="panel bento-deficits">
+              <h3 class="font-serif text-xl">Déficits por eje</h3>
+              <div class="deficit-grid mt-3">
                 @for (eje of ejes(); track eje.nombre) {
                   <article class="coverage">
                     <b>{{ eje.nombre }} · {{ eje.valor.porcentaje }}%</b>
@@ -443,149 +466,149 @@ Chart.defaults.color = "#4d3727";
                   </article>
                 }
               </div>
-            }
-            @if (plan()) {
-              <div class="mt-5 border-t pt-4">
-                <div class="chip-legend">
-                  ><span class="level-chip missing-chip">Nivel faltante</span
-                  ><span class="level-chip weak-chip">Nivel débil</span>
+            </section>
+          }
+          @if (plan()) {
+            <div class="bento-leyenda chip-legend">
+              <span class="level-chip missing-chip">Nivel faltante</span
+              ><span class="level-chip weak-chip">Nivel débil</span>
+            </div>
+            @for (opcion of plan()!.opciones; track opcion.etiqueta) {
+              <section
+                class="panel bento-plan"
+                [attr.data-opcion]="opcion.etiqueta"
+              >
+                <div class="plan-summary">
+                  <h3 class="plan-titulo font-serif">
+                    Opción {{ opcion.etiqueta }}
+                  </h3>
+                  <span
+                    >{{ opcion.juegos.length }} juegos · valor cubierto
+                    {{ opcion.valor_cubierto | number: "1.2-2" }} · pendiente
+                    {{ opcion.valor_pendiente | number: "1.2-2" }}</span
+                  >
                 </div>
-                <div class="mt-3 grid gap-3">
-                  @for (opcion of plan()!.opciones; track opcion.etiqueta) {
+                <p class="transiciones">
+                  {{ transiciones(opcion.impacto) }}
+                </p>
+                <div class="plan-juegos mt-3">
+                  @for (juego of opcion.juegos; track juego.id) {
                     <article class="recommendation">
-                      <div class="plan-summary">
-                        <b>Opción {{ opcion.etiqueta }}</b
-                        ><span
-                          >{{ opcion.juegos.length }} juegos · valor cubierto
-                          {{ opcion.valor_cubierto | number: "1.2-2" }} ·
-                          pendiente
-                          {{ opcion.valor_pendiente | number: "1.2-2" }}</span
-                        >
-                      </div>
-                      <p class="transiciones">
-                        {{ transiciones(opcion.impacto) }}
-                      </p>
-                      <div class="mt-3 grid gap-3">
-                        @for (juego of opcion.juegos; track juego.id) {
-                          <article class="recommendation">
-                            <div class="flex gap-3">
-                              @if (juego.imagen_url) {
-                                <img
-                                  class="plan-cover"
-                                  [src]="juego.imagen_url"
-                                  [alt]="juego.nombre"
-                                />
-                              }
-                              <div>
-                                <b>{{ juego.nombre }}</b>
-                                <p>
-                                  @if (juego.precio_usd) {
-                                    {{ formatoPrecio(juego.precio_usd) }} EE.
-                                    UU.
-                                  } @else {
-                                    Precio no disponible
-                                  }
-                                </p>
-                                @if (juego.fecha_precio) {
-                                  <small
-                                    >Actualizado
-                                    {{ fechaCorta(juego.fecha_precio) }}</small
-                                  >
-                                }
-                                @if (juego.url_bgp) {
-                                  <a
-                                    class="ml-2 text-amber-800 underline"
-                                    [href]="juego.url_bgp"
-                                    target="_blank"
-                                    rel="noopener"
-                                    >BoardGamePrices</a
-                                  >
-                                }
-                                <div class="mt-2 flex flex-wrap gap-1">
-                                  @for (
-                                    nivel of juego.niveles_que_cubre;
-                                    track nivel.eje + nivel.nivel
-                                  ) {
-                                    <span
-                                      class="level-chip"
-                                      [class.missing-chip]="
-                                        nivel.estado === 'faltante'
-                                      "
-                                      [class.weak-chip]="
-                                        nivel.estado === 'debil'
-                                      "
-                                      >{{ nivel.eje }}: {{ nivel.nivel }}</span
-                                    >
-                                  }
-                                </div>
-                              </div>
-                              <div class="impacto-lista">
-                                @for (
-                                  eje of impactoEjes(juego.impacto);
-                                  track eje.nombre
-                                ) {
-                                  @if (eje.cambio) {
-                                    <p class="impacto-texto">
-                                      {{ eje.nombre }} {{ eje.antes }} →
-                                      {{ eje.despues }} ({{
-                                        eje.despues - eje.antes >= 0 ? "+" : ""
-                                      }}{{ eje.despues - eje.antes }})
-                                    </p>
-                                  }
-                                }
-                                <p class="transiciones">
-                                  {{ transiciones(juego.impacto) }}
-                                </p>
-                              </div>
-                            </div>
-                          </article>
+                      <div class="flex gap-3">
+                        @if (juego.imagen_url) {
+                          <img
+                            class="plan-cover"
+                            [src]="juego.imagen_url"
+                            [alt]="juego.nombre"
+                          />
                         }
+                        <div>
+                          <b>{{ juego.nombre }}</b>
+                          <p>
+                            @if (juego.precio_usd) {
+                              {{ formatoPrecio(juego.precio_usd) }} EE. UU.
+                            } @else {
+                              Precio no disponible
+                            }
+                          </p>
+                          @if (juego.fecha_precio) {
+                            <small
+                              >Actualizado
+                              {{ fechaCorta(juego.fecha_precio) }}</small
+                            >
+                          }
+                          @if (juego.url_bgp) {
+                            <a
+                              class="ml-2 text-amber-800 underline"
+                              [href]="juego.url_bgp"
+                              target="_blank"
+                              rel="noopener"
+                              >BoardGamePrices</a
+                            >
+                          }
+                          <div class="mt-2 flex flex-wrap gap-1">
+                            @for (
+                              nivel of juego.niveles_que_cubre;
+                              track nivel.eje + nivel.nivel
+                            ) {
+                              <span
+                                class="level-chip"
+                                [class.missing-chip]="
+                                  nivel.estado === 'faltante'
+                                "
+                                [class.weak-chip]="nivel.estado === 'debil'"
+                                >{{ nivel.eje }}: {{ nivel.nivel }}</span
+                              >
+                            }
+                          </div>
+                        </div>
+                        <div class="impacto-lista">
+                          @for (
+                            eje of impactoEjes(juego.impacto);
+                            track eje.nombre
+                          ) {
+                            @if (eje.cambio) {
+                              <p class="impacto-texto">
+                                {{ eje.nombre }} {{ eje.antes }} →
+                                {{ eje.despues }} ({{
+                                  eje.despues - eje.antes >= 0 ? "+" : ""
+                                }}{{ eje.despues - eje.antes }})
+                              </p>
+                            }
+                          }
+                          <p class="transiciones">
+                            {{ transiciones(juego.impacto) }}
+                          </p>
+                        </div>
                       </div>
                     </article>
                   }
                 </div>
-              </div>
+              </section>
             }
+          }
+          <section class="panel bento-detalle">
+            <h3 class="font-serif text-xl">Detalle por experiencia</h3>
+            <div class="coverage-chart-grid mt-3">
+              <div class="experience-chart">
+                <canvas
+                  id="radar-mecanicas"
+                  aria-label="Familias mecánicas"
+                ></canvas>
+              </div>
+              <div class="experience-chart">
+                <canvas
+                  id="radar-tematica"
+                  aria-label="Familias temáticas"
+                ></canvas>
+              </div>
+              <div class="experience-chart">
+                <canvas
+                  id="radar-jugadores"
+                  aria-label="Cobertura de jugadores"
+                ></canvas>
+              </div>
+              <div class="experience-chart">
+                <canvas
+                  id="barras-peso"
+                  aria-label="Cobertura de peso"
+                ></canvas>
+              </div>
+              <div class="experience-chart">
+                <canvas
+                  id="barras-duracion"
+                  aria-label="Cobertura de duración"
+                ></canvas>
+              </div>
+              <div class="experience-chart">
+                <canvas
+                  id="barras-interaccion"
+                  aria-label="Cobertura de interacción"
+                ></canvas>
+              </div>
+            </div>
           </section>
         </div>
-        <section class="panel mt-6">
-          <h3 class="font-serif text-xl">Detalle por experiencia</h3>
-          <div class="coverage-chart-grid mt-3">
-            <div class="experience-chart">
-              <canvas
-                id="radar-mecanicas"
-                aria-label="Familias mecánicas"
-              ></canvas>
-            </div>
-            <div class="experience-chart">
-              <canvas
-                id="radar-tematica"
-                aria-label="Familias temáticas"
-              ></canvas>
-            </div>
-            <div class="experience-chart">
-              <canvas
-                id="radar-jugadores"
-                aria-label="Cobertura de jugadores"
-              ></canvas>
-            </div>
-            <div class="experience-chart">
-              <canvas id="barras-peso" aria-label="Cobertura de peso"></canvas>
-            </div>
-            <div class="experience-chart">
-              <canvas
-                id="barras-duracion"
-                aria-label="Cobertura de duración"
-              ></canvas>
-            </div>
-            <div class="experience-chart">
-              <canvas
-                id="barras-interaccion"
-                aria-label="Cobertura de interacción"
-              ></canvas>
-            </div>
-          </div>
-        </section>
       </section>
     }
 
