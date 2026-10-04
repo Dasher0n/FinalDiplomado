@@ -1425,3 +1425,93 @@ main > section h2.font-serif::after {
       var(--fondo-pagina);
   }
 }
+
+/* ================= Ficha: qué aporta a tu colección ================= */
+.ficha-portada {
+  width: 100%;
+  border-radius: 18px;
+  box-shadow:
+    0 2px 4px rgb(10 5 2 / 30%),
+    0 14px 26px -6px rgb(10 5 2 / 45%);
+}
+.aporte-titulo {
+  margin: 1.1rem 0 0.5rem;
+  font-size: 1.05rem;
+}
+.aporte-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.8rem;
+  padding: 0;
+  list-style: none;
+}
+.aporte-eje {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  align-items: start;
+  gap: 0.6rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--pergamino-300);
+}
+.aporte-eje-nombre {
+  padding-top: 0.2rem;
+  color: var(--texto-suave);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.aporte-eje-fichas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.aporte-sin-cambio {
+  margin: 0.6rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--pergamino-300);
+  color: var(--texto-suave);
+  font-size: 0.88rem;
+}
+.nivel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem 0.7rem;
+  border: 1.5px solid var(--pergamino-300);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.nivel-chip::before {
+  font-weight: 700;
+}
+.nivel-hueco {
+  border-color: var(--cardenillo-700);
+  background: var(--cardenillo-100);
+  color: var(--cardenillo-700);
+}
+.nivel-hueco::before {
+  content: "+";
+}
+.nivel-refuerzo {
+  border-color: var(--laton-600);
+  background: #f3e2ac;
+  color: var(--laton-700);
+}
+.nivel-refuerzo::before {
+  content: "\2191";
+}
+.nivel-previo {
+  background: var(--pergamino-100);
+  color: var(--tinta-600);
+}
+.nivel-previo::before {
+  content: "=";
+}
+@media (max-width: 640px) {
+  .aporte-eje {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}

@@ -765,16 +765,16 @@ Chart.defaults.color = "#4d3727";
         (click)="seleccionado.set(null)"
       >
         <article
-          class="ficha-modal max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl p-5"
+          class="ficha-modal max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl p-6"
           (click)="$event.stopPropagation()"
         >
           <button class="float-right text-2xl" (click)="seleccionado.set(null)">
             ×
           </button>
-          <div class="grid gap-5 sm:grid-cols-[160px_1fr]">
+          <div class="grid gap-6 sm:grid-cols-[250px_1fr]">
             @if (seleccionado()!.imagen_url) {
               <img
-                class="w-full rounded-lg"
+                class="ficha-portada"
                 [src]="seleccionado()!.imagen_url"
                 [alt]="seleccionado()!.nombre"
               />
@@ -827,31 +827,36 @@ Chart.defaults.color = "#4d3727";
                     }}
                   </p>
                   <p>{{ evaluacionDetalle()!.veredicto_razones.join(" ") }}</p>
-                  @if (evaluacionDetalle()!.niveles_que_cubre.length) {
-                    <p>
-                      También cubre:
-                      {{
-                        etiquetasNiveles(evaluacionDetalle()!.niveles_que_cubre)
-                      }}
-                    </p>
-                  }
-                  <div class="mt-3 impacto-lista">
-                    @for (
-                      eje of impactoEjes(evaluacionDetalle()!.impacto);
-                      track eje.nombre
-                    ) {
-                      <div
-                        class="impacto-fila"
-                        [class.sin-cambio]="!eje.cambio"
-                      >
-                        <span>{{ eje.nombre }}</span
-                        ><i></i><b>{{ eje.antes }} → {{ eje.despues }}</b>
+                  @if (
+                    aporte(seleccionado()!, evaluacionDetalle()!);
+                    as aporteJuego
+                  ) {
+                    <h4 class="aporte-titulo">Qué aporta a tu colección</h4>
+                    <ul class="aporte-leyenda" aria-label="Leyenda">
+                      <li class="nivel-chip nivel-hueco">Cubre un hueco</li>
+                      <li class="nivel-chip nivel-refuerzo">
+                        Refuerza un nivel débil
+                      </li>
+                      <li class="nivel-chip nivel-previo">Ya lo tenías</li>
+                    </ul>
+                    @for (eje of aporteJuego.conCambio; track eje.eje) {
+                      <div class="aporte-eje">
+                        <span class="aporte-eje-nombre">{{ eje.eje }}</span>
+                        <span class="aporte-eje-fichas">
+                          @for (nivel of eje.niveles; track nivel.texto) {
+                            <span class="nivel-chip" [class]="nivel.clase">{{
+                              nivel.texto
+                            }}</span>
+                          }
+                        </span>
                       </div>
                     }
-                    <p class="transiciones">
-                      {{ transiciones(evaluacionDetalle()!.impacto) }}
-                    </p>
-                  </div>
+                    @if (aporteJuego.sinCambio.length) {
+                      <p class="aporte-sin-cambio">
+                        Sin cambios en: {{ aporteJuego.sinCambio.join(", ") }}
+                      </p>
+                    }
+                  }
                   @if (evaluacionDetalle()!.similares.length) {
                     <p class="mt-3 text-sm font-semibold">
                       Los 3 más parecidos
@@ -863,7 +868,9 @@ Chart.defaults.color = "#4d3727";
                       ) {
                         <span class="level-chip"
                           >{{ similar.juego.nombre }}
-                          {{ similar.similitud.total | number: "1.2-2" }}</span
+                          {{
+                            similar.similitud.total * 100 | number: "1.0-0"
+                          }}%</span
                         >
                       }
                     </div>
@@ -1330,6 +1337,62 @@ export class App {
     niveles: EvaluarRespuesta["niveles_que_cubre"],
   ): string {
     return niveles.map((nivel) => `${nivel.eje}: ${nivel.nivel}`).join(", ");
+  }
+  /** Niveles del juego por eje, con su estado frente a la colección, para la ficha. */
+  protected aporte(
+    juego: JuegoDetalle,
+    evaluacion: EvaluarRespuesta,
+  ): {
+    conCambio: {
+      eje: string;
+      niveles: { texto: string; clase: string }[];
+    }[];
+    sinCambio: string[];
+  } | null {
+    const estados = new Map(
+      evaluacion.niveles_que_cubre.map((nivel) => [
+        `${nivel.eje}|${nivel.nivel}`,
+        nivel.estado,
+      ]),
+    );
+    const ejes: [string, string[]][] = [
+      ["Jugadores", (juego.nivel_jugadores ?? []) as string[]],
+      ["Duración", juego.nivel_duracion ? [juego.nivel_duracion] : []],
+      ["Peso", juego.nivel_peso ? [juego.nivel_peso] : []],
+      ["Interacción", juego.nivel_interaccion ? [juego.nivel_interaccion] : []],
+      ["Mecánicas", (juego.familias_mecanicas ?? []) as string[]],
+      ["Temática", (juego.familias_tematicas ?? []) as string[]],
+    ];
+    const conCambio: {
+      eje: string;
+      niveles: { texto: string; clase: string }[];
+    }[] = [];
+    const sinCambio: string[] = [];
+    for (const [eje, niveles] of ejes) {
+      if (!niveles.length) continue;
+      const fichas = niveles.map((nivel) => {
+        const estado = estados.get(`${eje}|${nivel}`);
+        return {
+          texto: eje === "Duración" ? `${nivel} min` : nivel,
+          clase:
+            estado === "faltante"
+              ? "nivel-hueco"
+              : estado === "debil"
+                ? "nivel-refuerzo"
+                : "nivel-previo",
+        };
+      });
+      if (fichas.some((ficha) => ficha.clase !== "nivel-previo")) {
+        conCambio.push({ eje, niveles: fichas });
+      } else {
+        sinCambio.push(eje);
+      }
+    }
+    // Primero los ejes con algo nuevo y, dentro de ellos, los huecos antes que los refuerzos.
+    const peso = (eje: { niveles: { clase: string }[] }) =>
+      eje.niveles.some((nivel) => nivel.clase === "nivel-hueco") ? 0 : 1;
+    conCambio.sort((a, b) => peso(a) - peso(b));
+    return { conCambio, sinCambio };
   }
   protected banderas(juego: JuegoDetalle): string[] {
     return [
