@@ -163,9 +163,11 @@ class _CriticaRespuestaLlm(BaseModel):
 class _TitulosTraducidosLlm(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    traducciones_literales: list[str] = Field(default_factory=list, max_length=3)
+    identificaciones: list[str] = Field(default_factory=list, max_length=3)
     titulos: list[str] = Field(default_factory=list, max_length=3)
 
-    @field_validator("titulos")
+    @field_validator("traducciones_literales", "identificaciones", "titulos")
     @classmethod
     def limpiar_titulos(cls, valores: list[str]) -> list[str]:
         return [titulo for valor in valores if (titulo := nombre_valido(valor)) is not None]
@@ -587,12 +589,18 @@ async def _resolver_con_traduccion(
             input=(
                 "Un usuario hispanohablante busca un juego de mesa llamado «"
                 + nombre
-                + "». ¿Qué juegos de mesa crees que sean, con su título original en inglés? "
-                "Dame hasta 3 opciones, de la más a la menos probable. No expliques nada."
+                + "». Devuelve hasta 3 traducciones literales al inglés y hasta 3 juegos de mesa "
+                "que creas que son, en ese orden. No expliques nada."
             ),
             text_format=_TitulosTraducidosLlm,
         )
-        titulos = salida.output_parsed.titulos[:3] if salida.output_parsed else []
+        literales = salida.output_parsed.traducciones_literales[:3] if salida.output_parsed else []
+        identificaciones = (
+            (salida.output_parsed.identificaciones or salida.output_parsed.titulos)[:3]
+            if salida.output_parsed
+            else []
+        )
+        titulos = list(dict.fromkeys([*literales, *identificaciones]))
     except Exception as error:  # noqa: BLE001
         return (
             estado,
@@ -601,7 +609,8 @@ async def _resolver_con_traduccion(
             [],
             {
                 "llm_called": True,
-                "titulos": [],
+                "traducciones_literales": [],
+                "identificaciones": [],
                 "error": str(error)[:300],
             },
         )
@@ -629,7 +638,7 @@ async def _resolver_con_traduccion(
                 default=None,
                 key=lambda item: (item[0], item[1].users_rated or 0),
             )
-            encontrados = [mejor[1]] if mejor and mejor[0] >= 85 else []
+            encontrados = [mejor[1]] if mejor and mejor[0] >= 90 else []
         coincidencias.append(
             {"propuesta": titulo, "coincidencias": [juego.id for juego in encontrados]}
         )
@@ -637,7 +646,12 @@ async def _resolver_con_traduccion(
             if juego.id not in vistos:
                 vistos.add(juego.id)
                 candidatos.append(juego)
-    traza = {"llm_called": True, "titulos": titulos, "coincidencias": coincidencias}
+    traza = {
+        "llm_called": True,
+        "traducciones_literales": literales,
+        "identificaciones": identificaciones,
+        "coincidencias": coincidencias,
+    }
     return (
         ("ambiguo", tuple(candidatos), None, titulos, traza)
         if candidatos

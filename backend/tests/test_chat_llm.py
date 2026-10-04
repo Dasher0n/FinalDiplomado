@@ -397,7 +397,9 @@ async def test_traduccion_simulada_usa_el_nombre_extraido_sin_cola(monkeypatch: 
         async def parse(self, **kwargs: Any) -> Any:
             llamada.update(kwargs)
             return SimpleNamespace(
-                output_parsed=chat_service._TitulosTraducidosLlm(titulos=["Wondrous Creatures"])
+                output_parsed=chat_service._TitulosTraducidosLlm(
+                    traducciones_literales=["Wondrous Creatures"], identificaciones=[]
+                )
             )
 
     class Cliente:
@@ -421,10 +423,11 @@ async def test_traduccion_simulada_usa_el_nombre_extraido_sin_cola(monkeypatch: 
     assert titulos == ["Wondrous Creatures"]
     assert traza == {
         "llm_called": True,
-        "titulos": ["Wondrous Creatures"],
+        "traducciones_literales": ["Wondrous Creatures"],
+        "identificaciones": [],
         "coincidencias": [{"propuesta": "Wondrous Creatures", "coincidencias": ["400366"]}],
     }
-    assert "¿Qué juegos de mesa crees que sean" in llamada["input"]
+    assert "traducciones literales al inglés" in llamada["input"]
 
 
 @pytest.mark.asyncio
@@ -630,7 +633,8 @@ async def test_resolver_traduce_nombre_con_cliente_simulado(monkeypatch: Any) ->
     assert sugerencias == ["Wingspan"]
     assert traza == {
         "llm_called": True,
-        "titulos": ["Wingspan"],
+        "traducciones_literales": [],
+        "identificaciones": ["Wingspan"],
         "coincidencias": [{"propuesta": "Wingspan", "coincidencias": ["1"]}],
     }
 
@@ -662,7 +666,8 @@ async def test_resolver_traduccion_no_resuelta(monkeypatch: Any) -> None:
     assert (estado, juegos, interpretado, sugerencias) == ("no_encontrado", (), None, ["Nada"])
     assert traza == {
         "llm_called": True,
-        "titulos": ["Nada"],
+        "traducciones_literales": [],
+        "identificaciones": ["Nada"],
         "coincidencias": [{"propuesta": "Nada", "coincidencias": []}],
     }
 
@@ -702,6 +707,48 @@ async def test_resolver_traduccion_devuelve_sugerencias_cercanas(monkeypatch: An
     assert [item.id for item in juegos] == ["400366"]
     assert interpretado is None
     assert sugerencias == ["Wondrous Creature"]
+
+
+@pytest.mark.asyncio
+async def test_traduccion_literal_tiene_prioridad_y_no_confunde_fantastic_creatures(
+    monkeypatch: Any,
+) -> None:
+    juegos = [
+        SimpleNamespace(id="400366", nombre="Wondrous Creatures", users_rated=7342),
+        SimpleNamespace(
+            id="119890", nombre="Agricola: All Creatures Big and Small", users_rated=5000
+        ),
+    ]
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return juegos
+
+    class Responses:
+        async def parse(self, **_kwargs: Any) -> Any:
+            return SimpleNamespace(
+                output_parsed=chat_service._TitulosTraducidosLlm(
+                    traducciones_literales=["Wondrous Creatures"],
+                    identificaciones=["Fantastic Creatures"],
+                )
+            )
+
+    class Cliente:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.responses = Responses()
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
+    estado, candidatos, _, _, traza = await chat_service._resolver_con_traduccion(
+        CatalogoPrueba(),
+        "Criaturas maravillosas",
+        None,
+        Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True),
+    )
+
+    assert estado == "ambiguo"
+    assert [juego.id for juego in candidatos] == ["400366"]
+    assert traza["traducciones_literales"] == ["Wondrous Creatures"]
+    assert traza["identificaciones"] == ["Fantastic Creatures"]
 
 
 @pytest.mark.asyncio
@@ -789,7 +836,12 @@ async def test_resolver_traduccion_registra_el_error_del_llm(monkeypatch: Any) -
         Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True),
     )
 
-    assert traza == {"llm_called": True, "titulos": [], "error": "fallo de traducción"}
+    assert traza == {
+        "llm_called": True,
+        "traducciones_literales": [],
+        "identificaciones": [],
+        "error": "fallo de traducción",
+    }
 
 
 def test_plantilla_veredicto_muestra_motivo_y_un_solo_emoji() -> None:
