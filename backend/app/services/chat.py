@@ -89,6 +89,9 @@ class PlanLlm(BaseModel):
 
     intent: str
     steps: list[PasoPlan] = Field(default_factory=list)
+    origen_nombre: str = "ninguno"
+    nombre_final: str | None = None
+    motivo_descarte: str | None = None
 
 
 class _ArgsPlanLlm(BaseModel):
@@ -351,6 +354,7 @@ async def _aplicar_cadena_respaldo_juego(
     repo: CatalogoRepository,
     juego_en_foco_id: str | None,
     intent_pendiente: str | None,
+    boton_game_id: str | None = None,
 ) -> PlanLlm:
     """Ancla los títulos antes de permitir cualquier tool que reciba un juego."""
     juego_en_foco = await repo.obtener_juego(juego_en_foco_id) if juego_en_foco_id else None
@@ -364,33 +368,54 @@ async def _aplicar_cadena_respaldo_juego(
         return plan
     tool = paso_juego.tool if paso_juego else "detalle_juego"
     intent = plan.intent if paso_juego else "detalle_juego"
-    if paso_juego and paso_juego.args.get("game_id"):
-        juego = await repo.obtener_juego(paso_juego.args["game_id"])
-        if juego is not None:
-            return plan
+    game_id = paso_juego.args.get("game_id") if paso_juego else None
+    motivo_descarte = None
+    if game_id is not None:
+        if not isinstance(game_id, str) or not game_id.isdecimal():
+            motivo_descarte = "id_no_aceptado"
+        else:
+            juego = await repo.obtener_juego(game_id)
+            if juego and game_id in {boton_game_id, juego_en_foco_id}:
+                origen = "boton" if game_id == boton_game_id else "foco"
+                return plan.model_copy(
+                    update={"origen_nombre": origen, "nombre_final": juego.nombre}
+                )
+            motivo_descarte = "id_no_aceptado"
     nombre_planner = nombre_valido(paso_juego.args.get("nombre")) if paso_juego else None
     if (
         nombre_planner
         and fuzz.partial_ratio(normalizar_nombre(nombre_planner), normalizar_nombre(mensaje)) >= 90
     ):
-        nombre = nombre_planner
+        nombre, origen = nombre_planner, "planner"
     elif nombre_regex:
-        nombre = nombre_regex
+        nombre, origen = nombre_regex, "regex"
     elif nombre_planner and _nombre_anclado(nombre_planner, mensaje, juego_en_foco):
-        nombre = nombre_planner
+        nombre, origen = nombre_planner, "foco"
     elif intent_pendiente in {"evaluar_compra", "detalle_juego"} and juego_en_foco:
         return PlanLlm(
             intent=intent_pendiente,
             steps=[PasoPlan(id="1", tool=intent_pendiente, args={"game_id": juego_en_foco.id})],
+            origen_nombre="pendiente",
+            nombre_final=juego_en_foco.nombre,
+            motivo_descarte=motivo_descarte,
         )
     elif juego_en_foco:
         return PlanLlm(
             intent=tool,
             steps=[PasoPlan(id="1", tool=tool, args={"game_id": juego_en_foco.id})],
+            origen_nombre="foco",
+            nombre_final=juego_en_foco.nombre,
+            motivo_descarte=motivo_descarte,
         )
     else:
-        return PlanLlm(intent="general")
-    return PlanLlm(intent=intent, steps=[PasoPlan(id="1", tool=tool, args={"nombre": nombre})])
+        return PlanLlm(intent="general", motivo_descarte=motivo_descarte or "invalido")
+    return PlanLlm(
+        intent=intent,
+        steps=[PasoPlan(id="1", tool=tool, args={"nombre": nombre})],
+        origen_nombre=origen,
+        nombre_final=nombre,
+        motivo_descarte=motivo_descarte,
+    )
 
 
 def _validar_plan(plan: PlanLlm | None, max_pasos: int) -> PlanLlm | None:
@@ -653,6 +678,11 @@ async def _ejecutar_tool(
     request: Any,
     settings: Settings,
 ) -> dict[str, Any]:
+    if nombre in {"detalle_juego", "evaluar_compra"} and (
+        nombre_valido(args.get("nombre")) is None
+        and not (isinstance(args.get("game_id"), str) and args["game_id"].strip())
+    ):
+        raise ValueError("La herramienta requiere un nombre o identificador de juego válido.")
     artefactos = _artefactos(request)
     repo = CatalogoRepository(session)
     coleccion = await _coleccion(session, type("Usuario", (), {"id": user_id})(), perfil.id)
@@ -1428,12 +1458,15 @@ async def responder(
         chat_session.juego_en_foco_id,
         chat_session.intent_pendiente,
     )
+    if planner_reintentado and plan.origen_nombre == "planner":
+        plan = plan.model_copy(update={"origen_nombre": "planner_reintento"})
     plan = await _aplicar_cadena_respaldo_juego(
         plan,
         solicitud.mensaje,
         CatalogoRepository(session),
         chat_session.juego_en_foco_id,
         chat_session.intent_pendiente,
+        solicitud.game_id,
     )
     if _validar_plan(plan, settings.llm_max_plan_steps) is None:
         plan = PlanLlm(intent="general")
@@ -1476,12 +1509,28 @@ async def responder(
                     "llm_used": planner_llm_used,
                     "modelo": settings.llm_model_fast,
                     "reintentado": planner_reintentado,
+                    "origen_nombre": plan.origen_nombre,
+                    "nombre_final": plan.nombre_final,
+                    "motivo_descarte": plan.motivo_descarte,
                 },
                 error_mensaje=planner_error,
             )
         )
     resultados: list[dict[str, Any]] = []
     pasos_respuesta: list[PasoPlan] = []
+    # Punto de control único antes de ejecutar cualquier tool de juego.
+    plan = await _aplicar_cadena_respaldo_juego(
+        plan,
+        solicitud.mensaje,
+        CatalogoRepository(session),
+        chat_session.juego_en_foco_id,
+        chat_session.intent_pendiente,
+        solicitud.game_id,
+    )
+    if plan.intent == "general":
+        run.intent = plan.intent
+        run.plan = {"steps": []}
+        await session.commit()
     for nivel in _niveles_plan(plan.steps):
         for paso in nivel:
             resultado = await _ejecutar_tool(

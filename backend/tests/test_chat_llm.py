@@ -226,6 +226,26 @@ async def test_cadena_respaldo_pide_aclaracion_sin_nombre_ni_ancla() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cadena_respaldo_descarta_game_id_no_anclado() -> None:
+    catan = SimpleNamespace(id="13", nombre="Catan")
+
+    class CatalogoPrueba:
+        async def obtener_juego(self, game_id: str) -> Any:
+            return catan if game_id == "13" else None
+
+    plan = chat_service.PlanLlm(
+        intent="evaluar_compra",
+        steps=[chat_service.PasoPlan(id="1", tool="evaluar_compra", args={"game_id": "13"})],
+    )
+    resuelto = await chat_service._aplicar_cadena_respaldo_juego(
+        plan, "¿sería una buena compra?", CatalogoPrueba(), None, None
+    )
+
+    assert resuelto.intent == "general"
+    assert resuelto.motivo_descarte == "id_no_aceptado"
+
+
+@pytest.mark.asyncio
 async def test_nombre_inventado_no_se_resuelve_por_coincidencia_aproximada() -> None:
     class CatalogoPrueba:
         async def todos_los_juegos(self) -> list[Any]:
