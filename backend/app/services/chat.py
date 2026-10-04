@@ -420,14 +420,14 @@ async def _resolver_con_traduccion(
         salida = await cliente.responses.parse(
             model=settings.llm_model_fast,
             input=(
-                "Devuelve hasta tres títulos originales exactos de BGG traducidos directamente "
-                "desde este nombre comercial en español. No propongas juegos por temática, "
-                "mecánicas o parecido. Si no conoces la traducción exacta, devuelve una lista "
-                "vacía. No expliques nada ni inventes juegos. Nombre: " + nombre
+                "Un usuario hispanohablante busca un juego de mesa llamado «"
+                + nombre
+                + "». ¿Qué juegos de mesa crees que sean, con su título original en inglés? "
+                "Dame hasta 3 opciones, de la más a la menos probable. No expliques nada."
             ),
             text_format=_TitulosTraducidosLlm,
         )
-        titulos = salida.output_parsed.titulos if salida.output_parsed else []
+        titulos = salida.output_parsed.titulos[:3] if salida.output_parsed else []
     except Exception as error:  # noqa: BLE001
         return (
             estado,
@@ -440,37 +440,38 @@ async def _resolver_con_traduccion(
                 "error": str(error)[:300],
             },
         )
-    traza = {"llm_called": True, "titulos": titulos}
-    for titulo in titulos[:3]:
-        estado_traducido, juegos_traducidos = await _resolver(repo, titulo, None, settings)
-        if estado_traducido == "encontrado":
-            return "ambiguo", juegos_traducidos, None, titulos, traza
     juegos_catalogo = await repo.todos_los_juegos()
-    consultas = [normalizar_nombre(item) for item in [nombre, *titulos[:3]] if item]
-    cercanos = sorted(
-        (
-            (
-                max(
-                    fuzz.WRatio(consulta, normalizar_nombre(juego.nombre))
-                    for consulta in consultas
-                    if len(normalizar_nombre(juego.nombre)) <= max(1, len(consulta)) * 1.5
-                    and len(consulta) <= max(1, len(normalizar_nombre(juego.nombre))) * 1.5
-                ),
-                juego,
-            )
+    candidatos: list[Game] = []
+    coincidencias: list[dict[str, Any]] = []
+    vistos: set[str] = set()
+    for titulo in titulos:
+        consulta = normalizar_nombre(titulo)
+        encontrados = [
+            juego
             for juego in juegos_catalogo
-            if any(
-                len(normalizar_nombre(juego.nombre)) <= max(1, len(consulta)) * 1.5
-                and len(consulta) <= max(1, len(normalizar_nombre(juego.nombre))) * 1.5
-                for consulta in consultas
+            if consulta
+            in {normalizar_nombre(juego.nombre), normalizar_nombre(juego.nombre.split(":", 1)[0])}
+        ]
+        if not encontrados and consulta:
+            mejor = max(
+                (
+                    (fuzz.WRatio(consulta, normalizar_nombre(juego.nombre)), juego)
+                    for juego in juegos_catalogo
+                ),
+                default=None,
+                key=lambda item: (item[0], item[1].users_rated or 0),
             )
-        ),
-        key=lambda item: (item[0], item[1].users_rated or 0),
-        reverse=True,
-    )
-    candidatos = tuple(juego for puntaje, juego in cercanos if puntaje >= 70)[:3]
+            encontrados = [mejor[1]] if mejor and mejor[0] >= 85 else []
+        coincidencias.append(
+            {"propuesta": titulo, "coincidencias": [juego.id for juego in encontrados]}
+        )
+        for juego in encontrados:
+            if juego.id not in vistos:
+                vistos.add(juego.id)
+                candidatos.append(juego)
+    traza = {"llm_called": True, "titulos": titulos, "coincidencias": coincidencias}
     return (
-        ("ambiguo", candidatos, None, titulos, traza)
+        ("ambiguo", tuple(candidatos), None, titulos, traza)
         if candidatos
         else (estado, (), None, titulos, traza)
     )
@@ -676,12 +677,16 @@ def _narrar(intent: str, resultados: list[dict[str, Any]]) -> str:
                 "💡 ¿Quieres simular la venta de otro juego?"
             )
         veredictos = {
-            "redundante": "⚠️ redundante",
-            "parecido_pero_cubre_hueco": "✅ aporta un hueco",
-            "complementario": "✅ complementario",
+            "redundante": "Redundante",
+            "parecido_pero_cubre_hueco": "Aporta un hueco",
+            "complementario": "Complementario",
         }
-        texto = prefijo + f"**{veredictos.get(resultado['veredicto'], '🎲 evaluado')}**"
+        texto = prefijo + f"**{veredictos.get(resultado['veredicto'], 'Evaluado')}**"
         texto += f"\n\n- **{juego['nombre']}** está evaluado para tu colección."
+        if resultado.get("regla_exacta") == "misma_linea_de_producto" and similar:
+            texto += f"\n- Comparte línea de producto con **{similar['nombre']}**."
+        elif resultado.get("regla_exacta") == "reimplementa" and similar:
+            texto += f"\n- Reimplementa **{similar['nombre']}**."
         if similar and resultado.get("similitud"):
             similitud = resultado["similitud"]
             texto += f"\n- 🔁 Se parece a **{similar['nombre']}**."

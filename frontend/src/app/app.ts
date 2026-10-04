@@ -664,7 +664,7 @@ Chart.register(
                             class="chip"
                             (click)="enviarChat(candidato.nombre, candidato.id)"
                           >
-                            {{ candidato.nombre }}
+                            ¿Te refieres a {{ candidato.nombre }}?
                           </button>
                         }
                         <button class="chip" (click)="escribirNombreIngles()">

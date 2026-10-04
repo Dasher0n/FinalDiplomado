@@ -172,8 +172,12 @@ async def test_traduccion_simulada_usa_el_nombre_extraido_sin_cola(monkeypatch: 
     assert juegos[0].id == "400366"
     assert interpretado is None
     assert titulos == ["Wondrous Creatures"]
-    assert traza == {"llm_called": True, "titulos": ["Wondrous Creatures"]}
-    assert "No propongas juegos por temática" in llamada["input"]
+    assert traza == {
+        "llm_called": True,
+        "titulos": ["Wondrous Creatures"],
+        "coincidencias": [{"propuesta": "Wondrous Creatures", "coincidencias": ["400366"]}],
+    }
+    assert "¿Qué juegos de mesa crees que sean" in llamada["input"]
 
 
 @pytest.mark.asyncio
@@ -377,7 +381,11 @@ async def test_resolver_traduce_nombre_con_cliente_simulado(monkeypatch: Any) ->
     assert juegos[0].id == "1"
     assert interpretado is None
     assert sugerencias == ["Wingspan"]
-    assert traza == {"llm_called": True, "titulos": ["Wingspan"]}
+    assert traza == {
+        "llm_called": True,
+        "titulos": ["Wingspan"],
+        "coincidencias": [{"propuesta": "Wingspan", "coincidencias": ["1"]}],
+    }
 
 
 @pytest.mark.asyncio
@@ -405,7 +413,11 @@ async def test_resolver_traduccion_no_resuelta(monkeypatch: Any) -> None:
     )
 
     assert (estado, juegos, interpretado, sugerencias) == ("no_encontrado", (), None, ["Nada"])
-    assert traza == {"llm_called": True, "titulos": ["Nada"]}
+    assert traza == {
+        "llm_called": True,
+        "titulos": ["Nada"],
+        "coincidencias": [{"propuesta": "Nada", "coincidencias": []}],
+    }
 
 
 @pytest.mark.asyncio
@@ -443,6 +455,50 @@ async def test_resolver_traduccion_devuelve_sugerencias_cercanas(monkeypatch: An
     assert [item.id for item in juegos] == ["400366"]
     assert interpretado is None
     assert sugerencias == ["Wondrous Creature"]
+
+
+@pytest.mark.asyncio
+async def test_identificacion_simulada_muestra_hasta_tres_coincidencias_sin_resolver(
+    monkeypatch: Any,
+) -> None:
+    juegos = [
+        SimpleNamespace(id="1", nombre="Wingspan", users_rated=100),
+        SimpleNamespace(id="2", nombre="Wyrmspan: Upgrade Pack", users_rated=50),
+        SimpleNamespace(id="3", nombre="Root", users_rated=200),
+    ]
+
+    class CatalogoPrueba:
+        async def todos_los_juegos(self) -> list[Any]:
+            return juegos
+
+    class Responses:
+        async def parse(self, **_kwargs: Any) -> Any:
+            return SimpleNamespace(
+                output_parsed=chat_service._TitulosTraducidosLlm(
+                    titulos=["Wingspan", "Wyrmspan", "Root"]
+                )
+            )
+
+    class Cliente:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.responses = Responses()
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Cliente)
+    estado, candidatos, _, propuestas, traza = await chat_service._resolver_con_traduccion(
+        CatalogoPrueba(),
+        "Pajaros famosos",
+        None,
+        Settings(openai_api_key=SecretStr("fixture-key"), llm_enabled=True),
+    )
+
+    assert estado == "ambiguo"
+    assert [juego.id for juego in candidatos] == ["1", "2", "3"]
+    assert propuestas == ["Wingspan", "Wyrmspan", "Root"]
+    assert traza["coincidencias"] == [
+        {"propuesta": "Wingspan", "coincidencias": ["1"]},
+        {"propuesta": "Wyrmspan", "coincidencias": ["2"]},
+        {"propuesta": "Root", "coincidencias": ["3"]},
+    ]
 
 
 @pytest.mark.asyncio
@@ -487,6 +543,30 @@ async def test_resolver_traduccion_registra_el_error_del_llm(monkeypatch: Any) -
     )
 
     assert traza == {"llm_called": True, "titulos": [], "error": "fallo de traducción"}
+
+
+def test_plantilla_veredicto_muestra_motivo_y_un_solo_emoji() -> None:
+    respuesta = chat_service._narrar(
+        "evaluar_compra",
+        [
+            {
+                "estado": "encontrado",
+                "veredicto": "redundante",
+                "juego": {"nombre": "Wyrmspan"},
+                "juego_mas_parecido": {"nombre": "Wingspan"},
+                "regla_exacta": "misma_linea_de_producto",
+            }
+        ],
+    )
+
+    presentada = chat_service._presentar_respuesta(
+        respuesta,
+        "evaluar_compra",
+        [{"estado": "encontrado", "veredicto": "redundante"}],
+    )
+    assert presentada.startswith("⚠️ **Redundante**")
+    assert presentada.count("⚠️") == 1
+    assert "Comparte línea de producto con **Wingspan**." in presentada
 
 
 def test_saneador_elimina_negritas_desbalanceadas_por_linea() -> None:

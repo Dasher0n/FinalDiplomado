@@ -139,6 +139,8 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - Plan, ficha y evaluación usan los mismos formateadores de precio y fecha en Angular; no se muestran timestamps ISO en tarjetas.
 - La resolución local rechaza consultas normalizadas de menos de dos caracteres y descarta títulos con clave normalizada vacía. La normalización conserva letras Unicode, incluidos alfabetos no latinos, tras quitar acentos.
 - Mejora futura: imponer una procedencia explícita de resolución antes de ejecutar tools, permitiendo solo coincidencia exacta o prefijo del texto de usuario, candidato confirmado o foco de sesión.
+- La identificación de nombres en español permite al modelo proponer hasta tres títulos originales probables. Cada propuesta se busca localmente por coincidencia exacta, prefijo antes de `:` o mejor `WRatio` de al menos 85; siempre queda como candidato para confirmación, nunca resuelve directo. La traza conserva propuestas y sus IDs coincidentes.
+- El encabezado de veredicto antepone un único emoji y capitaliza el texto. La plantilla determinista explica la regla exacta de redundancia, incluida la línea de producto o reimplementación.
 
 ## Bloque 2
 
