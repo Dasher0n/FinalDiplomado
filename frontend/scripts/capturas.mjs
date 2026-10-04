@@ -6,7 +6,7 @@ import { mkdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { chromium } from "playwright";
 
-const SALIDA = resolve("capturas");
+const SALIDA = resolve(process.env.SALIDA_DIR ?? "capturas");
 const DIST = resolve("dist/sommelier-frontend/browser");
 const API = process.env.API_URL ?? "http://localhost:8000";
 const TIPOS = {
@@ -46,6 +46,11 @@ async function abrirPagina(navegador, ancho, perfil) {
     deviceScaleFactor: 1,
   });
   const pagina = await contexto.newPage();
+  // Las preguntas sugeridas del chat son aleatorias: se fija la semilla para capturas comparables.
+  await pagina.addInitScript(() => {
+    let semilla = 20240;
+    Math.random = () => (semilla = (semilla * 16807) % 2147483647) / 2147483647;
+  });
   await pagina.addInitScript((p) => {
     try {
       localStorage.setItem("perfilActivo", p);
