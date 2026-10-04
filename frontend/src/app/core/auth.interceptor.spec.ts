@@ -45,11 +45,39 @@ describe("authInterceptor", () => {
     solicitud.flush({});
   });
 
-  it("no manda el token a otros orígenes", () => {
+  it("agrega ngrok-skip-browser-warning a todas las llamadas al API, también sin sesión", () => {
+    http.get("/api/v1/games").subscribe();
+    controlador.expectOne("/api/v1/games").flush({});
+    sesion.cerrar();
+    http.post("/api/v1/auth/login", {}).subscribe();
+
+    const login = controlador.expectOne("/api/v1/auth/login");
+
+    expect(login.request.headers.get("ngrok-skip-browser-warning")).toBe("1");
+    expect(login.request.headers.has("Authorization")).toBe(false);
+    login.flush({});
+  });
+
+  it("también manda el encabezado de ngrok con el token", () => {
+    http.get("/api/v1/games").subscribe();
+
+    const solicitud = controlador.expectOne("/api/v1/games");
+
+    expect(solicitud.request.headers.get("ngrok-skip-browser-warning")).toBe(
+      "1",
+    );
+    expect(solicitud.request.headers.get("Authorization")).toBe("Bearer abc");
+    solicitud.flush({});
+  });
+
+  it("no manda el token ni el encabezado de ngrok a otros orígenes", () => {
     http.get("https://otro.example/datos").subscribe();
 
     const solicitud = controlador.expectOne("https://otro.example/datos");
     expect(solicitud.request.headers.has("Authorization")).toBe(false);
+    expect(solicitud.request.headers.has("ngrok-skip-browser-warning")).toBe(
+      false,
+    );
     solicitud.flush({});
   });
 

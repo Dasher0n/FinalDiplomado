@@ -72,12 +72,17 @@ def operation_id(route: APIRoute) -> str:
 
 
 def create_app() -> FastAPI:
+    # La documentación interactiva solo existe en desarrollo; en despliegue se cierra.
+    documentacion = settings.environment == "dev"
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
         description="API del sommelier de juegos de mesa.",
         lifespan=lifespan,
         generate_unique_id_function=operation_id,
+        docs_url="/docs" if documentacion else None,
+        redoc_url="/redoc" if documentacion else None,
+        openapi_url="/openapi.json" if documentacion else None,
     )
     app.add_middleware(
         CORSMiddleware,
