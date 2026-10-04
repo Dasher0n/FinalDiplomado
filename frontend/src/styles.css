@@ -1,7 +1,14 @@
 @import "tailwindcss";
+@import "./tokens.css";
+@import "@fontsource/cinzel/latin-600.css";
+@import "@fontsource/cinzel/latin-700.css";
+@import "@fontsource/source-serif-4/latin-400.css";
+@import "@fontsource/source-serif-4/latin-400-italic.css";
+@import "@fontsource/source-serif-4/latin-600.css";
+@import "@fontsource/source-serif-4/latin-700.css";
 
 @theme {
-  --font-serif: Georgia, "Times New Roman", serif;
+  --font-serif: "Cinzel", "Cormorant Garamond", Georgia, "Times New Roman", serif;
 }
 
 html,
@@ -11,20 +18,77 @@ body {
 }
 
 body {
-  font-family: Arial, sans-serif;
-  background: #d9c7ad;
+  font-family: var(--fuente-lectura);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  color: var(--texto-sobre-nogal);
+  background:
+    var(--vineta) fixed,
+    var(--grano),
+    var(--fondo-pagina);
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  color: var(--texto-sobre-nogal);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--fuente-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+/* Cifras alineadas en tablas, métricas y porcentajes */
+table,
+.plan-summary,
+.coverage b,
+.impacto-fila,
+.level-chip,
+.bar-label,
+.shelf-plaque {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Foco visible en latón para todo control */
+:where(a, button, input, select, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--foco);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Superficies de lectura: pergamino con tinta oscura */
+.panel,
+.chat-card,
+.recommendation,
+.resultado-evaluacion,
+.result,
+.ficha-modal,
+.game-tooltip,
+.input {
+  color: var(--texto);
+}
+.panel,
+.chat-card,
+.ficha-modal {
+  background-image: var(--grano-pergamino);
+  background-color: var(--superficie);
 }
 
 .wise-header {
-  border-bottom: 3px solid #6f442d;
-  background: linear-gradient(100deg, #251b16, #3d281d 60%, #251b16);
+  border-bottom: 3px solid var(--nogal-700);
+  background: linear-gradient(100deg, var(--nogal-900), var(--nogal-800) 60%, var(--nogal-900));
 }
 
 .add-game {
-  border: 1px solid #e6b85c;
+  border: 1px solid var(--laton-300);
   border-radius: 999px;
   padding: 0.45rem 0.85rem;
-  color: #fff6df;
+  color: var(--pergamino-50);
 }
 
 .wise-nav {
@@ -32,8 +96,8 @@ body {
   gap: 0.2rem;
 }
 .header-actions { display: flex; align-items: center; gap: 0.8rem; }
-.profile-selector { display: grid; gap: 0.15rem; color: #f8f1e5; font-size: 0.7rem; font-weight: 700; }
-.profile-selector select { border: 1px solid #b98a4a; border-radius: 0.35rem; background: #fffaf2; padding: 0.25rem; color: #38200d; }
+.profile-selector { display: grid; gap: 0.15rem; color: var(--pergamino-100); font-size: 0.7rem; font-weight: 700; }
+.profile-selector select { border: 1px solid var(--laton-500); border-radius: 0.35rem; background: var(--superficie); padding: 0.25rem; color: var(--tinta-900); }
 .wise-nav button {
   border-radius: 999px;
   padding: 0.45rem 0.7rem;
@@ -41,47 +105,47 @@ body {
 }
 .wise-nav button.active,
 .chip.active {
-  background: #e6b85c;
-  color: #38200d;
+  background: var(--laton-300);
+  color: var(--tinta-900);
 }
 .screen-intro {
   max-width: 48rem;
   margin: 0.55rem 0 0;
-  color: #65472f;
+  color: var(--texto-suave-sobre-nogal);
 }
 .how-it-works {
   max-width: 48rem;
   margin-top: 0.55rem;
-  color: #65472f;
+  color: var(--texto-suave-sobre-nogal);
   font-size: 0.85rem;
 }
 .how-it-works summary {
   cursor: pointer;
-  color: #70441e;
+  color: var(--acento-sobre-nogal);
   font-weight: 700;
 }
 .how-it-works p {
   margin: 0.3rem 0 0;
 }
 .eyebrow {
-  color: #8d5221;
+  color: var(--acento-sobre-nogal);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 .input {
-  border: 1px solid #d6c3a5;
+  border: 1px solid var(--laton-500);
   border-radius: 0.55rem;
-  background: #fffdf8;
+  background: var(--superficie-clara);
   padding: 0.55rem 0.7rem;
   min-width: 8rem;
 }
 .panel,
 .chat-card {
-  border: 1px solid #dcc49a;
+  border: 1px solid var(--laton-500);
   border-radius: 1rem;
-  background: #fffaf2;
+  background: var(--superficie);
   padding: 1.25rem;
   box-shadow: 0 7px 18px rgb(76 43 23 / 10%);
 }
@@ -93,19 +157,19 @@ body {
   font-weight: 700;
 }
 .chip {
-  border: 1px solid #b98a4a;
-  color: #70441e;
+  border: 1px solid var(--laton-500);
+  color: var(--laton-700);
 }
 .primary {
-  background: #6f442d;
-  color: #fff7e6;
+  background: var(--nogal-700);
+  color: var(--pergamino-50);
 }
 .result {
   display: flex;
   align-items: center;
   gap: 0.65rem;
   border-radius: 0.6rem;
-  background: white;
+  background: var(--superficie-clara);
   padding: 0.45rem;
   text-align: left;
 }
@@ -115,7 +179,7 @@ body {
   object-fit: cover;
 }
 .coverage {
-  border-left: 3px solid #b27023;
+  border-left: 3px solid var(--laton-500);
   padding-left: 0.65rem;
   font-size: 0.87rem;
 }
@@ -123,25 +187,25 @@ body {
   margin: 0.4rem 0 0;
 }
 .missing {
-  color: #9b3429;
+  color: var(--vino-700);
   font-weight: 700;
 }
 .weak {
-  color: #8d6a1c;
+  color: var(--laton-700);
   font-weight: 700;
 }
 .recommendation {
-  border: 1px solid #e2c692;
+  border: 1px solid var(--pergamino-300);
   border-radius: 0.65rem;
   padding: 0.8rem;
-  background: #fffaf2;
+  background: var(--superficie);
 }
 .recommendation p {
   margin: 0.4rem 0 0;
   font-size: 0.85rem;
 }
 .chat-card-cover { float: left; width: 3.7rem; height: 5rem; margin: 0 0.7rem 0.35rem 0; object-fit: cover; border-radius: 0.25rem; }
-.recommendation a { color: #70441e; font-size: 0.8rem; font-weight: 700; }
+.recommendation a { color: var(--laton-700); font-size: 0.8rem; font-weight: 700; }
 .plan-cover {
   width: 3.7rem;
   height: 5rem;
@@ -158,7 +222,7 @@ body {
 }
 .guarantee {
   margin: 0.8rem 0 0;
-  color: #6b4b25;
+  color: var(--texto-suave);
   font-size: 0.78rem;
 }
 .chip-legend {
@@ -183,7 +247,7 @@ body {
 .impacto-fila i {
   position: relative;
   height: 2px;
-  background: #b27023;
+  background: var(--laton-500);
 }
 .impacto-fila i::before,
 .impacto-fila i::after {
@@ -191,9 +255,9 @@ body {
   top: 50%;
   width: 7px;
   height: 7px;
-  border: 2px solid #8d5221;
+  border: 2px solid var(--laton-700);
   border-radius: 999px;
-  background: #fffaf2;
+  background: var(--superficie);
   content: "";
   transform: translateY(-50%);
 }
@@ -202,7 +266,7 @@ body {
 }
 .impacto-fila i::after {
   right: 0;
-  background: #b27023;
+  background: var(--laton-500);
 }
 .impacto-fila.sin-cambio {
   opacity: 0.38;
@@ -212,7 +276,7 @@ body {
   font-weight: 700;
 }
 .transiciones {
-  color: #6b4b25;
+  color: var(--texto-suave);
   font-size: 0.68rem;
 }
 .coverage-summary {
@@ -246,19 +310,19 @@ body {
 }
 .level-chip {
   border-radius: 999px;
-  background: #eadcc5;
+  background: var(--pergamino-200);
   padding: 0.18rem 0.5rem;
-  color: #70441e;
+  color: var(--laton-700);
   font-size: 0.72rem;
   font-weight: 700;
 }
 .missing-chip {
-  background: #f4d6d0;
-  color: #9b3429;
+  background: var(--vino-100);
+  color: var(--vino-700);
 }
 .weak-chip {
-  background: #eee1b5;
-  color: #8d6a1c;
+  background: var(--pergamino-200);
+  color: var(--laton-700);
 }
 .bubble {
   border-radius: 0.8rem;
@@ -268,10 +332,10 @@ body {
   width: fit-content;
   max-width: 520px;
   margin: 1rem 0 1rem auto;
-  background: #eee1cc;
+  background: var(--pergamino-200);
 }
 .bubble.answer {
-  background: #fff4da;
+  background: var(--pergamino-50);
 }
 .bubble,
 .markdown,
@@ -291,19 +355,19 @@ body {
   height: 0.45rem;
   overflow: hidden;
   border-radius: 999px;
-  background: #eadcc5;
+  background: var(--pergamino-200);
 }
 .bar i {
   display: block;
   height: 100%;
-  background: #9b5d29;
+  background: var(--laton-600);
 }
 .resultado-evaluacion {
   margin-top: 1rem;
-  border: 1px solid #e2c692;
+  border: 1px solid var(--pergamino-300);
   border-radius: 0.65rem;
   padding: 0.8rem;
-  background: #fffaf2;
+  background: var(--superficie);
 }
 
 .bookcase {
@@ -346,10 +410,10 @@ body {
   border: 1px solid #8d6229;
   border-radius: 3px;
   padding: 0.22rem 0.55rem;
-  color: #38200d;
+  color: var(--tinta-900);
   font-size: 0.78rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #f0ca73, #b6822e);
+  background: linear-gradient(135deg, var(--laton-300), #b6822e);
   box-shadow: 0 2px 2px rgb(0 0 0 / 35%);
 }
 
@@ -418,7 +482,7 @@ body {
 }
 
 .game-card:focus-visible {
-  outline: 3px solid #f0ca73;
+  outline: 3px solid var(--laton-300);
   outline-offset: 4px;
 }
 
@@ -432,13 +496,13 @@ body {
   width: 200px;
   gap: 0.2rem;
   padding: 0.7rem;
-  color: #2b1a11;
+  color: var(--tinta-900);
   font-size: 0.76rem;
   line-height: 1.2;
   pointer-events: none;
-  border: 1px solid #d1ad65;
+  border: 1px solid var(--laton-500);
   border-radius: 6px;
-  background: #fff6df;
+  background: var(--pergamino-50);
   box-shadow: 0 8px 20px rgb(0 0 0 / 42%);
   transform: translate(-50%, -100%);
 }
@@ -448,7 +512,7 @@ body {
   filter: grayscale(0.65);
 }
 .game-card.highlighted .game-cover img {
-  filter: drop-shadow(0 0 10px #f4cf72)
+  filter: drop-shadow(0 0 10px var(--laton-200))
     drop-shadow(5px 8px 6px rgb(10 6 4 / 55%));
 }
 .compact-bookcases .shelf-games { --cover-h: 88px; }
@@ -457,7 +521,7 @@ body {
   flex-wrap: wrap;
   gap: 0.75rem;
   margin-top: 0.75rem;
-  color: #65472f;
+  color: var(--texto-suave-sobre-nogal);
   font-size: 0.78rem;
 }
 .ideal-marker::before,
@@ -470,8 +534,8 @@ body {
   content: "";
 }
 .ideal-marker::before {
-  background: #f4cf72;
-  box-shadow: 0 0 8px #f4cf72;
+  background: var(--laton-200);
+  box-shadow: 0 0 8px var(--laton-200);
 }
 .dimmed-marker::before {
   background: #705f53;
@@ -491,7 +555,7 @@ body {
   height: 36px;
   padding: 0.2rem;
   border-radius: 50%;
-  background: #3d281d;
+  background: var(--nogal-800);
 }
 .suggested-questions {
   display: grid;
@@ -508,10 +572,10 @@ body {
   gap: 0.5rem;
   margin: 1rem -0.25rem -0.25rem;
   padding: 0.75rem 0.25rem 0.25rem;
-  background: linear-gradient(transparent, #fffaf2 22%);
+  background: linear-gradient(transparent, var(--superficie) 22%);
 }
 .markdown p { margin: 0.4rem 0; }
-.chat-error { margin: 16px 0; color: #9b3429; font-weight: 700; }
+.chat-error { margin: 16px 0; color: var(--vino-700); font-weight: 700; }
 .game-summary-card { overflow: hidden; }
 .thinking-die { display: inline-block; margin-right: 0.35rem; }
 @media (prefers-reduced-motion: no-preference) {
@@ -536,7 +600,7 @@ body {
     left: 0;
     justify-content: space-around;
     border-top: 1px solid #825438;
-    background: #251b16;
+    background: var(--nogal-900);
     padding: 0.45rem;
   }
   .header-actions { gap: 0.35rem; }

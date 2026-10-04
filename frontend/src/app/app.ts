@@ -50,12 +50,14 @@ Chart.register(
   Tooltip,
   Legend,
 );
+Chart.defaults.font.family = '"Source Serif 4", Georgia, serif';
+Chart.defaults.color = "#4d3727";
 
 @Component({
   selector: "app-root",
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DecimalPipe],
-  template: ` <main class="min-h-screen text-stone-900">
+  template: ` <main class="min-h-screen">
     <header class="wise-header px-4 py-3 text-[#f8f1e5]">
       <div class="mx-auto flex max-w-7xl items-center justify-between">
         <div class="flex items-center gap-2">
@@ -718,7 +720,7 @@ Chart.register(
         (click)="seleccionado.set(null)"
       >
         <article
-          class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-[#fffaf2] p-5"
+          class="ficha-modal max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl p-5"
           (click)="$event.stopPropagation()"
         >
           <button class="float-right text-2xl" (click)="seleccionado.set(null)">
@@ -1441,8 +1443,8 @@ export class App {
         datasets: [
           {
             data: ejes.map((eje) => eje.valor.porcentaje),
-            backgroundColor: "rgba(178,112,35,.25)",
-            borderColor: "#8d5221",
+            backgroundColor: "rgba(201,160,63,.28)",
+            borderColor: "#86641f",
           },
         ],
       },
@@ -1488,19 +1490,19 @@ export class App {
                       (conteo) => conteo >= 2,
                     ).length,
                 ),
-                backgroundColor: "#8d5221",
+                backgroundColor: "#1f6a52",
               },
               {
                 label: "Débiles",
                 data: Object.values(ejes).map(
                   (eje) => Object.keys(eje.debiles).length,
                 ),
-                backgroundColor: "#b27023",
+                backgroundColor: "#a47e2c",
               },
               {
                 label: "Faltantes",
                 data: Object.values(ejes).map((eje) => eje.faltantes.length),
-                backgroundColor: "#9b3429",
+                backgroundColor: "#7d1f2e",
               },
             ],
           },
@@ -1536,8 +1538,8 @@ export class App {
             {
               label: titulo,
               data: Object.values(conteos),
-              borderColor: "#8d5221",
-              backgroundColor: "rgba(178,112,35,.18)",
+              borderColor: "#86641f",
+              backgroundColor: "rgba(201,160,63,.22)",
               pointBackgroundColor: Object.values(conteos).map(
                 this.colorConteo,
               ),
@@ -1592,7 +1594,7 @@ export class App {
   }
 
   private colorConteo(conteo: number): string {
-    return conteo === 0 ? "#9b3429" : conteo === 1 ? "#b27023" : "#8d5221";
+    return conteo === 0 ? "#7d1f2e" : conteo === 1 ? "#a47e2c" : "#1f6a52";
   }
 
   private async cargarPerfiles(): Promise<void> {
