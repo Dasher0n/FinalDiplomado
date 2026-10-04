@@ -44,11 +44,20 @@ def _clave_de(semilla: UsuarioSemilla) -> str:
 
 
 async def sembrar_usuarios(session: AsyncSession) -> list[str]:
-    """Crea los usuarios que falten. Sin clave en el entorno no se crea y se advierte."""
+    """Crea los usuarios que falten y sincroniza la clave de los existentes con el entorno.
+
+    Sin clave en el entorno no se crea un usuario nuevo (se advierte) y a uno existente no se
+    le toca. Si la clave del entorno ya no coincide con el hash guardado, se guarda un hash
+    nuevo con otra sal, así cambiar el .env y recrear el backend cambia la contraseña.
+    """
     creados: list[str] = []
     for semilla in SEMILLAS:
         existente = await session.scalar(select(Usuario).where(Usuario.usuario == semilla.usuario))
         if existente is not None:
+            clave_actual = _clave_de(semilla)
+            if clave_actual and not verificar_clave(clave_actual, existente.clave_hash):
+                existente.clave_hash = hashear_clave(clave_actual)
+                log.info(f"Contraseña actualizada para {semilla.usuario}")
             continue
         clave = _clave_de(semilla)
         if not clave:

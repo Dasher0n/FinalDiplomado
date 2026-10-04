@@ -234,3 +234,69 @@ def test_el_backend_no_arranca_sin_jwt_secret(monkeypatch: pytest.MonkeyPatch) -
 
     with pytest.raises(RuntimeError, match="JWT_SECRET"), TestClient(create_app()):
         pass
+
+
+def _sembrar_dos_veces(cambiar_entorno: Any) -> tuple[list[Usuario], list[Usuario]]:
+    """Siembra, aplica el cambio de entorno y vuelve a sembrar; devuelve las filas de cada vez."""
+    engine, sessionmaker = _base_en_memoria()
+
+    async def leer() -> list[Usuario]:
+        async with sessionmaker() as session:
+            return list((await session.scalars(select(Usuario).order_by(Usuario.usuario))).all())
+
+    async def sembrar() -> None:
+        async with sessionmaker() as session:
+            await sembrar_usuarios(session)
+            await session.commit()
+
+    asyncio.run(sembrar())
+    antes = asyncio.run(leer())
+    cambiar_entorno()
+    asyncio.run(sembrar())
+    despues = asyncio.run(leer())
+    asyncio.run(engine.dispose())
+    return antes, despues
+
+
+def test_cambiar_la_clave_del_entorno_actualiza_el_hash_con_sal_nueva(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    nueva = "clave-nueva-que-no-debe-aparecer-en-el-log"
+
+    def cambiar() -> None:
+        monkeypatch.setattr(settings, "clave_usuario_cafe", SecretStr(nueva))
+
+    with caplog.at_level(logging.INFO):
+        antes, despues = _sembrar_dos_veces(cambiar)
+
+    por_usuario = {fila.usuario: fila for fila in despues}
+    hash_antes = {fila.usuario: fila.clave_hash for fila in antes}
+    assert seguridad.verificar_clave(nueva, por_usuario["cafe"].clave_hash)
+    assert not seguridad.verificar_clave(USUARIOS["cafe"][1], por_usuario["cafe"].clave_hash)
+    assert por_usuario["cafe"].clave_hash.split("$")[4] != hash_antes["cafe"].split("$")[4]
+    # La otra cuenta no cambió.
+    assert por_usuario["coleccionista"].clave_hash == hash_antes["coleccionista"]
+    assert "Contraseña actualizada para cafe" in caplog.text
+    assert nueva not in caplog.text and nueva not in por_usuario["cafe"].clave_hash
+
+
+def test_la_misma_clave_no_cambia_nada_ni_registra(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        antes, despues = _sembrar_dos_veces(lambda: None)
+
+    assert [fila.clave_hash for fila in antes] == [fila.clave_hash for fila in despues]
+    assert "Contraseña actualizada" not in caplog.text
+
+
+def test_con_la_variable_ausente_no_se_toca_al_usuario_existente(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def quitar() -> None:
+        monkeypatch.setattr(settings, "clave_usuario_cafe", SecretStr(""))
+
+    with caplog.at_level(logging.INFO):
+        antes, despues = _sembrar_dos_veces(quitar)
+
+    assert [fila.clave_hash for fila in antes] == [fila.clave_hash for fila in despues]
+    assert seguridad.verificar_clave(USUARIOS["cafe"][1], despues[0].clave_hash)
+    assert "Contraseña actualizada" not in caplog.text
