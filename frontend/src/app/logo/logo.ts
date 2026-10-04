@@ -1,17 +1,42 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  OnDestroy,
+  OnInit,
   input,
   signal,
 } from "@angular/core";
 
+type Accion =
+  | "parpadeo"
+  | "mirar"
+  | "barba"
+  | "hechizo"
+  | "galleta"
+  | "bostezo";
+
+/** Duración y peso relativo de cada acción. Cada una dura de 0,5 a 2 segundos. */
+const ACCIONES: { nombre: Accion; peso: number; ms: number }[] = [
+  { nombre: "parpadeo", peso: 40, ms: 600 },
+  { nombre: "mirar", peso: 20, ms: 1600 },
+  { nombre: "barba", peso: 12, ms: 1800 },
+  { nombre: "hechizo", peso: 12, ms: 1800 },
+  { nombre: "galleta", peso: 8, ms: 2000 },
+  { nombre: "bostezo", peso: 8, ms: 1600 },
+];
+const PROBABILIDAD_DE_HACER_ALGO = 0.7;
+
 /**
- * Dado sabio de la cabecera y del avatar del chat.
+ * Dado sabio de la cabecera (animado de vez en cuando) y del avatar del chat (solo parpadea).
  * El SVG está en línea y separado en grupos: sombrero, cejas, ojos, barba, boca, varita y galleta.
  */
 @Component({
   selector: "app-logo",
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    "(mouseenter)": "alPasarElMouse()",
+    "[class.avatar]": "variante() === 'avatar'",
+  },
   template: `@if (variante() === "cabecera") {
       <svg
         viewBox="0 0 128 128"
@@ -321,21 +346,361 @@ import {
         height: 100%;
         overflow: visible;
       }
-      .boca ellipse {
-        transform: scale(0);
+      .ojo,
+      .boca ellipse,
+      .galleta {
         transform-box: fill-box;
         transform-origin: center;
+      }
+      .boca ellipse {
+        transform: scale(0);
       }
       .chispas,
       .galleta {
         opacity: 0;
       }
+      .chispas polygon {
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .barba {
+        transform-origin: 46px 82px;
+      }
+      .varita {
+        transform-origin: 104px 99px;
+      }
+      svg[data-accion] * {
+        animation-duration: var(--dur);
+        animation-fill-mode: both;
+        animation-timing-function: ease-in-out;
+      }
+      /* Parpadeo */
+      svg[data-accion="parpadeo"] .ojo {
+        animation-name: parpadeo;
+      }
+      /* Mirar a los lados */
+      svg[data-accion="mirar"] .ojos {
+        animation-name: mirar;
+      }
+      svg[data-accion="mirar"] .cejas {
+        animation-name: cejas-mirar;
+      }
+      /* Mover la barba */
+      svg[data-accion="barba"] .barba {
+        animation-name: barba;
+      }
+      /* Hechizo: la varita sube y salen chispas desde el sombrero */
+      svg[data-accion="hechizo"] .varita {
+        animation-name: varita;
+      }
+      svg[data-accion="hechizo"] .chispas {
+        animation-name: aparece;
+      }
+      svg[data-accion="hechizo"] .chispas polygon {
+        animation-name: chispa;
+      }
+      svg[data-accion="hechizo"] .chispas polygon:nth-child(2) {
+        --dx: -16px;
+        --dy: -12px;
+        animation-delay: 0.1s;
+      }
+      svg[data-accion="hechizo"] .chispas polygon:nth-child(3) {
+        --dx: 16px;
+        --dy: -14px;
+        animation-delay: 0.15s;
+      }
+      svg[data-accion="hechizo"] .chispas polygon:nth-child(1) {
+        --dx: 2px;
+        --dy: -20px;
+      }
+      svg[data-accion="hechizo"] .chispas polygon:nth-child(4) {
+        --dx: -6px;
+        --dy: -26px;
+        animation-delay: 0.2s;
+      }
+      svg[data-accion="hechizo"] .chispas polygon:nth-child(5) {
+        --dx: 20px;
+        --dy: -22px;
+        animation-delay: 0.25s;
+      }
+      /* Comer una galleta con tres mordidas */
+      svg[data-accion="galleta"] .galleta {
+        animation-name: galleta;
+      }
+      svg[data-accion="galleta"] .boca ellipse {
+        animation-name: masticar;
+      }
+      /* Bostezo */
+      svg[data-accion="bostezo"] .boca ellipse {
+        animation-name: bostezo-boca;
+      }
+      svg[data-accion="bostezo"] .ojo {
+        animation-name: bostezo-ojos;
+      }
+      svg[data-accion="bostezo"] .cejas {
+        animation-name: bostezo-cejas;
+      }
+      /* Congelado a mitad de la acción, para capturas de revisión */
+      svg[data-congelado] * {
+        animation-play-state: paused !important;
+        animation-delay: calc(var(--dur) * -0.5) !important;
+      }
+      @keyframes parpadeo {
+        0%,
+        100% {
+          transform: scaleY(1);
+        }
+        45% {
+          transform: scaleY(0.08);
+        }
+      }
+      @keyframes mirar {
+        0%,
+        100% {
+          transform: translateX(0);
+        }
+        25%,
+        40% {
+          transform: translateX(-2.6px);
+        }
+        65%,
+        80% {
+          transform: translateX(2.6px);
+        }
+      }
+      @keyframes cejas-mirar {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-1px);
+        }
+      }
+      @keyframes barba {
+        0%,
+        100% {
+          transform: rotate(0);
+        }
+        20% {
+          transform: rotate(3.4deg);
+        }
+        45% {
+          transform: rotate(-3.4deg);
+        }
+        70% {
+          transform: rotate(2deg);
+        }
+      }
+      @keyframes varita {
+        0%,
+        100% {
+          transform: rotate(0);
+        }
+        30%,
+        60% {
+          transform: rotate(-28deg);
+        }
+      }
+      @keyframes aparece {
+        0%,
+        20% {
+          opacity: 0;
+        }
+        35%,
+        80% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+      @keyframes chispa {
+        0% {
+          transform: translate(0, 0) scale(0.3);
+        }
+        100% {
+          transform: translate(var(--dx), var(--dy)) scale(1.4) rotate(120deg);
+        }
+      }
+      @keyframes galleta {
+        0% {
+          opacity: 0;
+          transform: translate(108px, 106px) scale(1);
+        }
+        10% {
+          opacity: 1;
+          transform: translate(104px, 104px) scale(1);
+        }
+        40% {
+          opacity: 1;
+          transform: translate(50px, 96px) scale(1);
+        }
+        55% {
+          transform: translate(48px, 95px) scale(0.72);
+        }
+        70% {
+          transform: translate(48px, 95px) scale(0.45);
+        }
+        85% {
+          transform: translate(48px, 95px) scale(0.2);
+        }
+        100% {
+          opacity: 0;
+          transform: translate(48px, 95px) scale(0);
+        }
+      }
+      @keyframes masticar {
+        0%,
+        35% {
+          transform: scale(0);
+        }
+        42%,
+        62%,
+        80% {
+          transform: scale(1, 1);
+        }
+        52%,
+        72%,
+        90% {
+          transform: scale(1, 0.3);
+        }
+        100% {
+          transform: scale(0);
+        }
+      }
+      @keyframes bostezo-boca {
+        0%,
+        100% {
+          transform: scale(0);
+        }
+        30%,
+        70% {
+          transform: scale(1.15, 1.5);
+        }
+      }
+      @keyframes bostezo-ojos {
+        0%,
+        100% {
+          transform: scaleY(1);
+        }
+        30%,
+        70% {
+          transform: scaleY(0.15);
+        }
+      }
+      @keyframes bostezo-cejas {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        30%,
+        70% {
+          transform: translateY(-2.5px);
+        }
+      }
+      /* El avatar solo parpadea de vez en cuando */
+      @media (prefers-reduced-motion: no-preference) {
+        :host(.avatar) .ojo {
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: parpadeo-avatar 8s ease-in-out infinite;
+        }
+      }
+      @keyframes parpadeo-avatar {
+        0%,
+        93%,
+        100% {
+          transform: scaleY(1);
+        }
+        96% {
+          transform: scaleY(0.08);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        svg * {
+          animation: none !important;
+        }
+      }
     `,
   ],
 })
-export class LogoComponent {
+export class LogoComponent implements OnInit, OnDestroy {
   readonly variante = input<"cabecera" | "avatar">("cabecera");
-  protected readonly accion = signal<string | null>(null);
+  protected readonly accion = signal<Accion | null>(null);
   protected readonly duracion = signal(1);
-  protected readonly congelado = false;
+  protected congelado = false;
+  private temporizador: number | undefined;
+  private fin: number | undefined;
+  private readonly alCambiarVisibilidad = () => {
+    if (document.hidden) {
+      window.clearTimeout(this.temporizador);
+    } else {
+      this.programar();
+    }
+  };
+
+  ngOnInit(): void {
+    if (this.variante() !== "cabecera") return;
+    // Parámetro de desarrollo: ?logo=hechizo fuerza una acción; &mitad=1 la congela a la mitad.
+    const parametros = new URLSearchParams(window.location.search);
+    const forzada = ACCIONES.find((a) => a.nombre === parametros.get("logo"));
+    if (forzada) {
+      this.congelado = parametros.get("mitad") === "1";
+      window.setTimeout(
+        () => this.ejecutar(forzada.nombre, forzada.ms, true),
+        600,
+      );
+    }
+    document.addEventListener("visibilitychange", this.alCambiarVisibilidad);
+    this.programar();
+  }
+
+  ngOnDestroy(): void {
+    window.clearTimeout(this.temporizador);
+    window.clearTimeout(this.fin);
+    document.removeEventListener("visibilitychange", this.alCambiarVisibilidad);
+  }
+
+  protected alPasarElMouse(): void {
+    if (this.variante() === "cabecera") this.ejecutar("hechizo", 1800);
+  }
+
+  private reducido(): boolean {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  /** Cada 20 a 40 segundos decide al azar si hace algo y qué. Pausado con la pestaña oculta. */
+  private programar(): void {
+    window.clearTimeout(this.temporizador);
+    if (document.hidden) return;
+    const espera = 20000 + Math.random() * 20000;
+    this.temporizador = window.setTimeout(() => {
+      this.decidir();
+      this.programar();
+    }, espera);
+  }
+
+  private decidir(): void {
+    if (document.hidden || this.reducido()) return;
+    if (Math.random() > PROBABILIDAD_DE_HACER_ALGO) return;
+    const total = ACCIONES.reduce((suma, a) => suma + a.peso, 0);
+    let punto = Math.random() * total;
+    for (const accion of ACCIONES) {
+      punto -= accion.peso;
+      if (punto <= 0) {
+        this.ejecutar(accion.nombre, accion.ms);
+        return;
+      }
+    }
+  }
+
+  /** Una acción nunca se encima con otra. */
+  private ejecutar(nombre: Accion, ms: number, forzada = false): void {
+    if (this.accion() || (!forzada && this.reducido())) return;
+    this.duracion.set(ms / 1000);
+    this.accion.set(nombre);
+    if (this.congelado) return;
+    this.fin = window.setTimeout(() => this.accion.set(null), ms);
+  }
 }
