@@ -149,5 +149,6 @@ def test_prompt_del_narrador_prohibe_precio_y_limita_la_similitud(
     assert "Huecos que cubre" in sistema
     assert "una sola oración" in sistema and "Experiencia del juego" in sistema
     assert "Sin números, sin veredicto" in sistema
+    assert "No menciones la duración ni el número de jugadores" in sistema
     usuario = llamada["input"][1]["content"]
     assert "79.99" not in usuario and "33%" in usuario
