@@ -199,10 +199,11 @@ def test_la_siembra_guarda_solo_el_hash_y_es_idempotente() -> None:
 
     primera, segunda, filas = asyncio.run(sembrar())
 
-    assert primera == ["cafe", "coleccionista"] and segunda == []
+    assert primera == ["cafe", "coleccionista", "miguel"] and segunda == []
     assert {fila.usuario: (fila.nombre, fila.perfil) for fila in filas} == {
         "cafe": ("Café demo", "cafe"),
         "coleccionista": ("Colección personal", "coleccionista"),
+        "miguel": ("Colección de Miguel", "miguel"),
     }
     for fila in filas:
         assert fila.clave_hash.startswith("scrypt$")
@@ -223,7 +224,7 @@ def test_sin_clave_en_el_entorno_no_se_crea_el_usuario_y_se_advierte(
     with caplog.at_level(logging.WARNING):
         creados = asyncio.run(sembrar())
 
-    assert creados == ["coleccionista"]
+    assert creados == ["coleccionista", "miguel"]
     assert "CLAVE_USUARIO_CAFE" in caplog.text
     assert USUARIOS["coleccionista"][1] not in caplog.text
     asyncio.run(engine.dispose())
@@ -300,3 +301,29 @@ def test_con_la_variable_ausente_no_se_toca_al_usuario_existente(
     assert [fila.clave_hash for fila in antes] == [fila.clave_hash for fila in despues]
     assert seguridad.verificar_clave(USUARIOS["cafe"][1], despues[0].clave_hash)
     assert "Contraseña actualizada" not in caplog.text
+
+
+def test_sin_clave_de_miguel_no_se_crea_y_se_advierte(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(settings, "clave_usuario_miguel", SecretStr(""))
+    engine, sessionmaker = _base_en_memoria()
+
+    async def sembrar() -> list[str]:
+        async with sessionmaker() as session:
+            return await sembrar_usuarios(session)
+
+    with caplog.at_level(logging.WARNING):
+        creados = asyncio.run(sembrar())
+
+    assert creados == ["cafe", "coleccionista"]
+    assert "CLAVE_USUARIO_MIGUEL" in caplog.text
+    asyncio.run(engine.dispose())
+
+
+def test_login_de_miguel_devuelve_su_perfil(api_client: TestClient) -> None:
+    usuario, clave = USUARIOS["miguel"]
+    respuesta = api_client.post("/api/v1/auth/login", json={"usuario": usuario, "clave": clave})
+
+    assert respuesta.status_code == 200
+    assert respuesta.json()["perfil"] == "miguel"

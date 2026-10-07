@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 USUARIOS = {
     "cafe": ("cafe", os.environ["CLAVE_USUARIO_CAFE"]),
     "coleccionista": ("coleccionista", os.environ["CLAVE_USUARIO_COLECCIONISTA"]),
+    "miguel": ("miguel", os.environ["CLAVE_USUARIO_MIGUEL"]),
 }
 
 

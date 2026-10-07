@@ -12,6 +12,7 @@ from typing import Any
 os.environ.setdefault("JWT_SECRET", "secreto-de-prueba-que-no-es-real-0123456789")
 os.environ.setdefault("CLAVE_USUARIO_CAFE", "clave-cafe-de-prueba")
 os.environ.setdefault("CLAVE_USUARIO_COLECCIONISTA", "clave-coleccionista-de-prueba")
+os.environ.setdefault("CLAVE_USUARIO_MIGUEL", "clave-miguel-de-prueba")
 os.environ.setdefault("JWT_HORAS", "12")
 
 import pytest  # noqa: E402

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +23,7 @@ _HASH_RELLENO = hashear_clave("relleno-sin-uso")
 class UsuarioSemilla:
     usuario: str
     nombre: str
-    perfil: str  # id del perfil de colección: "cafe" o "coleccionista" (Colección personal)
+    perfil: str  # id del perfil de colección: "cafe", "coleccionista" o "miguel"
     variable: str
 
 
@@ -31,15 +32,12 @@ SEMILLAS = (
     UsuarioSemilla(
         "coleccionista", "Colección personal", "coleccionista", "CLAVE_USUARIO_COLECCIONISTA"
     ),
+    UsuarioSemilla("miguel", "Colección de Miguel", "miguel", "CLAVE_USUARIO_MIGUEL"),
 )
 
 
 def _clave_de(semilla: UsuarioSemilla) -> str:
-    secreto = (
-        settings.clave_usuario_cafe
-        if semilla.variable == "CLAVE_USUARIO_CAFE"
-        else settings.clave_usuario_coleccionista
-    )
+    secreto: SecretStr = getattr(settings, semilla.variable.lower())
     return secreto.get_secret_value()
 
 

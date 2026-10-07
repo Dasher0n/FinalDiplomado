@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     jwt_horas: int = 12
     clave_usuario_cafe: SecretStr = SecretStr("")
     clave_usuario_coleccionista: SecretStr = SecretStr("")
+    clave_usuario_miguel: SecretStr = SecretStr("")
 
     @field_validator("jwt_horas", mode="before")
     @classmethod

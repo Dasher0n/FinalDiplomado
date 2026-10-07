@@ -197,6 +197,11 @@ Documento vivo del proyecto. Se actualiza al cerrar cada fase.
 - **Por qué token en encabezado y no cookie:** al desplegar, el frontend y el backend estarán en dominios distintos. Una cookie de sesión cruzada exigiría `SameSite=None`, `Secure` y protección CSRF, y los navegadores cada vez bloquean más las cookies de terceros. Con el token en el encabezado `Authorization`, el frontend decide cuándo enviarlo y no hay CSRF. El costo es que el token vive en `localStorage` y es legible por scripts de la propia página, por lo que se vigilan las dependencias y el HTML se escapa.
 - **Trabajo futuro:** vista de administrador para gestionar usuarios, registro de cuentas, recuperación de contraseña y límite de intentos de login (hoy no hay).
 
+## Perfil miguel
+
+- Tercer perfil personal `miguel` ("Colección de Miguel") con 43 juegos (`MIGUEL_GAME_IDS` en `profiles.py`), metas por defecto y usuario `miguel` con la variable `CLAVE_USUARIO_MIGUEL`. `_clave_de` resuelve la clave desde `semilla.variable`, así un usuario nuevo solo requiere su `UsuarioSemilla` y su campo en `config.py`.
+- La siembra de colecciones no corre al arrancar. Sobre la base existente: `docker compose exec backend python -m app.db.seed` (idempotente, no toca cafe ni coleccionista). Los usuarios se crean al arrancar el backend, con `CLAVE_USUARIO_MIGUEL` en `.env`.
+
 ## Despliegue
 
 #### Arquitectura

@@ -17,7 +17,12 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.models import CollectionProfile, Game, User, UserCollection
 from app.db.session import dispose_db, get_sessionmaker, init_db
-from app.profiles import CAFE_GAME_IDS, CONFIGURACION_PERFILES_VERSION, PERFILES
+from app.profiles import (
+    CAFE_GAME_IDS,
+    CONFIGURACION_PERFILES_VERSION,
+    MIGUEL_GAME_IDS,
+    PERFILES,
+)
 
 DEMO_GAMES = (
     "Wingspan",
@@ -215,7 +220,11 @@ async def seed_demo_user_and_collection(session: AsyncSession) -> tuple[bool, in
     await session.flush()
 
     additions: list[UserCollection] = []
-    for profile_id, ids in (("coleccionista", None), ("cafe", CAFE_GAME_IDS)):
+    for profile_id, ids in (
+        ("coleccionista", None),
+        ("cafe", CAFE_GAME_IDS),
+        ("miguel", MIGUEL_GAME_IDS),
+    ):
         games = await session.scalars(
             select(Game.id).where(Game.nombre.in_(DEMO_GAMES) if ids is None else Game.id.in_(ids))
         )
